@@ -1,105 +1,80 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import CryptoJS from 'crypto-js';
+
+// Hash SHA-256 nativo (hex)
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 export default function LoginPage() {
   const router = useRouter();
-
   const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
-  const [msg, setMsg] = useState<string>('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Si ya hay sesión, ir directo al menú
-  useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('auth') === 'ok') {
-      router.replace('/menu');
-    }
-  }, [router]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password.trim()) {
-      setMsg('Ingresa la clave.');
-      return;
-    }
-
+  const handleLogin = async () => {
     try {
       setLoading(true);
-      setMsg('Verificando...');
+      setMessage('Verificando...');
+      const hash = await sha256Hex(password);
 
-      const hash = CryptoJS.SHA256(password.trim()).toString(CryptoJS.enc.Hex);
       const { data, error } = await supabase.rpc('check_password', { p_hash: hash });
 
       if (error) {
-        setMsg('Error de conexión');
+        setMessage('Error de conexión');
         return;
       }
 
       if (data === true) {
-        localStorage.setItem('auth', 'ok');
-        setMsg('✅ Acceso concedido');
-        router.push('/menu');
+        setMessage('✅ Acceso concedido');
+        // si quieres redirigir al menú:
+        // router.push('/menu');
       } else {
-        setMsg('❌ Clave incorrecta');
+        setMessage('❌ Clave incorrecta');
       }
-    } catch (err: any) {
-      setMsg(`Error: ${err?.message || 'desconocido'}`);
+    } catch (e: any) {
+      setMessage(`Error: ${e?.message ?? e}`);
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !loading) handleLogin();
+  };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-      <div className="bg-white shadow-lg rounded-2xl p-8 w-full max-w-sm text-center">
-        <h1 className="text-2xl font-bold mb-6 text-gray-900">Acceso a la aplicación</h1>
+    <main className="flex h-screen items-center justify-center bg-gray-100">
+      <div className="bg-white shadow-lg rounded-xl p-8 w-80 text-center">
+        <h1 className="text-xl font-bold mb-4 text-gray-800">Acceso a la aplicación</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-            <input
-              type={show ? 'text' : 'password'}
-              placeholder="Ingresa la clave"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="border w-full p-3 rounded-lg text-center outline-none focus:ring-2 focus:ring-purple-500"
-              autoFocus
-              autoComplete="current-password"
-              aria-label="Clave de acceso"
-            />
-            <button
-              type="button"
-              onClick={() => setShow(s => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 px-2"
-              aria-label={show ? 'Ocultar clave' : 'Mostrar clave'}
-            >
-              {show ? 'Ocultar' : 'Mostrar'}
-            </button>
-          </div>
+        <input
+          type="password"
+          placeholder="Ingresa la clave"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={onKeyDown}
+          className="border w-full p-2 rounded mb-4 text-center"
+        />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 rounded-lg font-semibold text-white transition
-              ${loading ? 'bg-purple-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
-          >
-            {loading ? 'Verificando…' : 'Entrar'}
-          </button>
-        </form>
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          className={`${
+            loading ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-700'
+          } bg-purple-600 text-white py-2 px-4 rounded w-full`}
+        >
+          {loading ? 'Verificando...' : 'Entrar'}
+        </button>
 
-        {msg && (
-          <p
-            className={`mt-4 text-sm ${
-              msg.startsWith('✅') ? 'text-green-700' :
-              msg.startsWith('❌') ? 'text-red-600' : 'text-gray-700'
-            }`}
-          >
-            {msg}
-          </p>
-        )}
+        {message && <p className="mt-4 text-sm text-gray-700">{message}</p>}
       </div>
     </main>
   );
