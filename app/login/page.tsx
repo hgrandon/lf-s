@@ -32,13 +32,13 @@ export default function LoginPage() {
         return;
       }
 
-      if (data === true) {
-        setMessage('✅ Acceso concedido');
-        // si quieres redirigir al menú:
-        // router.push('/menu');
-      } else {
-        setMessage('❌ Clave incorrecta');
-      }
+        if (data === true) {
+            setMessage('✅ Acceso concedido');
+            localStorage.setItem('access_ok', '1');
+            router.push('/menu');
+        } else {
+            setMessage('❌ Clave incorrecta');
+        }   
     } catch (e: any) {
       setMessage(`Error: ${e?.message ?? e}`);
     } finally {
