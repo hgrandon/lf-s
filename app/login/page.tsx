@@ -1,16 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import Logo from '@/app/components/Logo';
+import { setAuth, isAuth } from '@/app/components/auth';
 
-// Función hash SHA-256 (igual que antes)
+// Hash SHA-256 (hex)
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const hashBuf = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(hashBuf))
-    .map((b) => b.toString(16).padStart(2, '0'))
+    .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
@@ -20,27 +21,34 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Si ya está logueado, ir directo al menú
+  useEffect(() => {
+    if (isAuth()) router.replace('/menu');
+  }, [router]);
+
   const handleLogin = async () => {
-    if (!password.trim()) {
-      setMessage('⚠️ Ingresa la clave para continuar');
+    const raw = password.trim();
+    if (!raw) {
+      setMessage('Ingresa la clave.');
       return;
     }
 
     try {
       setLoading(true);
-      setMessage('Verificando...');
-      const hash = await sha256Hex(password);
+      setMessage('Verificando…');
 
+      const hash = await sha256Hex(raw);
       const { data, error } = await supabase.rpc('check_password', { p_hash: hash });
+
       if (error) {
-        setMessage('Error de conexión con el servidor');
+        setMessage('Error de conexión');
         return;
       }
 
       if (data === true) {
+        setAuth(true);               // <<< usa el helper unificado
         setMessage('✅ Acceso concedido');
-        localStorage.setItem('auth', 'ok');
-        router.push('/menu');
+        router.replace('/menu');
       } else {
         setMessage('❌ Clave incorrecta');
       }
@@ -56,45 +64,52 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
+    <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+      {/* brillo sutil */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
-      <div className="relative z-10 bg-white/90 backdrop-blur-sm shadow-2xl rounded-2xl p-8 w-80 text-center">
-        {/* Logo con fondo blanco y texto debajo */}
-        <div className="flex justify-center mb-4">
-          <div className="bg-white rounded-full shadow-md p-3">
-            <Logo size={60} />
+      <div className="relative z-10 grid min-h-screen place-items-center p-6">
+        <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+          <div className="mb-5 grid place-items-center">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={56}
+              height={56}
+              priority
+              className="h-14 w-14 object-contain"
+            />
           </div>
+
+          <h1 className="mb-4 text-lg font-semibold text-gray-800">Acceso a la aplicación</h1>
+
+          <input
+            type="password"
+            placeholder="Ingresa la clave"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="mb-4 w-full rounded border px-3 py-2 text-center outline-none focus:ring-2 focus:ring-purple-500"
+          />
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className={`w-full rounded bg-purple-600 py-2 font-semibold text-white transition ${
+              loading ? 'cursor-not-allowed opacity-60' : 'hover:bg-purple-700'
+            }`}
+          >
+            {loading ? 'Verificando…' : 'Entrar'}
+          </button>
+
+          {message && <p className="mt-4 text-sm text-gray-700">{message}</p>}
         </div>
-
-        <h1 className="text-xl font-bold mb-4 text-gray-800">Acceso a la aplicación</h1>
-
-        <input
-          type="password"
-          placeholder="Ingresa la clave"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={onKeyDown}
-          className="border w-full p-2 rounded mb-4 text-center outline-none focus:ring-2 focus:ring-fuchsia-500"
-        />
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className={`w-full py-2 rounded text-white font-semibold transition ${
-            loading
-              ? 'bg-purple-400 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-fuchsia-700'
-          }`}
-        >
-          {loading ? 'Verificando...' : 'Entrar'}
-        </button>
-
-        {message && <p className="mt-4 text-sm text-gray-700">{message}</p>}
       </div>
     </main>
   );
 }
+
+
 
 
 
