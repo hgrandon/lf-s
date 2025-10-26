@@ -20,7 +20,6 @@ function useAuthGuard() {
   }, [router]);
 }
 
-// Modal simple para “Nuevo cliente”
 function Modal({
   open,
   onClose,
@@ -52,12 +51,10 @@ export default function PedidoPage() {
   useAuthGuard();
   const router = useRouter();
 
-  // Cabecera
   const [nro, setNro] = useState<number | null>(null);
   const [fecha, setFecha] = useState<string>('');
   const [entrega, setEntrega] = useState<string>('');
 
-  // Cliente
   const [telefono, setTelefono] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteDireccion, setClienteDireccion] = useState('');
@@ -65,28 +62,21 @@ export default function PedidoPage() {
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
-  // Artículos
   const [articulos, setArticulos] = useState<Articulo[]>([]);
   const [selectedId, setSelectedId] = useState<number | '__new__' | ''>('');
 
-  // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
-
-  // Fotos
   const [fotos, setFotos] = useState<string[]>([]);
-
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
   const CLP = new Intl.NumberFormat('es-CL');
 
-  // Total
   const total = useMemo(
     () => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0),
     [lineas]
   );
 
-  // Nº y fechas
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.rpc('pedido_next_number');
@@ -101,7 +91,6 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // Artículos (RPC -> fallback a public.articulo)
   useEffect(() => {
     (async () => {
       setMsg('');
@@ -111,7 +100,7 @@ export default function PedidoPage() {
         return;
       }
       const { data, error } = await supabase
-        .from('articulo') // <- nombre correcto de tabla
+        .from('articulo')
         .select('id,nombre,precio')
         .eq('activo', true)
         .order('nombre', { ascending: true });
@@ -128,7 +117,6 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // Teléfono: solo 9 dígitos y busca cliente
   const onPhoneChange = (v: string) => {
     const digits = v.replace(/\D+/g, '').slice(0, 9);
     setTelefono(digits);
@@ -138,31 +126,48 @@ export default function PedidoPage() {
     else setShowNewClient(false);
   };
 
-  // Buscar cliente
-  const checkClient = async (tel: string) => {
-    setMsg('');
+// Buscar cliente por teléfono
+const checkClient = async (tel: string) => {
+  setMsg('');
+
+  try {
+    // Normaliza el valor (por si acaso hay espacios u otros caracteres)
+    const telefonoClean = tel.trim();
+
+    // Busca en Supabase (asegura texto exacto)
     const { data, error } = await supabase
       .from('clientes')
-      .select('nombre,direccion')
-      .eq('telefono', tel)
+      .select('nombre, direccion')
+      .ilike('telefono', telefonoClean) // compara sin distinción de mayúsculas
       .maybeSingle();
 
-    if (error) {
-      setMsg('Error buscando cliente: ' + error.message);
-      return;
-    }
-    if (data) {
-      setClienteNombre(data.nombre || '');
-      setClienteDireccion(data.direccion || '');
-      setShowNewClient(false);
-    } else {
-      setNewName('');
-      setNewAddress('');
-      setShowNewClient(true);
-    }
-  };
+          if (error) {
+            console.error('Error Supabase:', error);
+            setMsg('Error buscando cliente: ' + error.message);
+            return;
+          }
 
-  // Guardar cliente rápido
+            if (data && data.nombre) {
+              // ✅ Cliente encontrado
+            setClienteNombre(data.nombre);
+            setClienteDireccion(data.direccion || '');
+            setShowNewClient(false);
+            setNewName('');
+            setNewAddress('');
+              setMsg('Cliente encontrado ✅');
+            } else {
+            // ❌ No existe, abre el modal
+            setClienteNombre('');
+            setClienteDireccion('');
+            setShowNewClient(true);
+            }
+             } catch (e: any) {
+              console.error('Error general:', e);
+              setMsg('Error al buscar cliente: ' + (e?.message ?? e));
+              }
+            };
+
+
   const saveNewClient = async () => {
     if (!telefono || telefono.length !== 9) {
       setMsg('Teléfono inválido para crear cliente.');
@@ -198,7 +203,6 @@ export default function PedidoPage() {
     }
   };
 
-  // Añadir artículo o abrir modal de nuevo
   const addArticulo = () => {
     if (!selectedId) return;
     if (selectedId === '__new__') {
@@ -232,7 +236,6 @@ export default function PedidoPage() {
     setLineas((prev) => prev.filter((l) => l.articulo_id !== id));
   };
 
-  // Fotos
   const onFiles = async (files: FileList | null) => {
     if (!files || !nro) return;
     setLoading(true);
@@ -260,7 +263,6 @@ export default function PedidoPage() {
     }
   };
 
-  // Guardar pedido
   const save = async () => {
     if (!nro) return;
     if (telefono.length !== 9) {
@@ -288,7 +290,6 @@ export default function PedidoPage() {
       });
       if (error) throw error;
       setMsg('✅ Pedido guardado');
-      // router.push('/menu');
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -296,12 +297,10 @@ export default function PedidoPage() {
     }
   };
 
-  // ---- Modal Nuevo Artículo ----
   const [showNewArt, setShowNewArt] = useState(false);
   const handleCreateArticle = async ({ nombre, precio, qty }: { nombre: string; precio: number; qty: number }) => {
     try {
       setLoading(true);
-      // Crear en DB
       const { data, error } = await supabase
         .from('articulo')
         .insert({ nombre, precio, activo: true })
@@ -310,9 +309,7 @@ export default function PedidoPage() {
       if (error) throw error;
       const created = data as Articulo;
 
-      // Actualizar lista
       setArticulos((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      // Agregar línea
       setLineas((prev) => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty }]);
 
       setSelectedId('');
@@ -330,7 +327,6 @@ export default function PedidoPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-4xl p-4 sm:p-6">
-        {/* Header */}
         <header className="mb-4 flex items-center justify-between">
           <div className="text-white">
             <div className="text-lg sm:text-xl">
@@ -360,9 +356,7 @@ export default function PedidoPage() {
           </div>
         </header>
 
-        {/* Card principal */}
         <div className="rounded-xl bg-white p-4 shadow">
-          {/* Teléfono */}
           <div className="mb-3">
             <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
             <input
@@ -382,7 +376,6 @@ export default function PedidoPage() {
             )}
           </div>
 
-          {/* Selector de artículos */}
           <div className="mb-3 flex gap-2">
             <select
               value={selectedId || ''}
@@ -408,7 +401,6 @@ export default function PedidoPage() {
             </button>
           </div>
 
-          {/* Detalle */}
           {!!lineas.length && (
             <div className="mb-3 overflow-x-auto">
               <table className="w-full border-collapse text-sm">
@@ -448,13 +440,11 @@ export default function PedidoPage() {
             </div>
           )}
 
-          {/* Total */}
           <div className="mb-3 rounded bg-purple-50 px-3 py-2 text-purple-900">
             <span className="font-semibold">Total:&nbsp;</span>
             <span className="text-lg font-bold">{CLP.format(total)}</span>
           </div>
 
-          {/* Fotos */}
           <div className="mb-2">
             <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
             <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
@@ -463,7 +453,6 @@ export default function PedidoPage() {
             )}
           </div>
 
-          {/* Mensajes */}
           {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
         </div>
       </div>
