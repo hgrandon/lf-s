@@ -3,23 +3,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Plus, Minus, ImageIcon } from 'lucide-react';
+import { isAuth, DEV_OPEN } from '@/app/components/auth';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo = { id: number; nombre: string; precio: number };
 type Linea = { articulo_id: number; nombre: string; precio: number; qty: number };
 
-function useAuthGuard() {
-  const router = useRouter();
-  useEffect(() => {
-    const ok = typeof window !== 'undefined' && localStorage.getItem('auth') === 'ok';
-    if (!ok) router.replace('/login');
-  }, [router]);
-}
+const fmtDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString('es-CL') : '';
 
 export default function PedidoPage() {
-  useAuthGuard();
   const router = useRouter();
+
+  // Si estás en modo seguro y no hay sesión, redirige. En modo libre no hace nada.
+  useEffect(() => {
+    if (DEV_OPEN) return;
+    if (!isAuth()) router.replace('/login');
+  }, [router]);
 
   // Cabecera
   const [nro, setNro] = useState<number | null>(null);
@@ -36,8 +37,9 @@ export default function PedidoPage() {
   // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
 
-  // Fotos (paths subidos)
+  // Fotos (paths subidos) + URLs firmadas para previsualizar
   const [fotos, setFotos] = useState<string[]>([]);
+  const [fotoUrls, setFotoUrls] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
@@ -50,63 +52,64 @@ export default function PedidoPage() {
 
   // Cargar Nº siguiente + fechas
   useEffect(() => {
-    const go = async () => {
-      const { data, error } = await supabase.rpc('pedido_next_number');
-      if (error) {
-        setMsg('Error al cargar correlativo: ' + error.message);
-        return;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('pedido_next_number');
+        if (error) throw error;
+        const row = (data as NextNumber[])[0];
+        setNro(row.nro);
+        setFecha(row.fecha);
+        setEntrega(row.entrega);
+      } catch (e: any) {
+        setMsg('Error al cargar correlativo: ' + (e?.message ?? e));
       }
-      const row = (data as NextNumber[])[0];
-      setNro(row.nro);
-      setFecha(row.fecha);
-      setEntrega(row.entrega);
-    };
-    go();
+    })();
   }, []);
 
   // Cargar artículos activos
   useEffect(() => {
-    const go = async () => {
-      const { data, error } = await supabase.rpc('active_articles_list');
-      if (error) {
-        setMsg('Error al cargar artículos: ' + error.message);
-        return;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('active_articles_list');
+        if (error) throw error;
+        setArticulos((data as Articulo[]) || []);
+      } catch (e: any) {
+        setMsg('Error al cargar artículos: ' + (e?.message ?? e));
       }
-      setArticulos(data as Articulo[]);
-    };
-    go();
+    })();
   }, []);
 
   // Añadir artículo seleccionado
   const addArticulo = () => {
     if (!selectedId) return;
-    const art = articulos.find(a => a.id === Number(selectedId));
+    const art = articulos.find((a) => a.id === Number(selectedId));
     if (!art) return;
 
-    setLineas(prev => {
-      // si ya existe, sumar qty
-      const idx = prev.findIndex(l => l.articulo_id === art.id);
+    setLineas((prev) => {
+      const idx = prev.findIndex((l) => l.articulo_id === art.id);
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = { ...copy[idx], qty: copy[idx].qty + 1 };
         return copy;
       }
-      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1 }];
+      return [
+        ...prev,
+        { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1 },
+      ];
     });
     setSelectedId('');
   };
 
   const changeQty = (id: number, delta: number) => {
-    setLineas(prev => {
-      const copy = prev.map(l =>
+    setLineas((prev) =>
+      prev.map((l) =>
         l.articulo_id === id ? { ...l, qty: Math.max(1, l.qty + delta) } : l
-      );
-      return copy;
-    });
+      )
+    );
   };
 
   const removeLinea = (id: number) => {
-    setLineas(prev => prev.filter(l => l.articulo_id !== id));
+    setLineas((prev) => prev.filter((l) => l.articulo_id !== id));
   };
 
   // Subir fotos al bucket `pedido_fotos`
@@ -120,20 +123,54 @@ export default function PedidoPage() {
       for (const file of up) {
         const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
         const path = `${nro}/${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from('pedido_fotos').upload(path, file, {
-          upsert: false,
-          contentType: file.type || 'image/jpeg',
-        });
+        const { error } = await supabase.storage
+          .from('pedido_fotos')
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type || 'image/jpeg',
+          });
         if (error) throw error;
         uploaded.push(path);
       }
-      setFotos(prev => [...prev, ...uploaded]);
+
+      // guardamos paths
+      setFotos((prev) => [...prev, ...uploaded]);
+
+      // generamos URLs firmadas para previsualizar (si el bucket es privado)
+      const urlPairs: [string, string][] = [];
+      for (const path of uploaded) {
+        const { data, error } = await supabase.storage
+          .from('pedido_fotos')
+          .createSignedUrl(path, 60 * 60); // 1 hora
+        if (error) {
+          // si falla la URL firmada, igual seguimos (se puede refrescar luego)
+          continue;
+        }
+        urlPairs.push([path, data.signedUrl]);
+      }
+
+      setFotoUrls((prev) => {
+        const next = { ...prev };
+        for (const [p, u] of urlPairs) next[p] = u;
+        return next;
+      });
+
       setMsg(`📷 ${uploaded.length} foto(s) subida(s).`);
     } catch (e: any) {
       setMsg('Error al subir fotos: ' + (e?.message ?? e));
     } finally {
       setLoading(false);
     }
+  };
+
+  // Eliminar foto del listado local (no la borra del storage aquí)
+  const removeFoto = (path: string) => {
+    setFotos((prev) => prev.filter((p) => p !== path));
+    setFotoUrls((prev) => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
   };
 
   // Guardar pedido (RPC upsert)
@@ -149,15 +186,10 @@ export default function PedidoPage() {
     }
     setLoading(true);
     setMsg('Guardando...');
+
     try {
-      const p_pedido = {
-        nro,
-        fecha,
-        entrega,
-        telefono,
-        total,
-      };
-      const p_lineas = lineas.map(l => ({
+      const p_pedido = { nro, fecha, entrega, telefono, total };
+      const p_lineas = lineas.map((l) => ({
         articulo_id: l.articulo_id,
         nombre: l.nombre,
         precio: l.precio,
@@ -169,11 +201,12 @@ export default function PedidoPage() {
         p_lineas,
         p_fotos: fotos,
       });
-
       if (error) throw error;
+
       setMsg('✅ Pedido guardado');
-      // Opcional: limpiar
-      // router.push('/menu')
+      // Opcional: limpiar y pedir nuevo correlativo
+      // setLineas([]); setFotos([]); setTelefono('');
+      // const { data } = await supabase.rpc('pedido_next_number'); ... (y refrescas nro/fechas)
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -190,9 +223,11 @@ export default function PedidoPage() {
         {/* Encabezado */}
         <header className="mb-4 flex items-center justify-between">
           <div className="text-white">
-            <div className="text-lg sm:text-xl">N° <span className="font-bold">{nro ?? '...'}</span></div>
+            <div className="text-lg sm:text-xl">
+              N° <span className="font-bold">{nro ?? '...'}</span>
+            </div>
             <div className="text-white/80 text-sm">
-              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp; {entrega && new Date(entrega).toLocaleDateString()}
+              {fmtDate(fecha)} &nbsp;→&nbsp; {fmtDate(entrega)}
             </div>
           </div>
 
@@ -219,7 +254,7 @@ export default function PedidoPage() {
         <div className="rounded-xl bg-white p-4 shadow">
           {/* Teléfono cliente */}
           <div className="mb-3">
-            <label className="block text-xs text-gray-500 mb-1">TELÉFONO</label>
+            <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
             <input
               placeholder="EJ: 998877665"
               value={telefono}
@@ -232,11 +267,13 @@ export default function PedidoPage() {
           <div className="mb-3 flex gap-2">
             <select
               value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : '')}
+              onChange={(e) =>
+                setSelectedId(e.target.value ? Number(e.target.value) : '')
+              }
               className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">SELECCIONE UN ARTÍCULO</option>
-              {articulos.map(a => (
+              {articulos.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre} — {a.precio.toFixed(2)}
                 </option>
@@ -244,7 +281,12 @@ export default function PedidoPage() {
             </select>
             <button
               onClick={addArticulo}
-              className="rounded bg-purple-600 px-3 py-2 text-white font-semibold hover:bg-purple-700"
+              disabled={!selectedId}
+              className={`rounded px-3 py-2 font-semibold text-white ${
+                !selectedId
+                  ? 'bg-purple-400 cursor-not-allowed'
+                  : 'bg-purple-600 hover:bg-purple-700'
+              }`}
             >
               Añadir
             </button>
@@ -263,20 +305,38 @@ export default function PedidoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lineas.map(l => (
+                  {lineas.map((l) => (
                     <tr key={l.articulo_id}>
                       <td className="border-b py-2">{l.nombre}</td>
-                      <td className="border-b py-2 text-right">{l.precio.toFixed(2)}</td>
+                      <td className="border-b py-2 text-right">
+                        {l.precio.toFixed(2)}
+                      </td>
                       <td className="border-b py-2">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">-</button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => changeQty(l.articulo_id, -1)}
+                            className="rounded border px-2 py-1"
+                            title="Restar"
+                          >
+                            <Minus size={16} />
+                          </button>
                           <span className="w-8 text-center">{l.qty}</span>
-                          <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">+</button>
+                          <button
+                            onClick={() => changeQty(l.articulo_id, +1)}
+                            className="rounded border px-2 py-1"
+                            title="Sumar"
+                          >
+                            <Plus size={16} />
+                          </button>
                         </div>
                       </td>
                       <td className="border-b py-2 text-right">
-                        <button onClick={() => removeLinea(l.articulo_id)} className="rounded border px-2 text-red-600">
-                          X
+                        <button
+                          onClick={() => removeLinea(l.articulo_id)}
+                          className="rounded border px-2 py-1 text-red-600"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>
@@ -294,11 +354,58 @@ export default function PedidoPage() {
 
           {/* Subida de fotos */}
           <div className="mb-2">
-            <label className="block text-xs text-gray-500 mb-1">FOTOS (opcional)</label>
-            <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
+            <label className="mb-1 block text-xs text-gray-500">
+              FOTOS (opcional)
+            </label>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
+                <ImageIcon size={16} />
+                <span>Seleccionar imágenes…</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => onFiles(e.target.files)}
+                  className="hidden"
+                />
+              </label>
+              {!!fotos.length && (
+                <span className="text-xs text-gray-600">
+                  {fotos.length} archivo(s)
+                </span>
+              )}
+            </div>
+
+            {/* Previews */}
             {!!fotos.length && (
-              <div className="mt-1 text-xs text-gray-600">
-                {fotos.length} archivo(s) seleccionado(s)
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {fotos.map((p) => (
+                  <div key={p} className="relative overflow-hidden rounded-lg border">
+                    {/* Si no existe URL firmada aún, no rompe la UI */}
+                    {fotoUrls[p] ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={fotoUrls[p]}
+                        alt={p}
+                        className="h-28 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-28 w-full place-items-center text-xs text-gray-500">
+                        Generando vista previa…
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removeFoto(p)}
+                      className="absolute right-2 top-2 rounded-full bg-white/90 p-1 text-red-600 shadow hover:bg-white"
+                      title="Quitar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <div className="truncate px-2 py-1 text-[10px] text-gray-500">
+                      {p}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -310,5 +417,6 @@ export default function PedidoPage() {
     </main>
   );
 }
+
 
 
