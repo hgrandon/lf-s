@@ -9,8 +9,11 @@ export default function LogoutPage() {
     clearAuth();
     router.replace('/login');
   }, [router]);
-
-  return null;
+  return (
+    <div className="flex h-screen items-center justify-center text-purple-700">
+      Cerrando sesión…
+    </div>
+  );
 }
 
 

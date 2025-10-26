@@ -1,18 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { setAuth, isAuth } from '@/app/components/auth';
+import Image from 'next/image';
+import { setAuth } from '@/app/components/auth';
 
-// Hash SHA-256 (hex)
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const hashBuf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuf))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export default function LoginPage() {
@@ -20,11 +17,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Si ya está logueado, ir directo al menú
-  useEffect(() => {
-    if (isAuth()) router.replace('/menu');
-  }, [router]);
 
   const handleLogin = async () => {
     const raw = password.trim();
@@ -44,9 +36,8 @@ export default function LoginPage() {
         setMessage('Error de conexión');
         return;
       }
-
       if (data === true) {
-        setAuth(true);               // <<< usa el helper unificado
+        setAuth(true);              // <<--- aquí la magia
         setMessage('✅ Acceso concedido');
         router.replace('/menu');
       } else {
@@ -65,20 +56,11 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
-      {/* brillo sutil */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
-
       <div className="relative z-10 grid min-h-screen place-items-center p-6">
         <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
           <div className="mb-5 grid place-items-center">
-            <Image
-              src="/logo.png"
-              alt="Logo"
-              width={56}
-              height={56}
-              priority
-              className="h-14 w-14 object-contain"
-            />
+            <Image src="/logo.png" alt="Logo" width={56} height={56} className="h-14 w-14 object-contain" />
           </div>
 
           <h1 className="mb-4 text-lg font-semibold text-gray-800">Acceso a la aplicación</h1>
@@ -108,6 +90,7 @@ export default function LoginPage() {
     </main>
   );
 }
+
 
 
 
