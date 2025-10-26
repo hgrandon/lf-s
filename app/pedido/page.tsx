@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Phone, UserRound } from 'lucide-react';
 import NewArticleModal from '@/app/components/NewArticleModal';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
@@ -64,7 +64,7 @@ export default function PedidoPage() {
   // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
 
-  // Fotos (paths subidos)
+  // Fotos
   const [fotos, setFotos] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -123,6 +123,7 @@ export default function PedidoPage() {
   const onPhoneChange = (raw: string) => {
     const digits = normalizePhone(raw);
     setTelefono(digits);
+    // limpiar UI de cliente al tipear:
     setClienteNombre('');
     setClienteDireccion('');
     setShowNewClient(false);
@@ -172,6 +173,7 @@ export default function PedidoPage() {
         setNewAddress('');
         setMsg('✅ Cliente reconocido');
       } else {
+        // No existe: abrir modal inmediatamente
         setClienteNombre('');
         setClienteDireccion('');
         setNewName('');
@@ -215,7 +217,7 @@ export default function PedidoPage() {
     }
   };
 
-  // 4) Agregar artículo (fix “no lo toma” + grilla)
+  // 4) Agregar artículo + grilla
   const [showNewArt, setShowNewArt] = useState(false);
 
   const addArticulo = () => {
@@ -240,19 +242,13 @@ export default function PedidoPage() {
         { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' },
       ];
     });
-    // limpiar selección para evitar “no lo toma”
     setSelectedId('');
   };
 
-  // (opcional) auto agregar al cambiar el select
   const onSelectArticulo = (v: string) => {
     const val = v === '__new__' ? '__new__' : (Number(v) as any);
     setSelectedId(val);
-    // si quieres auto-agregar sin pulsar botón:
-    if (v && v !== '__new__') {
-      // pequeña espera para que setSelectedId se establezca
-      setTimeout(addArticulo, 0);
-    }
+    if (v && v !== '__new__') setTimeout(addArticulo, 0); // autoagregar
   };
 
   const changeQty = (id: number, delta: number) => {
@@ -332,7 +328,6 @@ export default function PedidoPage() {
 
       if (error) throw error;
       setMsg('✅ Pedido guardado');
-      // router.push('/menu')
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -358,7 +353,7 @@ export default function PedidoPage() {
         .select('id,nombre,precio')
         .single();
       if (error) throw error;
-      const created = data as Articulo;
+      const created = (data as Articulo);
 
       setArticulos((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       setLineas((prev) => [
@@ -376,157 +371,166 @@ export default function PedidoPage() {
     }
   };
 
+  const clienteReconocido = !!clienteNombre;
+
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-3xl p-4 sm:p-6">
+      <div className="relative z-10 mx-auto w-full max-w-md sm:max-w-3xl p-4 sm:p-6">
         {/* Encabezado */}
-        <header className="mb-4 flex items-center justify-between">
-          <div className="text-white">
-            <div className="text-lg sm:text-2xl font-semibold">
-              N° <span className="font-extrabold">{nro ?? '...'}</span>
+        <div className="mb-3 flex items-center justify-between text-white">
+          <div className="text-2xl sm:text-3xl font-extrabold">N° {nro ?? '...'}</div>
+          <div className="flex items-start gap-3">
+            <div className="text-right text-white/90 text-xs sm:text-sm leading-5">
+              <div>{fecha && new Date(fecha).toLocaleDateString()}</div>
+              <div>{entrega && new Date(entrega).toLocaleDateString()}</div>
+              {clienteNombre && <div className="text-white font-semibold">{clienteNombre}</div>}
+              {clienteDireccion && <div>{clienteDireccion}</div>}
             </div>
-            <div className="text-xs sm:text-sm text-white/80">
-              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp;{' '}
-              {entrega && new Date(entrega).toLocaleDateString()}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => router.push('/menu')}
+                className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white"
+                title="Volver"
+              >
+                <ArrowLeft className="text-violet-700" size={18} />
+              </button>
+              <button
+                disabled={loading}
+                onClick={save}
+                className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white disabled:opacity-60"
+                title="Guardar"
+              >
+                <Save className="text-violet-700" size={18} />
+              </button>
             </div>
           </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => router.push('/menu')}
-              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white"
-              title="Volver"
-            >
-              <ArrowLeft className="text-violet-700" size={18} />
-            </button>
-            <button
-              disabled={loading}
-              onClick={save}
-              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white disabled:opacity-60"
-              title="Guardar"
-            >
-              <Save className="text-violet-700" size={18} />
-            </button>
-          </div>
-        </header>
+        </div>
 
         {/* Tarjeta principal */}
         <div className="rounded-xl bg-white p-4 shadow">
           {/* Teléfono */}
           <div className="mb-3">
-            <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
-            <input
-              ref={phoneInputRef}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="EJ: 998877665"
-              value={telefono}
-              onChange={(e) => onPhoneChange(e.target.value)}
-              onKeyDown={forceCheckOnEnter}
-              className="w-full rounded border px-3 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500"
-            />
-            {/* Nombre/Dirección autocompletados */}
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="mb-1 block text-sm text-gray-700 font-semibold">Teléfono del Cliente</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 opacity-60">
+                <Phone size={16} />
+              </span>
               <input
-                placeholder="NOMBRE (auto)"
-                value={clienteNombre}
-                readOnly
-                className="rounded border bg-gray-100 px-3 py-2 text-gray-700"
-              />
-              <input
-                placeholder="DIRECCIÓN (auto)"
-                value={clienteDireccion}
-                readOnly
-                className="rounded border bg-gray-100 px-3 py-2 text-gray-700"
+                ref={phoneInputRef}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="555-123-4567"
+                value={telefono}
+                onChange={(e) => onPhoneChange(e.target.value)}
+                onKeyDown={forceCheckOnEnter}
+                disabled={clienteReconocido}
+                className={`w-full rounded-lg border px-9 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500 ${
+                  clienteReconocido ? 'bg-gray-100 text-gray-700' : ''
+                }`}
               />
             </div>
           </div>
 
-          {/* Select artículos */}
-          <div className="mb-3 flex gap-2">
-            <select
-              value={selectedId || ''}
-              onChange={(e) => onSelectArticulo(e.target.value)}
-              className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="">SELECCIONE UN ARTÍCULO</option>
-              {articulos.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nombre} — {CLP.format(a.precio)}
-                </option>
-              ))}
-              <option value="__new__">➕ Nuevo artículo…</option>
-            </select>
-            <button
-              onClick={addArticulo}
-              className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700"
-            >
-              Añadir
-            </button>
-          </div>
-
-          {/* Detalle estilo “grilla” */}
-          {!!lineas.length && (
-            <div className="mb-3 overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-700">
-                    <th className="border px-2 py-1 text-left">Artículo</th>
-                    <th className="border px-2 py-1 w-24 text-center">Cantidad</th>
-                    <th className="border px-2 py-1 w-24 text-right">Valor</th>
-                    <th className="border px-2 py-1 w-28 text-right">Subtotal</th>
-                    <th className="border px-2 py-1 w-24 text-center">Estado</th>
-                    <th className="border px-2 py-1 w-16"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineas.map((l) => (
-                    <tr key={l.articulo_id} className="align-middle">
-                      <td className="border px-2 py-1">{l.nombre}</td>
-                      <td className="border px-2 py-1">
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">-</button>
-                          <span className="w-6 text-center">{l.qty}</span>
-                          <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">+</button>
-                        </div>
-                      </td>
-                      <td className="border px-2 py-1 text-right">{CLP.format(l.precio)}</td>
-                      <td className="border px-2 py-1 text-right font-semibold">
-                        {CLP.format(l.precio * l.qty)}
-                      </td>
-                      <td className="border px-2 py-1 text-center">
-                        <span className="rounded bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700">
-                          {l.estado}
-                        </span>
-                      </td>
-                      <td className="border px-2 py-1 text-center">
-                        <button onClick={() => removeLinea(l.articulo_id)} className="rounded border px-2 text-red-600">
-                          X
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Tarjeta Cliente (solo si existe) */}
+          {clienteReconocido && (
+            <div className="mb-4 rounded-xl border bg-white shadow-sm">
+              <div className="flex items-center justify-between p-3">
+                <div>
+                  <div className="text-xs text-gray-500">Cliente</div>
+                  <div className="text-base font-semibold text-gray-900">{clienteNombre}</div>
+                  <div className="text-sm text-gray-600">{clienteDireccion}</div>
+                </div>
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-purple-50 text-purple-700">
+                  <UserRound size={18} />
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Total */}
-          <div className="mb-3 rounded bg-purple-50 px-3 py-2 text-purple-900">
-            <span className="font-semibold">Total:&nbsp;</span>
-            <span className="text-xl font-extrabold">{CLP.format(total)}</span>
-          </div>
+          {/* Contenido de pedido solo si hay cliente */}
+          {clienteReconocido && (
+            <>
+              {/* Select artículos */}
+              <div className="mb-3 flex gap-2">
+                <select
+                  value={selectedId || ''}
+                  onChange={(e) => onSelectArticulo(e.target.value)}
+                  className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">SELECCIONE UN ARTÍCULO</option>
+                  {articulos.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nombre} — {CLP.format(a.precio)}
+                    </option>
+                  ))}
+                  <option value="__new__">➕ Nuevo artículo…</option>
+                </select>
+                <button
+                  onClick={addArticulo}
+                  className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700"
+                >
+                  Añadir
+                </button>
+              </div>
 
-          {/* Fotos */}
-          <div className="mb-2">
-            <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
-            <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
-            {!!fotos.length && (
-              <div className="mt-1 text-xs text-gray-600">{fotos.length} archivo(s) seleccionado(s)</div>
-            )}
-          </div>
+              {/* Grilla */}
+              {!!lineas.length && (
+                <div className="mb-3 overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-purple-100 text-purple-900">
+                        <th className="border px-2 py-1 text-left">Artículo</th>
+                        <th className="border px-2 py-1 w-24 text-center">Cantidad</th>
+                        <th className="border px-2 py-1 w-24 text-right">Valor</th>
+                        <th className="border px-2 py-1 w-28 text-right">Subtotal</th>
+                        <th className="border px-2 py-1 w-24 text-center">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lineas.map((l) => (
+                        <tr key={l.articulo_id} className="align-middle">
+                          <td className="border px-2 py-1">{l.nombre}</td>
+                          <td className="border px-2 py-1">
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">-</button>
+                              <span className="w-6 text-center">{l.qty}</span>
+                              <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">+</button>
+                            </div>
+                          </td>
+                          <td className="border px-2 py-1 text-right">{CLP.format(l.precio)}</td>
+                          <td className="border px-2 py-1 text-right font-semibold">
+                            {CLP.format(l.precio * l.qty)}
+                          </td>
+                          <td className="border px-2 py-1 text-center">
+                            <span className="rounded bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700">
+                              {l.estado}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Total */}
+              <div className="mb-3 rounded bg-purple-100 px-3 py-2 text-purple-900">
+                <span className="font-semibold">Total:&nbsp;</span>
+                <span className="text-xl font-extrabold">{CLP.format(total)}</span>
+              </div>
+
+              {/* Fotos */}
+              <div className="mb-2">
+                <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
+                <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
+                {!!fotos.length && (
+                  <div className="mt-1 text-xs text-gray-600">{fotos.length} archivo(s) seleccionado(s)</div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Mensajes */}
           {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
@@ -578,6 +582,7 @@ export default function PedidoPage() {
     </main>
   );
 }
+
 
 
 
