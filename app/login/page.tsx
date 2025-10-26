@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import Image from 'next/image';
+import Logo from '@/app/components/Logo';
 
-// Hash SHA-256 nativo (hex)
+// Función hash SHA-256 (igual que antes)
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const hashBuf = await crypto.subtle.digest('SHA-256', data);
@@ -21,21 +21,25 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (!password.trim()) {
+      setMessage('⚠️ Ingresa la clave para continuar');
+      return;
+    }
+
     try {
       setLoading(true);
       setMessage('Verificando...');
       const hash = await sha256Hex(password);
 
       const { data, error } = await supabase.rpc('check_password', { p_hash: hash });
-
       if (error) {
-        setMessage('Error de conexión');
+        setMessage('Error de conexión con el servidor');
         return;
       }
 
       if (data === true) {
         setMessage('✅ Acceso concedido');
-        localStorage.setItem('access_ok', '1');
+        localStorage.setItem('auth', 'ok');
         router.push('/menu');
       } else {
         setMessage('❌ Clave incorrecta');
@@ -52,27 +56,18 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex h-screen items-center justify-center bg-white relative overflow-hidden">
-      {/* Degradado suave rosado-violeta */}
-      <div className="absolute inset-0 bg-gradient-to-br from-pink-200 via-purple-200 to-white opacity-60 blur-3xl" />
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
-      {/* Contenedor central */}
-      <div className="relative bg-white shadow-lg rounded-2xl p-8 w-80 text-center border border-gray-200 z-10">
-        {/* Logo arriba */}
+      <div className="relative z-10 bg-white/90 backdrop-blur-sm shadow-2xl rounded-2xl p-8 w-80 text-center">
+        {/* Logo con fondo blanco y texto debajo */}
         <div className="flex justify-center mb-4">
-          <Image
-            src="/logo.png"
-            alt="Logo Lavandería"
-            width={64}
-            height={64}
-            className="object-contain"
-            priority
-          />
+          <div className="bg-white rounded-full shadow-md p-3">
+            <Logo size={60} />
+          </div>
         </div>
 
-        <h1 className="text-lg font-bold mb-4 text-gray-800">
-          Acceso a la aplicación
-        </h1>
+        <h1 className="text-xl font-bold mb-4 text-gray-800">Acceso a la aplicación</h1>
 
         <input
           type="password"
@@ -80,15 +75,17 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={onKeyDown}
-          className="border border-gray-300 w-full p-2 rounded mb-4 text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
+          className="border w-full p-2 rounded mb-4 text-center outline-none focus:ring-2 focus:ring-fuchsia-500"
         />
 
         <button
           onClick={handleLogin}
           disabled={loading}
-          className={`${
-            loading ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-700'
-          } bg-purple-600 text-white py-2 px-4 rounded w-full transition-colors duration-200`}
+          className={`w-full py-2 rounded text-white font-semibold transition ${
+            loading
+              ? 'bg-purple-400 cursor-not-allowed'
+              : 'bg-purple-600 hover:bg-fuchsia-700'
+          }`}
         >
           {loading ? 'Verificando...' : 'Entrar'}
         </button>
@@ -98,6 +95,8 @@ export default function LoginPage() {
     </main>
   );
 }
+
+
 
 
 
