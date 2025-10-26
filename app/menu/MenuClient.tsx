@@ -1,8 +1,7 @@
+// app/menu/MenuClient.tsx
 'use client';
 
-import Logo from '@/app/components/Logo';
 import MenuTile from '@/app/components/MenuTile';
-import Protected from '@/app/components/Protected';
 import {
   ClipboardList,
   User,
@@ -18,49 +17,59 @@ import {
   LogOut,
 } from 'lucide-react';
 
-const tiles = [
-  { href: '/pedido',     title: 'Pedido',    icon: <ClipboardList size={22} /> },
-  { href: '/clientes',   title: 'Cliente',   icon: <User size={22} /> },
-  { href: '/base',       title: 'Base',      icon: <Database size={22} />,   disabled: true },
-  { href: '/historico',  title: 'Histórico', icon: <History size={22} />,    disabled: true },
-  { href: '/finanzas',   title: 'Finanzas',  icon: <PiggyBank size={22} />,  disabled: true },
-  { href: '/guardar',    title: 'Guardar',   icon: <Save size={22} />,       disabled: true },
-  { href: '/entregar',   title: 'Entregar',  icon: <PackageCheck size={22} />,disabled: true },
-  { href: '/ruta',       title: 'Ruta',      icon: <RouteIcon size={22} />,  disabled: true },
-  { href: '/domicilio',  title: 'Domicilio', icon: <Home size={22} />,       disabled: true },
-  { href: '/config',     title: 'Config',    icon: <Settings size={22} /> },
-  { href: '/articulos',  title: 'Artículos', icon: <Tag size={22} />,        disabled: true },
-  { href: '/logout',     title: 'Salir',     icon: <LogOut size={22} /> },
+// Si quieres volver a activar auth luego, descomenta esto y usa Protected:
+// import { useEffect } from 'react';
+// import { useRouter } from 'next/navigation';
+// import { isAuth } from '@/app/components/auth';
+
+type Tile = {
+  href: string;
+  title: string;
+  icon: JSX.Element;
+  disabled?: boolean;
+};
+
+const tiles: Tile[] = [
+  { href: '/pedido',    title: 'Pedido',    icon: <ClipboardList size={22} /> },
+  { href: '/clientes',  title: 'Cliente',   icon: <User size={22} /> },
+  { href: '/base',      title: 'Base',      icon: <Database size={22} />,   disabled: true },
+  { href: '/historico', title: 'Histórico', icon: <History size={22} />,    disabled: true },
+  { href: '/finanzas',  title: 'Finanzas',  icon: <PiggyBank size={22} />,  disabled: true },
+  { href: '/guardar',   title: 'Guardar',   icon: <Save size={22} />,       disabled: true },
+  { href: '/entregar',  title: 'Entregar',  icon: <PackageCheck size={22} />, disabled: true },
+  { href: '/ruta',      title: 'Ruta',      icon: <RouteIcon size={22} />,  disabled: true },
+  { href: '/domicilio', title: 'Domicilio', icon: <Home size={22} />,       disabled: true },
+  { href: '/config',    title: 'Config',    icon: <Settings size={22} /> },
+  { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />,        disabled: true },
+  { href: '/logout',    title: 'Salir',     icon: <LogOut size={22} /> },
 ];
 
 export default function MenuClient() {
-  return (
-    <Protected>
-      <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
-        <header className="relative z-10 mx-auto max-w-6xl px-6 pt-10">
-          <Logo size={56} showName boxed className="mb-6" />
-          <div className="flex flex-col gap-2">
-            <h1 className="text-2xl md:text-3xl font-bold">Menú principal</h1>
-            <p className="text-white/80">Elige una opción para continuar.</p>
-          </div>
-        </header>
+  // Autenticación (para activar más adelante)
+  // const router = useRouter();
+  // useEffect(() => {
+  //   if (!isAuth()) router.replace('/login');
+  // }, [router]);
 
-        <section className="relative z-10 mx-auto max-w-6xl px-6 py-10">
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-            {tiles.map(({ href, icon, title, disabled }) => (
-              <MenuTile
-                key={href}
-                href={disabled ? '#' : href}
-                icon={icon}
-                title={title}
-                subtitle={disabled ? 'Próximamente' : undefined}
-                disabled={disabled}
-              />
-            ))}
-          </div>
-        </section>
-      </main>
-    </Protected>
+  return (
+    <div
+      className={[
+        'grid gap-4',
+        'sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
+      ].join(' ')}
+    >
+      {tiles.map(({ href, icon, title, disabled }) => (
+        <MenuTile
+          key={href}
+          href={disabled ? '#' : href}
+          icon={icon}
+          title={title}
+          subtitle={disabled ? 'Próximamente' : undefined}
+          disabled={disabled}
+        />
+      ))}
+    </div>
   );
 }
+
+
