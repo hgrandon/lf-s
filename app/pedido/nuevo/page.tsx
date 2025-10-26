@@ -38,7 +38,6 @@ export default function NuevoPedidoPage() {
     [lineas]
   );
 
-  // Cargar correlativo, cliente y artículos
   useEffect(() => {
     if (!tel || tel.length !== 9) {
       router.replace('/pedido'); // sin teléfono, vuelve a buscar
@@ -51,7 +50,7 @@ export default function NuevoPedidoPage() {
         const row = (data as NextNumber[])[0];
         setNro(row.nro);
         setFecha(row.fecha);
-        setEnt​rega(row.entrega);
+        setEntrega(row.entrega); // <-- CORREGIDO (sin carácter invisible)
       } else if (error) {
         setMsg('Error correlativo: ' + error.message);
       }
@@ -79,7 +78,7 @@ export default function NuevoPedidoPage() {
           .select('id,nombre,precio')
           .eq('activo', true)
           .order('nombre');
-        if (!f.error) setArticulos((f.data || []) as Articulo[]);
+        if (!f.error) setArticulos((f.data || []) => (f.data || []) as Articulo[]);
         else setMsg('Error artículos: ' + (rpc.error?.message ?? f.error?.message));
       }
     })();
