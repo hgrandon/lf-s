@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound } from 'lucide-react';
@@ -38,6 +38,7 @@ export default function NuevoPedidoPage() {
     [lineas]
   );
 
+  // Cargar correlativo, cliente y artículos
   useEffect(() => {
     if (!tel || tel.length !== 9) {
       router.replace('/pedido'); // sin teléfono, vuelve a buscar
@@ -46,28 +47,43 @@ export default function NuevoPedidoPage() {
     (async () => {
       // correlativo y fechas
       const { data, error } = await supabase.rpc('pedido_next_number');
-      if (!error) {
+      if (!error && data) {
         const row = (data as NextNumber[])[0];
-        setNro(row.nro); setFecha(row.fecha); setEntrega(row.entrega);
-      } else {
+        setNro(row.nro);
+        setFecha(row.fecha);
+        setEnt​rega(row.entrega);
+      } else if (error) {
         setMsg('Error correlativo: ' + error.message);
       }
 
       // cliente
       const q = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
-      if (!q.error) setCliente(((q.data as Cliente[] | null)?.[0]) ?? null);
-      else setMsg('Error cliente: ' + q.error.message);
+      if (!q.error) {
+        const cli = ((q.data as Cliente[] | null)?.[0]) ?? null;
+        if (!cli) {
+          router.replace('/pedido'); // si no hay cliente, vuelve
+          return;
+        }
+        setCliente(cli);
+      } else {
+        setMsg('Error cliente: ' + q.error.message);
+      }
 
-      // artículos
+      // artículos (RPC, fallback a tabla)
       const rpc = await supabase.rpc('active_articles_list');
-      if (!rpc.error && rpc.data) setArticulos(rpc.data as Articulo[]);
-      else {
-        const f = await supabase.from('articulo').select('id,nombre,precio').eq('activo', true).order('nombre');
+      if (!rpc.error && rpc.data) {
+        setArticulos(rpc.data as Articulo[]);
+      } else {
+        const f = await supabase
+          .from('articulo')
+          .select('id,nombre,precio')
+          .eq('activo', true)
+          .order('nombre');
         if (!f.error) setArticulos((f.data || []) as Articulo[]);
         else setMsg('Error artículos: ' + (rpc.error?.message ?? f.error?.message));
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
   const addArticulo = () => {
@@ -77,7 +93,11 @@ export default function NuevoPedidoPage() {
     if (!art) return;
     setLineas(prev => {
       const i = prev.findIndex(l => l.articulo_id === art.id);
-      if (i >= 0) { const c = [...prev]; c[i] = { ...c[i], qty: c[i].qty + 1 }; return c; }
+      if (i >= 0) {
+        const c = [...prev];
+        c[i] = { ...c[i], qty: c[i].qty + 1 };
+        return c;
+      }
       return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' }];
     });
     setSelectedId('');
@@ -86,14 +106,15 @@ export default function NuevoPedidoPage() {
   const onSelectArticulo = (v: string) => {
     const val = v === '__new__' ? '__new__' : (Number(v) as any);
     setSelectedId(val);
-    if (v && v !== '__new__') setTimeout(addArticulo, 0);
+    if (v && v !== '__new__') setTimeout(addArticulo, 0); // autoagrega al elegir
   };
 
   const changeQty = (id: number, d: number) => {
     setLineas(prev => prev.map(l => l.articulo_id === id ? { ...l, qty: Math.max(1, l.qty + d) } : l));
   };
 
-  const removeLinea = (id: number) => setLineas(prev => prev.filter(l => l.articulo_id !== id));
+  const removeLinea = (id: number) =>
+    setLineas(prev => prev.filter(l => l.articulo_id !== id));
 
   const onFiles = async (files: FileList | null) => {
     if (!files || !nro) return;
@@ -103,9 +124,9 @@ export default function NuevoPedidoPage() {
       for (const file of Array.from(files)) {
         const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
         const path = `${nro}/${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from('pedido_fotos').upload(path, file, {
-          upsert: false, contentType: file.type || 'image/jpeg',
-        });
+        const { error } = await supabase.storage
+          .from('pedido_fotos')
+          .upload(path, file, { upsert: false, contentType: file.type || 'image/jpeg' });
         if (error) throw error;
         uploaded.push(path);
       }
@@ -113,38 +134,68 @@ export default function NuevoPedidoPage() {
       setMsg(`📷 ${uploaded.length} foto(s) subida(s).`);
     } catch (e: any) {
       setMsg('Error subiendo fotos: ' + (e?.message ?? e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const save = async () => {
     if (!nro || !cliente) return;
-    if (lineas.length === 0) return setMsg('Agrega al menos un artículo.');
-    setLoading(true); setMsg('Guardando pedido...');
+    if (lineas.length === 0) {
+      setMsg('Agrega al menos un artículo.');
+      return;
+    }
+    setLoading(true);
+    setMsg('Guardando pedido...');
     try {
       const p_pedido = { nro, fecha, entrega, telefono: cliente.telefono, total };
-      const p_lineas = lineas.map(l => ({ articulo_id: l.articulo_id, nombre: l.nombre, precio: l.precio, qty: l.qty, estado: l.estado }));
-      const { error } = await supabase.rpc('pedido_upsert', { p_pedido, p_lineas, p_fotos: fotos });
+      const p_lineas = lineas.map(l => ({
+        articulo_id: l.articulo_id,
+        nombre: l.nombre,
+        precio: l.precio,
+        qty: l.qty,
+        estado: l.estado
+      }));
+      const { error } = await supabase.rpc('pedido_upsert', {
+        p_pedido,
+        p_lineas,
+        p_fotos: fotos
+      });
       if (error) throw error;
       setMsg('✅ Pedido guardado');
       // router.push('/menu');
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateArticle = async ({ nombre, precio, qty }: { nombre: string; precio: number; qty: number; }) => {
+  const handleCreateArticle = async ({
+    nombre, precio, qty
+  }: { nombre: string; precio: number; qty: number; }) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('articulo').insert({ nombre, precio, activo: true })
-        .select('id,nombre,precio').single();
+      const { data, error } = await supabase
+        .from('articulo')
+        .insert({ nombre, precio, activo: true })
+        .select('id,nombre,precio')
+        .single();
       if (error) throw error;
       const created = data as Articulo;
       setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      setLineas(prev => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }]);
-      setShowNewArt(false); setSelectedId(''); setMsg('✅ Artículo creado y agregado.');
+      setLineas(prev => [
+        ...prev,
+        { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }
+      ]);
+      setShowNewArt(false);
+      setSelectedId('');
+      setMsg('✅ Artículo creado y agregado.');
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!tel) return null;
@@ -152,6 +203,7 @@ export default function NuevoPedidoPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
+
       <div className="relative z-10 mx-auto w-full max-w-md sm:max-w-lg p-4 sm:p-6">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between text-white">
@@ -165,10 +217,19 @@ export default function NuevoPedidoPage() {
               <div>{entrega && new Date(entrega).toLocaleDateString()}</div>
             </div>
             <div className="flex flex-col gap-2">
-              <button onClick={() => router.push('/pedido')} className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white" title="Volver">
+              <button
+                onClick={() => router.push('/pedido')}
+                className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white"
+                title="Volver"
+              >
                 <ArrowLeft className="text-violet-700" size={18} />
               </button>
-              <button disabled={loading} onClick={save} className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white disabled:opacity-60" title="Guardar">
+              <button
+                disabled={loading}
+                onClick={save}
+                className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white disabled:opacity-60"
+                title="Guardar"
+              >
                 <Save className="text-violet-700" size={18} />
               </button>
             </div>
@@ -208,7 +269,10 @@ export default function NuevoPedidoPage() {
               ))}
               <option value="__new__">➕ Nuevo artículo…</option>
             </select>
-            <button onClick={addArticulo} className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700">
+            <button
+              onClick={addArticulo}
+              className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700"
+            >
               Añadir
             </button>
           </div>
@@ -219,7 +283,10 @@ export default function NuevoPedidoPage() {
               <h3 className="mb-2 text-sm font-semibold text-gray-700">Artículos Seleccionados</h3>
               <div className="mb-3 space-y-2">
                 {lineas.map((l) => (
-                  <div key={l.articulo_id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div
+                    key={l.articulo_id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
                     <div>
                       <div className="font-semibold text-gray-900">{l.nombre}</div>
                       <div className="text-xs text-blue-700 font-bold">{CLP.format(l.precio)}</div>
@@ -229,8 +296,15 @@ export default function NuevoPedidoPage() {
                       <span className="w-6 text-center">{l.qty}</span>
                       <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded-full border px-3 py-1">+</button>
                     </div>
-                    <div className="min-w-[80px] text-right font-semibold">{CLP.format(l.precio * l.qty)}</div>
-                    <button onClick={() => removeLinea(l.articulo_id)} className="text-red-600 text-sm underline">Quitar</button>
+                    <div className="min-w-[80px] text-right font-semibold">
+                      {CLP.format(l.precio * l.qty)}
+                    </div>
+                    <button
+                      onClick={() => removeLinea(l.articulo_id)}
+                      className="text-red-600 text-sm underline"
+                    >
+                      Quitar
+                    </button>
                   </div>
                 ))}
               </div>
@@ -260,7 +334,12 @@ export default function NuevoPedidoPage() {
       </div>
 
       {/* Modal: nuevo artículo */}
-      <NewArticleModal open={showNewArt} onClose={() => setShowNewArt(false)} onCreate={handleCreateArticle} />
+      <NewArticleModal
+        open={showNewArt}
+        onClose={() => setShowNewArt(false)}
+        onCreate={handleCreateArticle}
+      />
     </main>
   );
 }
+
