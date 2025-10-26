@@ -10,19 +10,25 @@ export default function HomePage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
       <section className="relative z-10 mx-auto grid max-w-5xl place-items-center px-6 py-24 text-center">
-        {/* Contenedor blanco con logo + texto */}
-        <div className="mb-8 inline-flex flex-col sm:flex-row items-center justify-center gap-3 rounded-[40px] bg-white px-8 py-4 shadow-xl ring-1 ring-black/10">
-          <Image
-            src="/logo.png"
-            alt="Logo Lavandería Fabiola"
-            width={80}
-            height={80}
-            priority
-            className="h-16 w-16 object-contain"
-          />
-          <div className="flex flex-col text-center sm:text-left leading-tight font-extrabold tracking-tight">
-            <span className="text-violet-800 text-2xl sm:text-3xl">LAVANDERÍA</span>
-            <span className="text-violet-800 text-2xl sm:text-3xl">FABIOLA</span>
+        {/* PASTILLA con borde violeta degradado */}
+        <div className="mb-8 inline-flex flex-col sm:flex-row items-center justify-center gap-3 rounded-[40px] bg-white px-8 py-4 shadow-xl ring-2 ring-transparent bg-clip-padding border-[3px] border-transparent bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 p-[3px]">
+          <div className="flex items-center gap-4 bg-white rounded-[35px] px-6 py-3 w-full">
+            <Image
+              src="/logo.png"
+              alt="Logo Lavandería Fabiola"
+              width={80}
+              height={80}
+              priority
+              className="h-16 w-16 object-contain"
+            />
+            <div className="flex flex-col text-center sm:text-left leading-tight font-extrabold tracking-tight">
+              <span className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-indigo-700 bg-clip-text text-transparent text-2xl sm:text-3xl">
+                LAVANDERÍA
+                </span>
+                <span className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-indigo-700 bg-clip-text text-transparent text-2xl sm:text-3xl">
+                FABIOLA
+              </span>
+            </div>
           </div>
         </div>
 
