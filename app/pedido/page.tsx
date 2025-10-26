@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save } from 'lucide-react';
+import NewArticleModal from '@/app/components/NewArticleModal';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo = { id: number; nombre: string; precio: number };
@@ -12,12 +13,14 @@ type Linea = { articulo_id: number; nombre: string; precio: number; qty: number 
 function useAuthGuard() {
   const router = useRouter();
   useEffect(() => {
-    const ok = typeof window !== 'undefined' && (localStorage.getItem('auth') === 'ok' || localStorage.getItem('auth') === '1');
+    const ok =
+      typeof window !== 'undefined' &&
+      (localStorage.getItem('auth') === 'ok' || localStorage.getItem('auth') === '1');
     if (!ok) router.replace('/login');
   }, [router]);
 }
 
-// Pequeño modal simple
+// Modal simple para “Nuevo cliente”
 function Modal({
   open,
   onClose,
@@ -29,7 +32,7 @@ function Modal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
         {children}
         <div className="mt-4 flex justify-end">
@@ -64,16 +67,18 @@ export default function PedidoPage() {
 
   // Artículos
   const [articulos, setArticulos] = useState<Articulo[]>([]);
-  const [selectedId, setSelectedId] = useState<number | ''>('');
+  const [selectedId, setSelectedId] = useState<number | '__new__' | ''>('');
 
   // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
 
-  // Fotos (paths subidos)
+  // Fotos
   const [fotos, setFotos] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
+
+  const CLP = new Intl.NumberFormat('es-CL');
 
   // Total
   const total = useMemo(
@@ -81,7 +86,7 @@ export default function PedidoPage() {
     [lineas]
   );
 
-  // Cargar Nº siguiente + fechas
+  // Nº y fechas
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.rpc('pedido_next_number');
@@ -96,18 +101,17 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // Cargar artículos activos (si no existe la RPC en caché, uso fallback con SELECT)
+  // Artículos (RPC -> fallback a public.articulo)
   useEffect(() => {
     (async () => {
-      // intenta RPC
+      setMsg('');
       const rpc = await supabase.rpc('active_articles_list');
       if (!rpc.error && rpc.data) {
         setArticulos(rpc.data as Articulo[]);
         return;
       }
-      // fallback SELECT
       const { data, error } = await supabase
-        .from('articulos')
+        .from('articulo') // <- nombre correcto de tabla
         .select('id,nombre,precio')
         .eq('activo', true)
         .order('nombre', { ascending: true });
@@ -124,25 +128,19 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // --- Teléfono: sólo números y máx 9 ---
+  // Teléfono: solo 9 dígitos y busca cliente
   const onPhoneChange = (v: string) => {
-    const digits = v.replace(/\D+/g, '').slice(0, 9); // sólo números, máx 9
+    const digits = v.replace(/\D+/g, '').slice(0, 9);
     setTelefono(digits);
     setClienteNombre('');
     setClienteDireccion('');
-    // si llega a 9, buscamos
-    if (digits.length === 9) {
-      checkClient(digits);
-    } else {
-      // si borra, oculta modal si estaba abierto
-      setShowNewClient(false);
-    }
+    if (digits.length === 9) checkClient(digits);
+    else setShowNewClient(false);
   };
 
-  // Buscar cliente por teléfono
+  // Buscar cliente
   const checkClient = async (tel: string) => {
     setMsg('');
-    // si tienes RPC, podrías usar: supabase.rpc('cliente_get', { p_telefono: tel })
     const { data, error } = await supabase
       .from('clientes')
       .select('nombre,direccion')
@@ -153,15 +151,11 @@ export default function PedidoPage() {
       setMsg('Error buscando cliente: ' + error.message);
       return;
     }
-
     if (data) {
       setClienteNombre(data.nombre || '');
       setClienteDireccion(data.direccion || '');
       setShowNewClient(false);
-      setNewName('');
-      setNewAddress('');
     } else {
-      // No existe => abrir modal para crear rápido
       setNewName('');
       setNewAddress('');
       setShowNewClient(true);
@@ -181,14 +175,6 @@ export default function PedidoPage() {
     setLoading(true);
     setMsg('Guardando cliente...');
     try {
-      // si tienes RPC clientes_upsert, úsala:
-      // const { error } = await supabase.rpc('clientes_upsert', {
-      //   p_telefono: telefono,
-      //   p_nombre: newName.trim().toUpperCase(),
-      //   p_direccion: newAddress.trim().toUpperCase(),
-      // });
-
-      // Fallback con upsert
       const { error } = await supabase
         .from('clientes')
         .upsert(
@@ -199,7 +185,6 @@ export default function PedidoPage() {
           },
           { onConflict: 'telefono' }
         );
-
       if (error) throw error;
 
       setClienteNombre(newName.trim().toUpperCase());
@@ -213,24 +198,24 @@ export default function PedidoPage() {
     }
   };
 
-  // Añadir artículo seleccionado
+  // Añadir artículo o abrir modal de nuevo
   const addArticulo = () => {
     if (!selectedId) return;
+    if (selectedId === '__new__') {
+      setShowNewArt(true);
+      return;
+    }
     const art = articulos.find((a) => a.id === Number(selectedId));
     if (!art) return;
 
     setLineas((prev) => {
-      // si ya existe, sumar qty
       const idx = prev.findIndex((l) => l.articulo_id === art.id);
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = { ...copy[idx], qty: copy[idx].qty + 1 };
         return copy;
       }
-      return [
-        ...prev,
-        { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1 },
-      ];
+      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1 }];
     });
     setSelectedId('');
   };
@@ -247,14 +232,13 @@ export default function PedidoPage() {
     setLineas((prev) => prev.filter((l) => l.articulo_id !== id));
   };
 
-  // Subir fotos al bucket `pedido_fotos`
+  // Fotos
   const onFiles = async (files: FileList | null) => {
     if (!files || !nro) return;
     setLoading(true);
     try {
       const up = Array.from(files);
       const uploaded: string[] = [];
-
       for (const file of up) {
         const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
         const path = `${nro}/${crypto.randomUUID()}.${ext}`;
@@ -276,7 +260,7 @@ export default function PedidoPage() {
     }
   };
 
-  // Guardar pedido (RPC upsert)
+  // Guardar pedido
   const save = async () => {
     if (!nro) return;
     if (telefono.length !== 9) {
@@ -290,26 +274,18 @@ export default function PedidoPage() {
     setLoading(true);
     setMsg('Guardando pedido...');
     try {
-      const p_pedido = {
-        nro,
-        fecha,
-        entrega,
-        telefono,
-        total,
-      };
+      const p_pedido = { nro, fecha, entrega, telefono, total };
       const p_lineas = lineas.map((l) => ({
         articulo_id: l.articulo_id,
         nombre: l.nombre,
         precio: l.precio,
         qty: l.qty,
       }));
-
       const { error } = await supabase.rpc('pedido_upsert', {
         p_pedido,
         p_lineas,
         p_fotos: fotos,
       });
-
       if (error) throw error;
       setMsg('✅ Pedido guardado');
       // router.push('/menu');
@@ -320,21 +296,48 @@ export default function PedidoPage() {
     }
   };
 
+  // ---- Modal Nuevo Artículo ----
+  const [showNewArt, setShowNewArt] = useState(false);
+  const handleCreateArticle = async ({ nombre, precio, qty }: { nombre: string; precio: number; qty: number }) => {
+    try {
+      setLoading(true);
+      // Crear en DB
+      const { data, error } = await supabase
+        .from('articulo')
+        .insert({ nombre, precio, activo: true })
+        .select('id, nombre, precio')
+        .single();
+      if (error) throw error;
+      const created = data as Articulo;
+
+      // Actualizar lista
+      setArticulos((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      // Agregar línea
+      setLineas((prev) => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty }]);
+
+      setSelectedId('');
+      setShowNewArt(false);
+      setMsg('✅ Artículo creado y agregado.');
+    } catch (e: any) {
+      setMsg('❌ ' + (e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
-      {/* glow sutil */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-4xl p-4 sm:p-6">
-        {/* Encabezado */}
+        {/* Header */}
         <header className="mb-4 flex items-center justify-between">
           <div className="text-white">
             <div className="text-lg sm:text-xl">
               N° <span className="font-bold">{nro ?? '...'}</span>
             </div>
             <div className="text-sm text-white/80">
-              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp;{' '}
-              {entrega && new Date(entrega).toLocaleDateString()}
+              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp; {entrega && new Date(entrega).toLocaleDateString()}
             </div>
           </div>
 
@@ -357,9 +360,9 @@ export default function PedidoPage() {
           </div>
         </header>
 
-        {/* Tarjeta principal */}
+        {/* Card principal */}
         <div className="rounded-xl bg-white p-4 shadow">
-          {/* Teléfono cliente */}
+          {/* Teléfono */}
           <div className="mb-3">
             <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
             <input
@@ -371,7 +374,6 @@ export default function PedidoPage() {
               className="w-full rounded border px-3 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500"
             />
 
-            {/* Info de cliente */}
             {!!clienteNombre && (
               <div className="mt-2 text-sm text-gray-700">
                 <span className="font-semibold">Cliente:</span> {clienteNombre}
@@ -380,21 +382,23 @@ export default function PedidoPage() {
             )}
           </div>
 
-          {/* Select artículos */}
+          {/* Selector de artículos */}
           <div className="mb-3 flex gap-2">
             <select
-              value={selectedId}
-              onChange={(e) =>
-                setSelectedId(e.target.value ? Number(e.target.value) : '')
-              }
+              value={selectedId || ''}
+              onChange={(e) => {
+                const v = e.target.value === '__new__' ? '__new__' : (Number(e.target.value) as any);
+                setSelectedId(v);
+              }}
               className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">SELECCIONE UN ARTÍCULO</option>
               {articulos.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.nombre} — {a.precio.toFixed(2)}
+                  {a.nombre} — {CLP.format(a.precio)}
                 </option>
               ))}
+              <option value="__new__">➕ Nuevo artículo…</option>
             </select>
             <button
               onClick={addArticulo}
@@ -420,31 +424,20 @@ export default function PedidoPage() {
                   {lineas.map((l) => (
                     <tr key={l.articulo_id}>
                       <td className="border-b py-2">{l.nombre}</td>
-                      <td className="border-b py-2 text-right">
-                        {l.precio.toFixed(2)}
-                      </td>
+                      <td className="border-b py-2 text-right">{CLP.format(l.precio)}</td>
                       <td className="border-b py-2">
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => changeQty(l.articulo_id, -1)}
-                            className="rounded border px-2"
-                          >
+                          <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">
                             -
                           </button>
                           <span className="w-8 text-center">{l.qty}</span>
-                          <button
-                            onClick={() => changeQty(l.articulo_id, +1)}
-                            className="rounded border px-2"
-                          >
+                          <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">
                             +
                           </button>
                         </div>
                       </td>
                       <td className="border-b py-2 text-right">
-                        <button
-                          onClick={() => removeLinea(l.articulo_id)}
-                          className="rounded border px-2 text-red-600"
-                        >
+                        <button onClick={() => removeLinea(l.articulo_id)} className="rounded border px-2 text-red-600">
                           X
                         </button>
                       </td>
@@ -458,17 +451,15 @@ export default function PedidoPage() {
           {/* Total */}
           <div className="mb-3 rounded bg-purple-50 px-3 py-2 text-purple-900">
             <span className="font-semibold">Total:&nbsp;</span>
-            <span className="text-lg font-bold">{total.toFixed(2)}</span>
+            <span className="text-lg font-bold">{CLP.format(total)}</span>
           </div>
 
-          {/* Subida de fotos */}
+          {/* Fotos */}
           <div className="mb-2">
             <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
             <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
             {!!fotos.length && (
-              <div className="mt-1 text-xs text-gray-600">
-                {fotos.length} archivo(s) seleccionado(s)
-              </div>
+              <div className="mt-1 text-xs text-gray-600">{fotos.length} archivo(s) seleccionado(s)</div>
             )}
           </div>
 
@@ -481,11 +472,7 @@ export default function PedidoPage() {
       <Modal open={showNewClient} onClose={() => setShowNewClient(false)}>
         <h3 className="mb-3 text-lg font-semibold text-gray-800">Nuevo Cliente</h3>
         <div className="grid gap-3">
-          <input
-            disabled
-            value={telefono}
-            className="w-full rounded border bg-gray-100 px-3 py-2 text-gray-600"
-          />
+          <input disabled value={telefono} className="w-full rounded border bg-gray-100 px-3 py-2 text-gray-600" />
           <input
             placeholder="NOMBRE DEL CLIENTE"
             value={newName}
@@ -516,9 +503,17 @@ export default function PedidoPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Modal: nuevo artículo */}
+      <NewArticleModal
+        open={showNewArt}
+        onClose={() => setShowNewArt(false)}
+        onCreate={handleCreateArticle}
+      />
     </main>
   );
 }
+
 
 
 
