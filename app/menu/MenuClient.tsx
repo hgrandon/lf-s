@@ -1,4 +1,3 @@
-// app/menu/MenuClient.tsx
 'use client';
 
 import MenuTile from '@/app/components/MenuTile';
@@ -17,47 +16,24 @@ import {
   LogOut,
 } from 'lucide-react';
 
-// Si quieres volver a activar auth luego, descomenta esto y usa Protected:
-// import { useEffect } from 'react';
-// import { useRouter } from 'next/navigation';
-// import { isAuth } from '@/app/components/auth';
-
-type Tile = {
-  href: string;
-  title: string;
-  icon: JSX.Element;
-  disabled?: boolean;
-};
-
-const tiles: Tile[] = [
-  { href: '/pedido',    title: 'Pedido',    icon: <ClipboardList size={22} /> },
-  { href: '/clientes',  title: 'Cliente',   icon: <User size={22} /> },
-  { href: '/base',      title: 'Base',      icon: <Database size={22} />,   disabled: true },
-  { href: '/historico', title: 'Histórico', icon: <History size={22} />,    disabled: true },
-  { href: '/finanzas',  title: 'Finanzas',  icon: <PiggyBank size={22} />,  disabled: true },
-  { href: '/guardar',   title: 'Guardar',   icon: <Save size={22} />,       disabled: true },
-  { href: '/entregar',  title: 'Entregar',  icon: <PackageCheck size={22} />, disabled: true },
-  { href: '/ruta',      title: 'Ruta',      icon: <RouteIcon size={22} />,  disabled: true },
-  { href: '/domicilio', title: 'Domicilio', icon: <Home size={22} />,       disabled: true },
-  { href: '/config',    title: 'Config',    icon: <Settings size={22} /> },
-  { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />,        disabled: true },
-  { href: '/logout',    title: 'Salir',     icon: <LogOut size={22} /> },
+const tiles = [
+  { href: '/pedido',     title: 'Pedido',    icon: <ClipboardList size={22} /> },
+  { href: '/clientes',   title: 'Cliente',   icon: <User size={22} /> },
+  { href: '/base',       title: 'Base',      icon: <Database size={22} />,   disabled: true },
+  { href: '/historico',  title: 'Histórico', icon: <History size={22} />,    disabled: true },
+  { href: '/finanzas',   title: 'Finanzas',  icon: <PiggyBank size={22} />,  disabled: true },
+  { href: '/guardar',    title: 'Guardar',   icon: <Save size={22} />,       disabled: true },
+  { href: '/entregar',   title: 'Entregar',  icon: <PackageCheck size={22} />,disabled: true },
+  { href: '/ruta',       title: 'Ruta',      icon: <RouteIcon size={22} />,  disabled: true },
+  { href: '/domicilio',  title: 'Domicilio', icon: <Home size={22} />,       disabled: true },
+  { href: '/config',     title: 'Config',    icon: <Settings size={22} /> },
+  { href: '/articulos',  title: 'Artículos', icon: <Tag size={22} />,        disabled: true },
+  { href: '/logout',     title: 'Salir',     icon: <LogOut size={22} /> },
 ];
 
 export default function MenuClient() {
-  // Autenticación (para activar más adelante)
-  // const router = useRouter();
-  // useEffect(() => {
-  //   if (!isAuth()) router.replace('/login');
-  // }, [router]);
-
   return (
-    <div
-      className={[
-        'grid gap-4',
-        'sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
-      ].join(' ')}
-    >
+    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
       {tiles.map(({ href, icon, title, disabled }) => (
         <MenuTile
           key={href}
