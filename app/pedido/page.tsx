@@ -1,24 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save } from 'lucide-react';
 import NewArticleModal from '@/app/components/NewArticleModal';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
-type Articulo = { id: number; nombre: string; precio: number };
-type Linea = { articulo_id: number; nombre: string; precio: number; qty: number };
+type Articulo   = { id: number; nombre: string; precio: number };
+type Linea      = { articulo_id: number; nombre: string; precio: number; qty: number };
 
-function useAuthGuard() {
-  const router = useRouter();
-  useEffect(() => {
-    const ok =
-      typeof window !== 'undefined' &&
-      (localStorage.getItem('auth') === 'ok' || localStorage.getItem('auth') === '1');
-    if (!ok) router.replace('/login');
-  }, [router]);
-}
+/** Normaliza a 9 dígitos (solo números) */
+const normalizePhone = (v: string) => (v || '').replace(/\D+/g, '').slice(0, 9);
 
 function Modal({
   open,
@@ -48,13 +41,15 @@ function Modal({
 }
 
 export default function PedidoPage() {
-  useAuthGuard();
   const router = useRouter();
 
+  // Cabecera
   const [nro, setNro] = useState<number | null>(null);
-  const [fecha, setFecha] = useState<string>('');
-  const [entrega, setEntrega] = useState<string>('');
+  const [fecha, setFecha] = useState('');
+  const [entrega, setEntrega] = useState('');
 
+  // Cliente
+  const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const [telefono, setTelefono] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteDireccion, setClienteDireccion] = useState('');
@@ -62,11 +57,16 @@ export default function PedidoPage() {
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
+  // Artículos
   const [articulos, setArticulos] = useState<Articulo[]>([]);
   const [selectedId, setSelectedId] = useState<number | '__new__' | ''>('');
 
+  // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
+
+  // Fotos (paths subidos)
   const [fotos, setFotos] = useState<string[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -77,6 +77,7 @@ export default function PedidoPage() {
     [lineas]
   );
 
+  // 1) Cargar correlativo y fechas
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.rpc('pedido_next_number');
@@ -88,9 +89,11 @@ export default function PedidoPage() {
       setNro(row.nro);
       setFecha(row.fecha);
       setEntrega(row.entrega);
+      setTimeout(() => phoneInputRef.current?.focus(), 0);
     })();
   }, []);
 
+  // 2) Cargar artículos: primero RPC, fallback a tabla "articulo"
   useEffect(() => {
     (async () => {
       setMsg('');
@@ -99,6 +102,7 @@ export default function PedidoPage() {
         setArticulos(rpc.data as Articulo[]);
         return;
       }
+
       const { data, error } = await supabase
         .from('articulo')
         .select('id,nombre,precio')
@@ -117,59 +121,79 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  const onPhoneChange = (v: string) => {
-    const digits = v.replace(/\D+/g, '').slice(0, 9);
+  // 3) Debounce para consulta del cliente (RPC)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onPhoneChange = (raw: string) => {
+    const digits = normalizePhone(raw);
     setTelefono(digits);
     setClienteNombre('');
     setClienteDireccion('');
-    if (digits.length === 9) checkClient(digits);
-    else setShowNewClient(false);
+    setShowNewClient(false);
+    setMsg('');
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (digits.length === 9) {
+      debounceRef.current = setTimeout(() => {
+        checkClient(digits);
+      }, 300);
+    }
   };
 
-// Buscar cliente por teléfono
-const checkClient = async (tel: string) => {
-  setMsg('');
+  const forceCheckOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const digits = normalizePhone(telefono);
+      if (digits.length === 9) checkClient(digits);
+    }
+  };
 
-  try {
-    // Normaliza el valor (por si acaso hay espacios u otros caracteres)
-    const telefonoClean = tel.trim();
+  // 4) Buscar cliente por teléfono (MISMO ESQUEMA QUE CLIENTES)
+  const checkClient = async (tel: string) => {
+    try {
+      setMsg('Buscando cliente...');
+      const norm = normalizePhone(tel);
+      if (norm.length !== 9) return;
 
-    // Busca en Supabase (asegura texto exacto)
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('nombre, direccion')
-      .ilike('telefono', telefonoClean) // compara sin distinción de mayúsculas
-      .maybeSingle();
+      // Usa el mismo RPC de clientes
+      const { data, error } = await supabase.rpc('clientes_get_by_tel', {
+        p_telefono: norm,
+      });
 
-          if (error) {
-            console.error('Error Supabase:', error);
-            setMsg('Error buscando cliente: ' + error.message);
-            return;
-          }
+      if (error) {
+        setMsg('Error buscando cliente: ' + error.message);
+        setClienteNombre('');
+        setClienteDireccion('');
+        setShowNewClient(false);
+        return;
+      }
 
-            if (data && data.nombre) {
-              // ✅ Cliente encontrado
-            setClienteNombre(data.nombre);
-            setClienteDireccion(data.direccion || '');
-            setShowNewClient(false);
-            setNewName('');
-            setNewAddress('');
-              setMsg('Cliente encontrado ✅');
-            } else {
-            // ❌ No existe, abre el modal
-            setClienteNombre('');
-            setClienteDireccion('');
-            setShowNewClient(true);
-            }
-             } catch (e: any) {
-              console.error('Error general:', e);
-              setMsg('Error al buscar cliente: ' + (e?.message ?? e));
-              }
-            };
+      const cli = (data as { telefono: string; nombre: string; direccion: string }[] | null)?.[0];
 
+      if (cli) {
+        setClienteNombre(cli.nombre || '');
+        setClienteDireccion(cli.direccion || '');
+        setShowNewClient(false);
+        setNewName('');
+        setNewAddress('');
+        setMsg('✅ Cliente reconocido');
+      } else {
+        setClienteNombre('');
+        setClienteDireccion('');
+        setNewName('');
+        setNewAddress('');
+        setShowNewClient(true);
+        setMsg('⚠️ Teléfono no existe. Completa los datos para registrarlo.');
+      }
+    } catch (e: any) {
+      setMsg('Error buscando cliente: ' + (e?.message ?? e));
+    }
+  };
 
+  // 5) Guardar cliente rápido (MISMO RPC clientes_upsert)
   const saveNewClient = async () => {
-    if (!telefono || telefono.length !== 9) {
+    const norm = normalizePhone(telefono);
+    if (norm.length !== 9) {
       setMsg('Teléfono inválido para crear cliente.');
       return;
     }
@@ -180,20 +204,15 @@ const checkClient = async (tel: string) => {
     setLoading(true);
     setMsg('Guardando cliente...');
     try {
-      const { error } = await supabase
-        .from('clientes')
-        .upsert(
-          {
-            telefono,
-            nombre: newName.trim().toUpperCase(),
-            direccion: newAddress.trim().toUpperCase(),
-          },
-          { onConflict: 'telefono' }
-        );
+      const { error } = await supabase.rpc('clientes_upsert', {
+        p_telefono: norm,
+        p_nombre: newName.trim().toUpperCase(),
+        p_direccion: (newAddress || '').trim().toUpperCase(),
+      });
       if (error) throw error;
 
       setClienteNombre(newName.trim().toUpperCase());
-      setClienteDireccion(newAddress.trim().toUpperCase());
+      setClienteDireccion((newAddress || '').trim().toUpperCase());
       setShowNewClient(false);
       setMsg('✅ Cliente guardado.');
     } catch (e: any) {
@@ -202,6 +221,9 @@ const checkClient = async (tel: string) => {
       setLoading(false);
     }
   };
+
+  // 6) Agregar artículo (incluye “Nuevo artículo…”)
+  const [showNewArt, setShowNewArt] = useState(false);
 
   const addArticulo = () => {
     if (!selectedId) return;
@@ -236,6 +258,7 @@ const checkClient = async (tel: string) => {
     setLineas((prev) => prev.filter((l) => l.articulo_id !== id));
   };
 
+  // 7) Subir fotos
   const onFiles = async (files: FileList | null) => {
     if (!files || !nro) return;
     setLoading(true);
@@ -263,10 +286,17 @@ const checkClient = async (tel: string) => {
     }
   };
 
+  // 8) Guardar pedido vía RPC
   const save = async () => {
     if (!nro) return;
-    if (telefono.length !== 9) {
+    const norm = normalizePhone(telefono);
+    if (norm.length !== 9) {
       setMsg('Ingresa un teléfono válido (9 dígitos).');
+      phoneInputRef.current?.focus();
+      return;
+    }
+    if (!clienteNombre.trim()) {
+      setMsg('Primero registra o reconoce al cliente.');
       return;
     }
     if (lineas.length === 0) {
@@ -276,20 +306,23 @@ const checkClient = async (tel: string) => {
     setLoading(true);
     setMsg('Guardando pedido...');
     try {
-      const p_pedido = { nro, fecha, entrega, telefono, total };
+      const p_pedido = { nro, fecha, entrega, telefono: norm, total };
       const p_lineas = lineas.map((l) => ({
         articulo_id: l.articulo_id,
         nombre: l.nombre,
         precio: l.precio,
         qty: l.qty,
       }));
+
       const { error } = await supabase.rpc('pedido_upsert', {
         p_pedido,
         p_lineas,
         p_fotos: fotos,
       });
+
       if (error) throw error;
       setMsg('✅ Pedido guardado');
+      // router.push('/menu')
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -297,20 +330,31 @@ const checkClient = async (tel: string) => {
     }
   };
 
-  const [showNewArt, setShowNewArt] = useState(false);
-  const handleCreateArticle = async ({ nombre, precio, qty }: { nombre: string; precio: number; qty: number }) => {
+  // 9) Alta + agregar artículo desde el modal
+  const handleCreateArticle = async ({
+    nombre,
+    precio,
+    qty,
+  }: {
+    nombre: string;
+    precio: number;
+    qty: number;
+  }) => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('articulo')
         .insert({ nombre, precio, activo: true })
-        .select('id, nombre, precio')
+        .select('id,nombre,precio')
         .single();
       if (error) throw error;
       const created = data as Articulo;
 
       setArticulos((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      setLineas((prev) => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty }]);
+      setLineas((prev) => [
+        ...prev,
+        { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty },
+      ]);
 
       setSelectedId('');
       setShowNewArt(false);
@@ -327,13 +371,15 @@ const checkClient = async (tel: string) => {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-4xl p-4 sm:p-6">
+        {/* Encabezado */}
         <header className="mb-4 flex items-center justify-between">
           <div className="text-white">
             <div className="text-lg sm:text-xl">
               N° <span className="font-bold">{nro ?? '...'}</span>
             </div>
             <div className="text-sm text-white/80">
-              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp; {entrega && new Date(entrega).toLocaleDateString()}
+              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp;{' '}
+              {entrega && new Date(entrega).toLocaleDateString()}
             </div>
           </div>
 
@@ -356,26 +402,39 @@ const checkClient = async (tel: string) => {
           </div>
         </header>
 
+        {/* Tarjeta principal */}
         <div className="rounded-xl bg-white p-4 shadow">
+          {/* Teléfono */}
           <div className="mb-3">
             <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
             <input
+              ref={phoneInputRef}
               inputMode="numeric"
               pattern="[0-9]*"
               placeholder="EJ: 998877665"
               value={telefono}
               onChange={(e) => onPhoneChange(e.target.value)}
+              onKeyDown={forceCheckOnEnter}
               className="w-full rounded border px-3 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500"
             />
-
-            {!!clienteNombre && (
-              <div className="mt-2 text-sm text-gray-700">
-                <span className="font-semibold">Cliente:</span> {clienteNombre}
-                {clienteDireccion ? ` — ${clienteDireccion}` : ''}
-              </div>
-            )}
+            {/* Nombre/Dirección autocompletados (solo lectura) */}
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <input
+                placeholder="NOMBRE (auto)"
+                value={clienteNombre}
+                readOnly
+                className="rounded border bg-gray-100 px-3 py-2 text-gray-700"
+              />
+              <input
+                placeholder="DIRECCIÓN (auto)"
+                value={clienteDireccion}
+                readOnly
+                className="rounded border bg-gray-100 px-3 py-2 text-gray-700"
+              />
+            </div>
           </div>
 
+          {/* Select artículos */}
           <div className="mb-3 flex gap-2">
             <select
               value={selectedId || ''}
@@ -401,6 +460,7 @@ const checkClient = async (tel: string) => {
             </button>
           </div>
 
+          {/* Detalle */}
           {!!lineas.length && (
             <div className="mb-3 overflow-x-auto">
               <table className="w-full border-collapse text-sm">
@@ -440,11 +500,13 @@ const checkClient = async (tel: string) => {
             </div>
           )}
 
+          {/* Total */}
           <div className="mb-3 rounded bg-purple-50 px-3 py-2 text-purple-900">
             <span className="font-semibold">Total:&nbsp;</span>
             <span className="text-lg font-bold">{CLP.format(total)}</span>
           </div>
 
+          {/* Fotos */}
           <div className="mb-2">
             <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
             <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
@@ -453,11 +515,12 @@ const checkClient = async (tel: string) => {
             )}
           </div>
 
+          {/* Mensajes */}
           {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
         </div>
       </div>
 
-      {/* Modal: nuevo cliente */}
+      {/* Modal: nuevo cliente (usa RPC clientes_upsert) */}
       <Modal open={showNewClient} onClose={() => setShowNewClient(false)}>
         <h3 className="mb-3 text-lg font-semibold text-gray-800">Nuevo Cliente</h3>
         <div className="grid gap-3">
@@ -465,13 +528,13 @@ const checkClient = async (tel: string) => {
           <input
             placeholder="NOMBRE DEL CLIENTE"
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => setNewName(e.target.value.toUpperCase())}
             className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
           />
           <input
             placeholder="DIRECCIÓN DEL CLIENTE"
             value={newAddress}
-            onChange={(e) => setNewAddress(e.target.value)}
+            onChange={(e) => setNewAddress(e.target.value.toUpperCase())}
             className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
           />
         </div>
@@ -502,6 +565,8 @@ const checkClient = async (tel: string) => {
     </main>
   );
 }
+
+
 
 
 
