@@ -8,10 +8,10 @@ import NewArticleModal from '@/app/components/NewArticleModal';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo   = { id: number; nombre: string; precio: number };
-type Linea      = { articulo_id: number; nombre: string; precio: number; qty: number };
+type Linea      = { articulo_id: number; nombre: string; precio: number; qty: number; estado: 'LAVAR' };
 
-/** Normaliza a 9 dígitos (solo números) */
 const normalizePhone = (v: string) => (v || '').replace(/\D+/g, '').slice(0, 9);
+const CLP = new Intl.NumberFormat('es-CL');
 
 function Modal({
   open,
@@ -70,8 +70,6 @@ export default function PedidoPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
-  const CLP = new Intl.NumberFormat('es-CL');
-
   const total = useMemo(
     () => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0),
     [lineas]
@@ -93,7 +91,7 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // 2) Cargar artículos: primero RPC, fallback a tabla "articulo"
+  // 2) Cargar artículos
   useEffect(() => {
     (async () => {
       setMsg('');
@@ -102,13 +100,11 @@ export default function PedidoPage() {
         setArticulos(rpc.data as Articulo[]);
         return;
       }
-
       const { data, error } = await supabase
         .from('articulo')
         .select('id,nombre,precio')
         .eq('activo', true)
         .order('nombre', { ascending: true });
-
       if (error) {
         setMsg(
           'Error al cargar artículos: ' +
@@ -121,7 +117,7 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // 3) Debounce para consulta del cliente (RPC)
+  // 3) Buscar cliente por teléfono (debounce)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onPhoneChange = (raw: string) => {
@@ -148,14 +144,12 @@ export default function PedidoPage() {
     }
   };
 
-  // 4) Buscar cliente por teléfono (MISMO ESQUEMA QUE CLIENTES)
   const checkClient = async (tel: string) => {
     try {
       setMsg('Buscando cliente...');
       const norm = normalizePhone(tel);
       if (norm.length !== 9) return;
 
-      // Usa el mismo RPC de clientes
       const { data, error } = await supabase.rpc('clientes_get_by_tel', {
         p_telefono: norm,
       });
@@ -190,7 +184,6 @@ export default function PedidoPage() {
     }
   };
 
-  // 5) Guardar cliente rápido (MISMO RPC clientes_upsert)
   const saveNewClient = async () => {
     const norm = normalizePhone(telefono);
     if (norm.length !== 9) {
@@ -222,7 +215,7 @@ export default function PedidoPage() {
     }
   };
 
-  // 6) Agregar artículo (incluye “Nuevo artículo…”)
+  // 4) Agregar artículo (fix “no lo toma” + grilla)
   const [showNewArt, setShowNewArt] = useState(false);
 
   const addArticulo = () => {
@@ -231,19 +224,35 @@ export default function PedidoPage() {
       setShowNewArt(true);
       return;
     }
-    const art = articulos.find((a) => a.id === Number(selectedId));
+    const artId = Number(selectedId);
+    const art = articulos.find((a) => a.id === artId);
     if (!art) return;
 
     setLineas((prev) => {
-      const idx = prev.findIndex((l) => l.articulo_id === art.id);
+      const idx = prev.findIndex((l) => l.articulo_id === artId);
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = { ...copy[idx], qty: copy[idx].qty + 1 };
         return copy;
       }
-      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1 }];
+      return [
+        ...prev,
+        { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' },
+      ];
     });
+    // limpiar selección para evitar “no lo toma”
     setSelectedId('');
+  };
+
+  // (opcional) auto agregar al cambiar el select
+  const onSelectArticulo = (v: string) => {
+    const val = v === '__new__' ? '__new__' : (Number(v) as any);
+    setSelectedId(val);
+    // si quieres auto-agregar sin pulsar botón:
+    if (v && v !== '__new__') {
+      // pequeña espera para que setSelectedId se establezca
+      setTimeout(addArticulo, 0);
+    }
   };
 
   const changeQty = (id: number, delta: number) => {
@@ -258,7 +267,7 @@ export default function PedidoPage() {
     setLineas((prev) => prev.filter((l) => l.articulo_id !== id));
   };
 
-  // 7) Subir fotos
+  // 5) Subir fotos
   const onFiles = async (files: FileList | null) => {
     if (!files || !nro) return;
     setLoading(true);
@@ -286,7 +295,7 @@ export default function PedidoPage() {
     }
   };
 
-  // 8) Guardar pedido vía RPC
+  // 6) Guardar pedido
   const save = async () => {
     if (!nro) return;
     const norm = normalizePhone(telefono);
@@ -312,6 +321,7 @@ export default function PedidoPage() {
         nombre: l.nombre,
         precio: l.precio,
         qty: l.qty,
+        estado: l.estado,
       }));
 
       const { error } = await supabase.rpc('pedido_upsert', {
@@ -330,7 +340,7 @@ export default function PedidoPage() {
     }
   };
 
-  // 9) Alta + agregar artículo desde el modal
+  // 7) Alta + agregar artículo desde el modal
   const handleCreateArticle = async ({
     nombre,
     precio,
@@ -353,7 +363,7 @@ export default function PedidoPage() {
       setArticulos((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       setLineas((prev) => [
         ...prev,
-        { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty },
+        { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' },
       ]);
 
       setSelectedId('');
@@ -370,14 +380,14 @@ export default function PedidoPage() {
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-4xl p-4 sm:p-6">
+      <div className="relative z-10 mx-auto w-full max-w-3xl p-4 sm:p-6">
         {/* Encabezado */}
         <header className="mb-4 flex items-center justify-between">
           <div className="text-white">
-            <div className="text-lg sm:text-xl">
-              N° <span className="font-bold">{nro ?? '...'}</span>
+            <div className="text-lg sm:text-2xl font-semibold">
+              N° <span className="font-extrabold">{nro ?? '...'}</span>
             </div>
-            <div className="text-sm text-white/80">
+            <div className="text-xs sm:text-sm text-white/80">
               {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp;{' '}
               {entrega && new Date(entrega).toLocaleDateString()}
             </div>
@@ -417,7 +427,7 @@ export default function PedidoPage() {
               onKeyDown={forceCheckOnEnter}
               className="w-full rounded border px-3 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500"
             />
-            {/* Nombre/Dirección autocompletados (solo lectura) */}
+            {/* Nombre/Dirección autocompletados */}
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <input
                 placeholder="NOMBRE (auto)"
@@ -438,10 +448,7 @@ export default function PedidoPage() {
           <div className="mb-3 flex gap-2">
             <select
               value={selectedId || ''}
-              onChange={(e) => {
-                const v = e.target.value === '__new__' ? '__new__' : (Number(e.target.value) as any);
-                setSelectedId(v);
-              }}
+              onChange={(e) => onSelectArticulo(e.target.value)}
               className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">SELECCIONE UN ARTÍCULO</option>
@@ -460,35 +467,41 @@ export default function PedidoPage() {
             </button>
           </div>
 
-          {/* Detalle */}
+          {/* Detalle estilo “grilla” */}
           {!!lineas.length && (
             <div className="mb-3 overflow-x-auto">
               <table className="w-full border-collapse text-sm">
-                <thead className="text-gray-500">
-                  <tr>
-                    <th className="border-b py-1 text-left">Artículo</th>
-                    <th className="w-24 border-b py-1">Precio</th>
-                    <th className="w-36 border-b py-1">Cantidad</th>
-                    <th className="w-24 border-b py-1"></th>
+                <thead>
+                  <tr className="bg-gray-50 text-gray-700">
+                    <th className="border px-2 py-1 text-left">Artículo</th>
+                    <th className="border px-2 py-1 w-24 text-center">Cantidad</th>
+                    <th className="border px-2 py-1 w-24 text-right">Valor</th>
+                    <th className="border px-2 py-1 w-28 text-right">Subtotal</th>
+                    <th className="border px-2 py-1 w-24 text-center">Estado</th>
+                    <th className="border px-2 py-1 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {lineas.map((l) => (
-                    <tr key={l.articulo_id}>
-                      <td className="border-b py-2">{l.nombre}</td>
-                      <td className="border-b py-2 text-right">{CLP.format(l.precio)}</td>
-                      <td className="border-b py-2">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">
-                            -
-                          </button>
-                          <span className="w-8 text-center">{l.qty}</span>
-                          <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">
-                            +
-                          </button>
+                    <tr key={l.articulo_id} className="align-middle">
+                      <td className="border px-2 py-1">{l.nombre}</td>
+                      <td className="border px-2 py-1">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded border px-2">-</button>
+                          <span className="w-6 text-center">{l.qty}</span>
+                          <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded border px-2">+</button>
                         </div>
                       </td>
-                      <td className="border-b py-2 text-right">
+                      <td className="border px-2 py-1 text-right">{CLP.format(l.precio)}</td>
+                      <td className="border px-2 py-1 text-right font-semibold">
+                        {CLP.format(l.precio * l.qty)}
+                      </td>
+                      <td className="border px-2 py-1 text-center">
+                        <span className="rounded bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700">
+                          {l.estado}
+                        </span>
+                      </td>
+                      <td className="border px-2 py-1 text-center">
                         <button onClick={() => removeLinea(l.articulo_id)} className="rounded border px-2 text-red-600">
                           X
                         </button>
@@ -503,7 +516,7 @@ export default function PedidoPage() {
           {/* Total */}
           <div className="mb-3 rounded bg-purple-50 px-3 py-2 text-purple-900">
             <span className="font-semibold">Total:&nbsp;</span>
-            <span className="text-lg font-bold">{CLP.format(total)}</span>
+            <span className="text-xl font-extrabold">{CLP.format(total)}</span>
           </div>
 
           {/* Fotos */}
@@ -520,7 +533,7 @@ export default function PedidoPage() {
         </div>
       </div>
 
-      {/* Modal: nuevo cliente (usa RPC clientes_upsert) */}
+      {/* Modal: nuevo cliente */}
       <Modal open={showNewClient} onClose={() => setShowNewClient(false)}>
         <h3 className="mb-3 text-lg font-semibold text-gray-800">Nuevo Cliente</h3>
         <div className="grid gap-3">
@@ -565,6 +578,7 @@ export default function PedidoPage() {
     </main>
   );
 }
+
 
 
 
