@@ -3,24 +3,51 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Save, Trash2, Plus, Minus, ImageIcon } from 'lucide-react';
-import { isAuth, DEV_OPEN } from '@/app/components/auth';
+import { ArrowLeft, Save } from 'lucide-react';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo = { id: number; nombre: string; precio: number };
 type Linea = { articulo_id: number; nombre: string; precio: number; qty: number };
 
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString('es-CL') : '';
+function useAuthGuard() {
+  const router = useRouter();
+  useEffect(() => {
+    const ok = typeof window !== 'undefined' && (localStorage.getItem('auth') === 'ok' || localStorage.getItem('auth') === '1');
+    if (!ok) router.replace('/login');
+  }, [router]);
+}
+
+// Pequeño modal simple
+function Modal({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+        {children}
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-md border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function PedidoPage() {
+  useAuthGuard();
   const router = useRouter();
-
-  // Si estás en modo seguro y no hay sesión, redirige. En modo libre no hace nada.
-  useEffect(() => {
-    if (DEV_OPEN) return;
-    if (!isAuth()) router.replace('/login');
-  }, [router]);
 
   // Cabecera
   const [nro, setNro] = useState<number | null>(null);
@@ -29,6 +56,11 @@ export default function PedidoPage() {
 
   // Cliente
   const [telefono, setTelefono] = useState('');
+  const [clienteNombre, setClienteNombre] = useState('');
+  const [clienteDireccion, setClienteDireccion] = useState('');
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newAddress, setNewAddress] = useState('');
 
   // Artículos
   const [articulos, setArticulos] = useState<Articulo[]>([]);
@@ -37,9 +69,8 @@ export default function PedidoPage() {
   // Líneas
   const [lineas, setLineas] = useState<Linea[]>([]);
 
-  // Fotos (paths subidos) + URLs firmadas para previsualizar
+  // Fotos (paths subidos)
   const [fotos, setFotos] = useState<string[]>([]);
-  const [fotoUrls, setFotoUrls] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
@@ -53,31 +84,134 @@ export default function PedidoPage() {
   // Cargar Nº siguiente + fechas
   useEffect(() => {
     (async () => {
-      try {
-        const { data, error } = await supabase.rpc('pedido_next_number');
-        if (error) throw error;
-        const row = (data as NextNumber[])[0];
-        setNro(row.nro);
-        setFecha(row.fecha);
-        setEntrega(row.entrega);
-      } catch (e: any) {
-        setMsg('Error al cargar correlativo: ' + (e?.message ?? e));
+      const { data, error } = await supabase.rpc('pedido_next_number');
+      if (error) {
+        setMsg('Error al cargar correlativo: ' + error.message);
+        return;
       }
+      const row = (data as NextNumber[])[0];
+      setNro(row.nro);
+      setFecha(row.fecha);
+      setEntrega(row.entrega);
     })();
   }, []);
 
-  // Cargar artículos activos
+  // Cargar artículos activos (si no existe la RPC en caché, uso fallback con SELECT)
   useEffect(() => {
     (async () => {
-      try {
-        const { data, error } = await supabase.rpc('active_articles_list');
-        if (error) throw error;
-        setArticulos((data as Articulo[]) || []);
-      } catch (e: any) {
-        setMsg('Error al cargar artículos: ' + (e?.message ?? e));
+      // intenta RPC
+      const rpc = await supabase.rpc('active_articles_list');
+      if (!rpc.error && rpc.data) {
+        setArticulos(rpc.data as Articulo[]);
+        return;
       }
+      // fallback SELECT
+      const { data, error } = await supabase
+        .from('articulos')
+        .select('id,nombre,precio')
+        .eq('activo', true)
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        setMsg(
+          'Error al cargar artículos: ' +
+            (rpc.error ? rpc.error.message + ' / ' : '') +
+            error.message
+        );
+        return;
+      }
+      setArticulos((data || []) as Articulo[]);
     })();
   }, []);
+
+  // --- Teléfono: sólo números y máx 9 ---
+  const onPhoneChange = (v: string) => {
+    const digits = v.replace(/\D+/g, '').slice(0, 9); // sólo números, máx 9
+    setTelefono(digits);
+    setClienteNombre('');
+    setClienteDireccion('');
+    // si llega a 9, buscamos
+    if (digits.length === 9) {
+      checkClient(digits);
+    } else {
+      // si borra, oculta modal si estaba abierto
+      setShowNewClient(false);
+    }
+  };
+
+  // Buscar cliente por teléfono
+  const checkClient = async (tel: string) => {
+    setMsg('');
+    // si tienes RPC, podrías usar: supabase.rpc('cliente_get', { p_telefono: tel })
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('nombre,direccion')
+      .eq('telefono', tel)
+      .maybeSingle();
+
+    if (error) {
+      setMsg('Error buscando cliente: ' + error.message);
+      return;
+    }
+
+    if (data) {
+      setClienteNombre(data.nombre || '');
+      setClienteDireccion(data.direccion || '');
+      setShowNewClient(false);
+      setNewName('');
+      setNewAddress('');
+    } else {
+      // No existe => abrir modal para crear rápido
+      setNewName('');
+      setNewAddress('');
+      setShowNewClient(true);
+    }
+  };
+
+  // Guardar cliente rápido
+  const saveNewClient = async () => {
+    if (!telefono || telefono.length !== 9) {
+      setMsg('Teléfono inválido para crear cliente.');
+      return;
+    }
+    if (!newName.trim()) {
+      setMsg('Ingresa el nombre del cliente.');
+      return;
+    }
+    setLoading(true);
+    setMsg('Guardando cliente...');
+    try {
+      // si tienes RPC clientes_upsert, úsala:
+      // const { error } = await supabase.rpc('clientes_upsert', {
+      //   p_telefono: telefono,
+      //   p_nombre: newName.trim().toUpperCase(),
+      //   p_direccion: newAddress.trim().toUpperCase(),
+      // });
+
+      // Fallback con upsert
+      const { error } = await supabase
+        .from('clientes')
+        .upsert(
+          {
+            telefono,
+            nombre: newName.trim().toUpperCase(),
+            direccion: newAddress.trim().toUpperCase(),
+          },
+          { onConflict: 'telefono' }
+        );
+
+      if (error) throw error;
+
+      setClienteNombre(newName.trim().toUpperCase());
+      setClienteDireccion(newAddress.trim().toUpperCase());
+      setShowNewClient(false);
+      setMsg('✅ Cliente guardado.');
+    } catch (e: any) {
+      setMsg('❌ ' + (e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Añadir artículo seleccionado
   const addArticulo = () => {
@@ -86,6 +220,7 @@ export default function PedidoPage() {
     if (!art) return;
 
     setLineas((prev) => {
+      // si ya existe, sumar qty
       const idx = prev.findIndex((l) => l.articulo_id === art.id);
       if (idx >= 0) {
         const copy = [...prev];
@@ -132,29 +267,7 @@ export default function PedidoPage() {
         if (error) throw error;
         uploaded.push(path);
       }
-
-      // guardamos paths
       setFotos((prev) => [...prev, ...uploaded]);
-
-      // generamos URLs firmadas para previsualizar (si el bucket es privado)
-      const urlPairs: [string, string][] = [];
-      for (const path of uploaded) {
-        const { data, error } = await supabase.storage
-          .from('pedido_fotos')
-          .createSignedUrl(path, 60 * 60); // 1 hora
-        if (error) {
-          // si falla la URL firmada, igual seguimos (se puede refrescar luego)
-          continue;
-        }
-        urlPairs.push([path, data.signedUrl]);
-      }
-
-      setFotoUrls((prev) => {
-        const next = { ...prev };
-        for (const [p, u] of urlPairs) next[p] = u;
-        return next;
-      });
-
       setMsg(`📷 ${uploaded.length} foto(s) subida(s).`);
     } catch (e: any) {
       setMsg('Error al subir fotos: ' + (e?.message ?? e));
@@ -163,21 +276,11 @@ export default function PedidoPage() {
     }
   };
 
-  // Eliminar foto del listado local (no la borra del storage aquí)
-  const removeFoto = (path: string) => {
-    setFotos((prev) => prev.filter((p) => p !== path));
-    setFotoUrls((prev) => {
-      const next = { ...prev };
-      delete next[path];
-      return next;
-    });
-  };
-
   // Guardar pedido (RPC upsert)
   const save = async () => {
     if (!nro) return;
-    if (!telefono.trim()) {
-      setMsg('Ingresa el teléfono del cliente.');
+    if (telefono.length !== 9) {
+      setMsg('Ingresa un teléfono válido (9 dígitos).');
       return;
     }
     if (lineas.length === 0) {
@@ -185,10 +288,15 @@ export default function PedidoPage() {
       return;
     }
     setLoading(true);
-    setMsg('Guardando...');
-
+    setMsg('Guardando pedido...');
     try {
-      const p_pedido = { nro, fecha, entrega, telefono, total };
+      const p_pedido = {
+        nro,
+        fecha,
+        entrega,
+        telefono,
+        total,
+      };
       const p_lineas = lineas.map((l) => ({
         articulo_id: l.articulo_id,
         nombre: l.nombre,
@@ -201,12 +309,10 @@ export default function PedidoPage() {
         p_lineas,
         p_fotos: fotos,
       });
-      if (error) throw error;
 
+      if (error) throw error;
       setMsg('✅ Pedido guardado');
-      // Opcional: limpiar y pedir nuevo correlativo
-      // setLineas([]); setFotos([]); setTelefono('');
-      // const { data } = await supabase.rpc('pedido_next_number'); ... (y refrescas nro/fechas)
+      // router.push('/menu');
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -226,15 +332,16 @@ export default function PedidoPage() {
             <div className="text-lg sm:text-xl">
               N° <span className="font-bold">{nro ?? '...'}</span>
             </div>
-            <div className="text-white/80 text-sm">
-              {fmtDate(fecha)} &nbsp;→&nbsp; {fmtDate(entrega)}
+            <div className="text-sm text-white/80">
+              {fecha && new Date(fecha).toLocaleDateString()} &nbsp;→&nbsp;{' '}
+              {entrega && new Date(entrega).toLocaleDateString()}
             </div>
           </div>
 
           <div className="flex gap-2">
             <button
               onClick={() => router.push('/menu')}
-              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 hover:bg-white shadow"
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white"
               title="Volver"
             >
               <ArrowLeft className="text-violet-700" size={18} />
@@ -242,7 +349,7 @@ export default function PedidoPage() {
             <button
               disabled={loading}
               onClick={save}
-              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 hover:bg-white shadow disabled:opacity-60"
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow hover:bg-white disabled:opacity-60"
               title="Guardar"
             >
               <Save className="text-violet-700" size={18} />
@@ -256,11 +363,21 @@ export default function PedidoPage() {
           <div className="mb-3">
             <label className="mb-1 block text-xs text-gray-500">TELÉFONO</label>
             <input
+              inputMode="numeric"
+              pattern="[0-9]*"
               placeholder="EJ: 998877665"
               value={telefono}
-              onChange={(e) => setTelefono(e.target.value.replace(/\s+/g, ''))}
-              className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
+              onChange={(e) => onPhoneChange(e.target.value)}
+              className="w-full rounded border px-3 py-2 text-base outline-none focus:ring-2 focus:ring-purple-500"
             />
+
+            {/* Info de cliente */}
+            {!!clienteNombre && (
+              <div className="mt-2 text-sm text-gray-700">
+                <span className="font-semibold">Cliente:</span> {clienteNombre}
+                {clienteDireccion ? ` — ${clienteDireccion}` : ''}
+              </div>
+            )}
           </div>
 
           {/* Select artículos */}
@@ -281,12 +398,7 @@ export default function PedidoPage() {
             </select>
             <button
               onClick={addArticulo}
-              disabled={!selectedId}
-              className={`rounded px-3 py-2 font-semibold text-white ${
-                !selectedId
-                  ? 'bg-purple-400 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700'
-              }`}
+              className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700"
             >
               Añadir
             </button>
@@ -299,9 +411,9 @@ export default function PedidoPage() {
                 <thead className="text-gray-500">
                   <tr>
                     <th className="border-b py-1 text-left">Artículo</th>
-                    <th className="border-b py-1 w-24">Precio</th>
-                    <th className="border-b py-1 w-36">Cantidad</th>
-                    <th className="border-b py-1 w-24"></th>
+                    <th className="w-24 border-b py-1">Precio</th>
+                    <th className="w-36 border-b py-1">Cantidad</th>
+                    <th className="w-24 border-b py-1"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -312,31 +424,28 @@ export default function PedidoPage() {
                         {l.precio.toFixed(2)}
                       </td>
                       <td className="border-b py-2">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => changeQty(l.articulo_id, -1)}
-                            className="rounded border px-2 py-1"
-                            title="Restar"
+                            className="rounded border px-2"
                           >
-                            <Minus size={16} />
+                            -
                           </button>
                           <span className="w-8 text-center">{l.qty}</span>
                           <button
                             onClick={() => changeQty(l.articulo_id, +1)}
-                            className="rounded border px-2 py-1"
-                            title="Sumar"
+                            className="rounded border px-2"
                           >
-                            <Plus size={16} />
+                            +
                           </button>
                         </div>
                       </td>
                       <td className="border-b py-2 text-right">
                         <button
                           onClick={() => removeLinea(l.articulo_id)}
-                          className="rounded border px-2 py-1 text-red-600"
-                          title="Eliminar"
+                          className="rounded border px-2 text-red-600"
                         >
-                          <Trash2 size={16} />
+                          X
                         </button>
                       </td>
                     </tr>
@@ -354,58 +463,11 @@ export default function PedidoPage() {
 
           {/* Subida de fotos */}
           <div className="mb-2">
-            <label className="mb-1 block text-xs text-gray-500">
-              FOTOS (opcional)
-            </label>
-            <div className="flex items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
-                <ImageIcon size={16} />
-                <span>Seleccionar imágenes…</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => onFiles(e.target.files)}
-                  className="hidden"
-                />
-              </label>
-              {!!fotos.length && (
-                <span className="text-xs text-gray-600">
-                  {fotos.length} archivo(s)
-                </span>
-              )}
-            </div>
-
-            {/* Previews */}
+            <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
+            <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
             {!!fotos.length && (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {fotos.map((p) => (
-                  <div key={p} className="relative overflow-hidden rounded-lg border">
-                    {/* Si no existe URL firmada aún, no rompe la UI */}
-                    {fotoUrls[p] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={fotoUrls[p]}
-                        alt={p}
-                        className="h-28 w-full object-cover"
-                      />
-                    ) : (
-                      <div className="grid h-28 w-full place-items-center text-xs text-gray-500">
-                        Generando vista previa…
-                      </div>
-                    )}
-                    <button
-                      onClick={() => removeFoto(p)}
-                      className="absolute right-2 top-2 rounded-full bg-white/90 p-1 text-red-600 shadow hover:bg-white"
-                      title="Quitar"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                    <div className="truncate px-2 py-1 text-[10px] text-gray-500">
-                      {p}
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-1 text-xs text-gray-600">
+                {fotos.length} archivo(s) seleccionado(s)
               </div>
             )}
           </div>
@@ -414,6 +476,46 @@ export default function PedidoPage() {
           {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
         </div>
       </div>
+
+      {/* Modal: nuevo cliente */}
+      <Modal open={showNewClient} onClose={() => setShowNewClient(false)}>
+        <h3 className="mb-3 text-lg font-semibold text-gray-800">Nuevo Cliente</h3>
+        <div className="grid gap-3">
+          <input
+            disabled
+            value={telefono}
+            className="w-full rounded border bg-gray-100 px-3 py-2 text-gray-600"
+          />
+          <input
+            placeholder="NOMBRE DEL CLIENTE"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <input
+            placeholder="DIRECCIÓN DEL CLIENTE"
+            value={newAddress}
+            onChange={(e) => setNewAddress(e.target.value)}
+            className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={() => setShowNewClient(false)}
+            className="rounded-md border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={saveNewClient}
+            disabled={loading}
+            className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
+          >
+            {loading ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }
