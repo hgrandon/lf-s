@@ -2,7 +2,7 @@
 import { Suspense } from 'react';
 import NuevoPedido from './NuevoPedido';
 
-export const dynamic = 'force-dynamic'; // evita prerender estático con query params
+export const dynamic = 'force-dynamic';
 
 export default function Page() {
   return (

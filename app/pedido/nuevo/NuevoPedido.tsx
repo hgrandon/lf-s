@@ -1,7 +1,7 @@
 // app/pedido/nuevo/NuevoPedido.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound } from 'lucide-react';
@@ -16,13 +16,12 @@ const CLP = new Intl.NumberFormat('es-CL');
 
 export default function NuevoPedido() {
   const router = useRouter();
-  const search = useSearchParams();
-  const tel = (search.get('tel') || '').replace(/\D+/g, '').slice(0, 9);
+  const params = useSearchParams();
+  const tel = (params.get('tel') || '').replace(/\D+/g, '').slice(0, 9);
 
   const [nro, setNro] = useState<number | null>(null);
   const [fecha, setFecha] = useState('');
   const [entrega, setEntrega] = useState('');
-
   const [cliente, setCliente] = useState<Cliente | null>(null);
 
   const [articulos, setArticulos] = useState<Articulo[]>([]);
@@ -30,96 +29,79 @@ export default function NuevoPedido() {
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [fotos, setFotos] = useState<string[]>([]);
   const [showNewArt, setShowNewArt] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
-  const total = useMemo(() => lineas.reduce((a, l) => a + l.precio * l.qty, 0), [lineas]);
+  const total = useMemo(() => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0), [lineas]);
 
   useEffect(() => {
     if (!tel || tel.length !== 9) {
-      router.replace('/pedido'); // sin teléfono => volver a búsqueda
+      router.replace('/pedido'); // si entran sin tel, volvemos al buscador
       return;
     }
-
     (async () => {
-      setMsg('');
-      // correlativo y fechas
-      const next = await supabase.rpc('pedido_next_number');
-      if (!next.error && next.data) {
-        const row = (next.data as NextNumber[])[0];
-        setNro(row.nro);
-        setFecha(row.fecha);
-        setEntrega(row.entrega);
-      } else if (next.error) {
-        setMsg('Error correlativo: ' + next.error.message);
-      }
+      try {
+        // correlativo
+        const { data, error } = await supabase.rpc('pedido_next_number');
+        if (error) throw error;
+        const row = (data as NextNumber[])[0];
+        setNro(row.nro); setFecha(row.fecha); setEntrega(row.entrega);
 
-      // cliente
-      const q = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
-      if (!q.error) {
+        // cliente
+        const q = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
+        if (q.error) throw q.error;
         const cli = ((q.data as Cliente[] | null)?.[0]) ?? null;
-        if (!cli) {
-          router.replace('/pedido');
-          return;
-        }
+        if (!cli) { router.replace('/pedido'); return; }
         setCliente(cli);
-      } else {
-        setMsg('Error cliente: ' + q.error.message);
-      }
 
-      // artículos (RPC, fallback a tabla)
-      const rpc = await supabase.rpc('active_articles_list');
-      if (!rpc.error && rpc.data) {
-        setArticulos(rpc.data as Articulo[]);
-      } else {
-        const f = await supabase
-          .from('articulo')
-          .select('id,nombre,precio')
-          .eq('activo', true)
-          .order('nombre');
-        if (!f.error) setArticulos((f.data || []) as Articulo[]);
-        else setMsg('Error artículos: ' + (rpc.error?.message ?? f.error?.message));
+        // artículos (rpc -> fallback)
+        const rpc = await supabase.rpc('active_articles_list');
+        if (!rpc.error && rpc.data) {
+          setArticulos(rpc.data as Articulo[]);
+        } else {
+          const f = await supabase
+            .from('articulo')
+            .select('id,nombre,precio')
+            .eq('activo', true)
+            .order('nombre', { ascending: true });
+          if (f.error) throw f.error;
+          setArticulos((f.data || []) as Articulo[]);
+        }
+      } catch (e: any) {
+        setMsg('Error cargando datos: ' + (e?.message ?? e));
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
-  // seleccionar/añadir artículo
-  const addArticulo = () => {
+  function addArticulo() {
     if (!selectedId) return;
     if (selectedId === '__new__') { setShowNewArt(true); return; }
     const art = articulos.find(a => a.id === Number(selectedId));
     if (!art) return;
-
     setLineas(prev => {
       const i = prev.findIndex(l => l.articulo_id === art.id);
-      if (i >= 0) {
-        const copy = [...prev];
-        copy[i] = { ...copy[i], qty: copy[i].qty + 1 };
-        return copy;
-      }
+      if (i >= 0) { const c = [...prev]; c[i] = { ...c[i], qty: c[i].qty + 1 }; return c; }
       return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' }];
     });
     setSelectedId('');
-  };
+  }
 
-  const onSelectArticulo = (v: string) => {
+  function onSelectArticulo(v: string) {
     const val = v === '__new__' ? '__new__' : (Number(v) as any);
     setSelectedId(val);
     if (v && v !== '__new__') setTimeout(addArticulo, 0);
-  };
+  }
 
-  const changeQty = (id: number, d: number) => {
+  function changeQty(id: number, d: number) {
     setLineas(prev => prev.map(l => l.articulo_id === id ? { ...l, qty: Math.max(1, l.qty + d) } : l));
-  };
+  }
 
-  const removeLinea = (id: number) => {
+  function removeLinea(id: number) {
     setLineas(prev => prev.filter(l => l.articulo_id !== id));
-  };
+  }
 
-  // subir fotos
-  const onFiles = async (files: FileList | null) => {
+  async function onFiles(files: FileList | null) {
     if (!files || !nro) return;
     setLoading(true);
     try {
@@ -137,38 +119,31 @@ export default function NuevoPedido() {
       setMsg(`📷 ${uploaded.length} foto(s) subida(s).`);
     } catch (e: any) {
       setMsg('Error subiendo fotos: ' + (e?.message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  };
+    } finally { setLoading(false); }
+  }
 
-  // guardar pedido
-  const save = async () => {
+  async function save() {
     if (!nro || !cliente) return;
-    if (lineas.length === 0) {
-      setMsg('Agrega al menos un artículo.');
-      return;
-    }
-    setLoading(true);
-    setMsg('Guardando pedido...');
+    if (lineas.length === 0) { setMsg('Agrega al menos un artículo.'); return; }
+    setLoading(true); setMsg('Guardando pedido...');
     try {
       const p_pedido = { nro, fecha, entrega, telefono: cliente.telefono, total };
       const p_lineas = lineas.map(l => ({
-        articulo_id: l.articulo_id, nombre: l.nombre, precio: l.precio, qty: l.qty, estado: l.estado,
+        articulo_id: l.articulo_id, nombre: l.nombre, precio: l.precio, qty: l.qty, estado: l.estado
       }));
-      const { error } = await supabase.rpc('pedido_upsert', { p_pedido, p_lineas, p_fotos: fotos });
+      const { error } = await supabase.rpc('pedido_upsert', {
+        p_pedido, p_lineas, p_fotos: fotos
+      });
       if (error) throw error;
       setMsg('✅ Pedido guardado');
       // router.push('/menu');
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  };
+    } finally { setLoading(false); }
+  }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
+    <div className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
       <div className="relative z-10 mx-auto w-full max-w-md sm:max-w-lg p-4 sm:p-6">
         {/* Header */}
@@ -231,7 +206,7 @@ export default function NuevoPedido() {
             </button>
           </div>
 
-          {/* Listado artículos */}
+          {/* Seleccionados */}
           {!!lineas.length && (
             <>
               <h3 className="mb-2 text-sm font-semibold text-gray-700">Artículos Seleccionados</h3>
@@ -247,19 +222,15 @@ export default function NuevoPedido() {
                       <span className="w-6 text-center">{l.qty}</span>
                       <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded-full border px-3 py-1">+</button>
                     </div>
-                    <div className="min-w-[90px] text-right font-semibold">
-                      {CLP.format(l.precio * l.qty)}
-                    </div>
-                    <button onClick={() => removeLinea(l.articulo_id)} className="text-red-600 text-sm underline">
-                      Quitar
-                    </button>
+                    <div className="min-w-[80px] text-right font-semibold">{CLP.format(l.precio * l.qty)}</div>
+                    <button onClick={() => removeLinea(l.articulo_id)} className="text-red-600 text-sm underline">Quitar</button>
                   </div>
                 ))}
               </div>
             </>
           )}
 
-          {/* Total y Guardar */}
+          {/* Total & guardar */}
           <div className="mt-4 flex items-center justify-between">
             <div className="text-xl font-extrabold text-gray-900">Total {CLP.format(total)}</div>
             <button
@@ -281,40 +252,24 @@ export default function NuevoPedido() {
         </div>
       </div>
 
-      {/* Modal: nuevo artículo */}
-      <NewArticleModal
-        open={showNewArt}
-        onClose={() => setShowNewArt(false)}
-        onCreate={({ nombre, precio, qty }) =>
-          handleCreateArticle({ nombre, precio, qty })
-        }
-      />
-    </main>
+      <NewArticleModal open={showNewArt} onClose={() => setShowNewArt(false)} onCreate={async ({ nombre, precio, qty }) => {
+        try {
+          setLoading(true);
+          const { data, error } = await supabase
+            .from('articulo')
+            .insert({ nombre, precio, activo: true })
+            .select('id,nombre,precio')
+            .single();
+          if (error) throw error;
+          const created = data as Articulo;
+          setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+          setLineas(prev => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }]);
+          setShowNewArt(false); setSelectedId('');
+          setMsg('✅ Artículo creado y agregado.');
+        } catch (e: any) {
+          setMsg('❌ ' + (e?.message ?? e));
+        } finally { setLoading(false); }
+      }} />
+    </div>
   );
-
-  async function handleCreateArticle({
-    nombre, precio, qty,
-  }: { nombre: string; precio: number; qty: number; }) {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('articulo')
-        .insert({ nombre, precio, activo: true })
-        .select('id,nombre,precio')
-        .single();
-      if (error) throw error;
-      const created = data as Articulo;
-      setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      setLineas(prev => [
-        ...prev,
-        { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }
-      ]);
-      setShowNewArt(false);
-      setMsg('✅ Artículo creado y agregado.');
-    } catch (e: any) {
-      setMsg('❌ ' + (e?.message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  }
 }
