@@ -40,27 +40,27 @@ export default function NuevoPedidoPage() {
 
   useEffect(() => {
     if (!tel || tel.length !== 9) {
-      router.replace('/pedido'); // sin teléfono, vuelve a buscar
+      router.replace('/pedido');
       return;
     }
     (async () => {
-      // correlativo y fechas
+      // 1) correlativo y fechas
       const { data, error } = await supabase.rpc('pedido_next_number');
       if (!error && data) {
         const row = (data as NextNumber[])[0];
         setNro(row.nro);
         setFecha(row.fecha);
-        setEntrega(row.entrega); // <-- CORREGIDO (sin carácter invisible)
+        setEntrega(row.entrega);
       } else if (error) {
         setMsg('Error correlativo: ' + error.message);
       }
 
-      // cliente
+      // 2) cliente
       const q = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
       if (!q.error) {
         const cli = ((q.data as Cliente[] | null)?.[0]) ?? null;
         if (!cli) {
-          router.replace('/pedido'); // si no hay cliente, vuelve
+          router.replace('/pedido'); // si no existe, vuelve a buscar
           return;
         }
         setCliente(cli);
@@ -68,7 +68,7 @@ export default function NuevoPedidoPage() {
         setMsg('Error cliente: ' + q.error.message);
       }
 
-      // artículos (RPC, fallback a tabla)
+      // 3) artículos (RPC, fallback a tabla)
       const rpc = await supabase.rpc('active_articles_list');
       if (!rpc.error && rpc.data) {
         setArticulos(rpc.data as Articulo[]);
@@ -77,9 +77,12 @@ export default function NuevoPedidoPage() {
           .from('articulo')
           .select('id,nombre,precio')
           .eq('activo', true)
-          .order('nombre');
-        if (!f.error) setArticulos((f.data || []) => (f.data || []) as Articulo[]);
-        else setMsg('Error artículos: ' + (rpc.error?.message ?? f.error?.message));
+          .order('nombre', { ascending: true });
+        if (!f.error && f.data) {
+          setArticulos(f.data as Articulo[]);
+        } else {
+          setMsg('Error artículos: ' + (rpc.error?.message ?? f.error?.message ?? 'desconocido'));
+        }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,7 +108,7 @@ export default function NuevoPedidoPage() {
   const onSelectArticulo = (v: string) => {
     const val = v === '__new__' ? '__new__' : (Number(v) as any);
     setSelectedId(val);
-    if (v && v !== '__new__') setTimeout(addArticulo, 0); // autoagrega al elegir
+    if (v && v !== '__new__') setTimeout(addArticulo, 0);
   };
 
   const changeQty = (id: number, d: number) => {
