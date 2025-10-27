@@ -10,6 +10,9 @@ type Cliente = { telefono: string; nombre: string; direccion: string };
 const normalizePhone = (v: string) => (v || '').replace(/\D+/g, '').slice(0, 9);
 const toUC = (s: string) => (s || '').trim().toUpperCase();
 
+// Cambia a false si no quieres redirección automática
+const AUTO_REDIRECT = true;
+
 function Modal({
   open,
   onClose,
@@ -42,7 +45,7 @@ export default function BuscarClientePage() {
 
   const phoneRef = useRef<HTMLInputElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastQueriedRef = useRef<string>('');
+  const lastQueryRef = useRef<string>('');
 
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -55,45 +58,65 @@ export default function BuscarClientePage() {
   const [searching, setSearching] = useState(false);
   const [msg, setMsg] = useState<string>('');
 
+  // focus inicial
   useEffect(() => {
     const t = setTimeout(() => phoneRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, []);
 
-  const lookup = useCallback(async (tel: string) => {
-    if (tel.length !== 9) return;
-    setSearching(true);
-    setMsg('Buscando cliente...');
-    lastQueriedRef.current = tel;
+  const redirectToNuevo = useCallback(
+    (tel: string) => {
+      router.replace(`/pedido/nuevo?tel=${tel}`);
+    },
+    [router]
+  );
 
-    const { data, error } = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
+  // Lookup de cliente por teléfono
+  const lookup = useCallback(
+    async (tel: string) => {
+      if (tel.length !== 9) return;
+      setSearching(true);
+      setMsg('Buscando cliente...');
+      lastQueryRef.current = tel;
 
-    if (lastQueriedRef.current !== tel) {
-      setSearching(false);
-      return;
-    }
+      const { data, error } = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
 
-    if (error) {
-      setMsg('Error: ' + error.message);
-      setCliente(null);
-      setShowNewClient(false);
-    } else {
-      const cli = (data as Cliente[] | null)?.[0] ?? null;
-      if (cli) {
-        setCliente(cli);
-        setShowNewClient(false);
-        setMsg('✅ Cliente encontrado');
-      } else {
-        setCliente(null);
-        setNewName('');
-        setNewAddress('');
-        setShowNewClient(true);
-        setMsg('⚠️ Teléfono no existe. Registra el cliente.');
+      // Evitar carreras si el usuario escribe otro número durante la espera
+      if (lastQueryRef.current !== tel) {
+        setSearching(false);
+        return;
       }
-    }
-    setSearching(false);
-  }, []);
 
+      if (error) {
+        setMsg('Error: ' + error.message);
+        setCliente(null);
+        setShowNewClient(false);
+      } else {
+        const cli = (data as Cliente[] | null)?.[0] ?? null;
+        if (cli) {
+          setCliente(cli);
+          setShowNewClient(false);
+          setMsg('✅ Cliente encontrado');
+
+          // Redirección automática
+          if (AUTO_REDIRECT) {
+            // pequeño delay visual opcional
+            setTimeout(() => redirectToNuevo(cli.telefono), 150);
+          }
+        } else {
+          setCliente(null);
+          setNewName('');
+          setNewAddress('');
+          setShowNewClient(true);
+          setMsg('⚠️ Teléfono no existe. Registra el cliente.');
+        }
+      }
+      setSearching(false);
+    },
+    [redirectToNuevo]
+  );
+
+  // On change con debounce
   const onPhoneChange = (raw: string) => {
     const digits = normalizePhone(raw);
     setTelefono(digits);
@@ -107,13 +130,12 @@ export default function BuscarClientePage() {
     }
   };
 
+  // Enter fuerza búsqueda inmediata
   const onPhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       const tel = normalizePhone(telefono);
-      if (tel.length === 9) {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        lookup(tel);
-      }
+      if (tel.length === 9) lookup(tel);
     }
   };
 
@@ -123,6 +145,7 @@ export default function BuscarClientePage() {
     };
   }, []);
 
+  // Crear cliente rápido (si no existe)
   const saveNewClient = async () => {
     const tel = normalizePhone(telefono);
     if (tel.length !== 9) return setMsg('Teléfono inválido.');
@@ -148,6 +171,10 @@ export default function BuscarClientePage() {
       setCliente(created);
       setShowNewClient(false);
       setMsg('✅ Cliente guardado');
+
+      if (AUTO_REDIRECT) {
+        setTimeout(() => redirectToNuevo(tel), 150);
+      }
     } catch (e: any) {
       setMsg('❌ ' + (e?.message ?? e));
     } finally {
@@ -155,15 +182,17 @@ export default function BuscarClientePage() {
     }
   };
 
+  // Botón manual de continuar (por si desactivas AUTO_REDIRECT)
   const goCrearPedido = () => {
     if (!cliente) return;
-    router.push(`/pedido/nuevo?tel=${cliente.telefono}`);
+    redirectToNuevo(cliente.telefono);
   };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.12),transparent)]" />
       <div className="relative z-10 mx-auto w-full max-w-md sm:max-w-lg p-4 sm:p-6">
+        {/* Header */}
         <header className="mb-4 flex items-center justify-between text-white">
           <h1 className="text-xl sm:text-2xl font-bold">Nuevo Pedido</h1>
           <button
@@ -176,6 +205,7 @@ export default function BuscarClientePage() {
           </button>
         </header>
 
+        {/* Card */}
         <div className="rounded-xl bg-white p-4 shadow">
           <h2 className="mb-3 text-2xl font-semibold text-gray-900">Buscar Cliente</h2>
 
@@ -201,33 +231,35 @@ export default function BuscarClientePage() {
 
           {searching && <div className="mb-2 text-sm text-gray-500">Buscando cliente…</div>}
 
-          {cliente && (
-            <div className="mb-4 rounded-xl border bg-white shadow-sm">
-              <div className="flex items-center justify-between p-3">
-                <div>
-                  <div className="text-xs text-gray-500">Cliente</div>
-                  <div className="text-base font-semibold text-gray-900">{cliente.nombre}</div>
-                  <div className="text-sm text-gray-600">{cliente.direccion}</div>
-                </div>
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-purple-50 text-purple-700">
-                  <UserRound size={18} />
+          {/* Tarjeta preview (si deseas que se vea antes de redirigir) */}
+          {cliente && !AUTO_REDIRECT && (
+            <>
+              <div className="mb-4 rounded-xl border bg-white shadow-sm">
+                <div className="flex items-center justify-between p-3">
+                  <div>
+                    <div className="text-xs text-gray-500">Cliente</div>
+                    <div className="text-base font-semibold text-gray-900">{cliente.nombre}</div>
+                    <div className="text-sm text-gray-600">{cliente.direccion}</div>
+                  </div>
+                  <div className="grid h-10 w-10 place-items-center rounded-full bg-purple-50 text-purple-700">
+                    <UserRound size={18} />
+                  </div>
                 </div>
               </div>
-            </div>
+              <button
+                onClick={goCrearPedido}
+                className="mt-2 w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700"
+              >
+                Crear Pedido
+              </button>
+            </>
           )}
-
-          <button
-            onClick={goCrearPedido}
-            disabled={!cliente}
-            className="mt-2 w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Crear Pedido
-          </button>
 
           {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
         </div>
       </div>
 
+      {/* Modal: nuevo cliente */}
       <Modal open={showNewClient} onClose={() => setShowNewClient(false)}>
         <h3 className="mb-3 text-lg font-semibold text-gray-800">Nuevo Cliente</h3>
         <div className="grid gap-3">
