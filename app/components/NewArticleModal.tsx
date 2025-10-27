@@ -6,7 +6,7 @@ type Props = {
   open: boolean;
   initialName?: string;
   onClose: () => void;
-  onCreate: (payload: { nombre: string; precio: number; qty: number }) => void;
+  onCreate: (payload: { nombre: string; precio: number; qty: number }) => Promise<void>;
 };
 
 export default function NewArticleModal({ open, initialName = '', onClose, onCreate }: Props) {
@@ -14,6 +14,7 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
   const [precio, setPrecio] = useState<string>('');
   const [qty, setQty] = useState<string>('1');
   const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -21,12 +22,13 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
       setPrecio('');
       setQty('1');
       setMsg('');
+      setSaving(false);
     }
   }, [open, initialName]);
 
   if (!open) return null;
 
-  const save = () => {
+  const save = async () => {
     setMsg('');
     const nombreClean = nombre.trim();
     const p = Number(precio);
@@ -36,7 +38,14 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
     if (!Number.isFinite(p) || p <= 0) return setMsg('Precio inválido.');
     if (!Number.isFinite(q) || q <= 0) return setMsg('Cantidad inválida.');
 
-    onCreate({ nombre: nombreClean, precio: p, qty: q });
+    try {
+      setSaving(true);
+      await onCreate({ nombre: nombreClean, precio: p, qty: q });
+    } catch (e: any) {
+      setMsg('❌ Error al crear: ' + (e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -48,7 +57,7 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
           <input
             placeholder="NOMBRE DEL ARTÍCULO"
             value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            onChange={(e) => setNombre(e.target.value.toUpperCase())}
             className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
           />
           <input
@@ -71,13 +80,15 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
         <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             onClick={save}
-            className="rounded-xl bg-purple-600 py-2 font-semibold text-white hover:bg-purple-700"
+            disabled={saving}
+            className="rounded-xl bg-purple-600 py-2 font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
           >
-            Guardar
+            {saving ? 'Guardando…' : 'Guardar'}
           </button>
           <button
             onClick={onClose}
-            className="rounded-xl bg-gray-100 py-2 font-semibold text-gray-700 hover:bg-gray-200"
+            disabled={saving}
+            className="rounded-xl bg-gray-100 py-2 font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-60"
           >
             Salir
           </button>
@@ -86,4 +97,5 @@ export default function NewArticleModal({ open, initialName = '', onClose, onCre
     </div>
   );
 }
+
 
