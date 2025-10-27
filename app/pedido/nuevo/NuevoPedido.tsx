@@ -1,7 +1,7 @@
 // app/pedido/nuevo/NuevoPedido.tsx
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound } from 'lucide-react';
@@ -36,7 +36,7 @@ export default function NuevoPedido() {
 
   useEffect(() => {
     if (!tel || tel.length !== 9) {
-      router.replace('/pedido'); // si entran sin tel, volvemos al buscador
+      router.replace('/pedido');
       return;
     }
     (async () => {
@@ -54,7 +54,7 @@ export default function NuevoPedido() {
         if (!cli) { router.replace('/pedido'); return; }
         setCliente(cli);
 
-        // artículos (rpc -> fallback)
+        // artículos
         const rpc = await supabase.rpc('active_articles_list');
         if (!rpc.error && rpc.data) {
           setArticulos(rpc.data as Articulo[]);
@@ -71,26 +71,37 @@ export default function NuevoPedido() {
         setMsg('Error cargando datos: ' + (e?.message ?? e));
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
-  function addArticulo() {
-    if (!selectedId) return;
-    if (selectedId === '__new__') { setShowNewArt(true); return; }
-    const art = articulos.find(a => a.id === Number(selectedId));
-    if (!art) return;
+  /** Agrega o incrementa el artículo indicado */
+  function pushArticulo(art: Articulo) {
     setLineas(prev => {
       const i = prev.findIndex(l => l.articulo_id === art.id);
-      if (i >= 0) { const c = [...prev]; c[i] = { ...c[i], qty: c[i].qty + 1 }; return c; }
+      if (i >= 0) {
+        const c = [...prev];
+        c[i] = { ...c[i], qty: c[i].qty + 1 };
+        return c;
+        }
       return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' }];
     });
-    setSelectedId('');
   }
 
+  /** Cambio del select:
+   * - si es "__new__": abre modal
+   * - si es un ID válido: agrega inmediatamente
+   */
   function onSelectArticulo(v: string) {
-    const val = v === '__new__' ? '__new__' : (Number(v) as any);
-    setSelectedId(val);
-    if (v && v !== '__new__') setTimeout(addArticulo, 0);
+    if (!v) return;
+    if (v === '__new__') {
+      setSelectedId('');
+      setShowNewArt(true);
+      return;
+    }
+    const id = Number(v);
+    const art = articulos.find(a => a.id === id);
+    if (art) pushArticulo(art);
+    setSelectedId('');
   }
 
   function changeQty(id: number, d: number) {
@@ -131,9 +142,7 @@ export default function NuevoPedido() {
       const p_lineas = lineas.map(l => ({
         articulo_id: l.articulo_id, nombre: l.nombre, precio: l.precio, qty: l.qty, estado: l.estado
       }));
-      const { error } = await supabase.rpc('pedido_upsert', {
-        p_pedido, p_lineas, p_fotos: fotos
-      });
+      const { error } = await supabase.rpc('pedido_upsert', { p_pedido, p_lineas, p_fotos: fotos });
       if (error) throw error;
       setMsg('✅ Pedido guardado');
       // router.push('/menu');
@@ -187,7 +196,7 @@ export default function NuevoPedido() {
 
           {/* Añadir artículo */}
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Añadir Artículo</h3>
-          <div className="mb-3 flex gap-2">
+          <div className="mb-3">
             <select
               value={selectedId || ''}
               onChange={(e) => onSelectArticulo(e.target.value)}
@@ -196,14 +205,11 @@ export default function NuevoPedido() {
               <option value="">Seleccionar artículo…</option>
               {articulos.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.nombre} — {CLP.format(a.precio)}
+                  {a.nombre}
                 </option>
               ))}
               <option value="__new__">➕ Nuevo artículo…</option>
             </select>
-            <button onClick={addArticulo} className="rounded bg-purple-600 px-3 py-2 font-semibold text-white hover:bg-purple-700">
-              Añadir
-            </button>
           </div>
 
           {/* Seleccionados */}
@@ -252,24 +258,44 @@ export default function NuevoPedido() {
         </div>
       </div>
 
-      <NewArticleModal open={showNewArt} onClose={() => setShowNewArt(false)} onCreate={async ({ nombre, precio, qty }) => {
-        try {
-          setLoading(true);
-          const { data, error } = await supabase
-            .from('articulo')
-            .insert({ nombre, precio, activo: true })
-            .select('id,nombre,precio')
-            .single();
-          if (error) throw error;
-          const created = data as Articulo;
-          setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-          setLineas(prev => [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }]);
-          setShowNewArt(false); setSelectedId('');
-          setMsg('✅ Artículo creado y agregado.');
-        } catch (e: any) {
-          setMsg('❌ ' + (e?.message ?? e));
-        } finally { setLoading(false); }
-      }} />
+      {/* Modal nuevo artículo */}
+      <NewArticleModal
+        open={showNewArt}
+        onClose={() => setShowNewArt(false)}
+        onCreate={async ({ nombre, precio, qty }) => {
+          try {
+            setLoading(true);
+            const { data, error } = await supabase
+              .from('articulo')
+              .insert({ nombre, precio, activo: true })
+              .select('id,nombre,precio')
+              .single();
+            if (error) throw error;
+            const created = data as Articulo;
+
+            // Mantener catálogo ordenado
+            setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+
+            // Agregar al pedido inmediatamente
+            setLineas(prev => [...prev, {
+              articulo_id: created.id,
+              nombre: created.nombre,
+              precio: created.precio,
+              qty,
+              estado: 'LAVAR'
+            }]);
+
+            setShowNewArt(false);
+            setSelectedId('');
+            setMsg('✅ Artículo creado y agregado.');
+          } catch (e: any) {
+            setMsg('❌ ' + (e?.message ?? e));
+          } finally {
+            setLoading(false);
+          }
+        }}
+      />
     </div>
   );
 }
+
