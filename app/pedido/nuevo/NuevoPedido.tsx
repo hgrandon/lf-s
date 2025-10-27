@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound, X } from 'lucide-react';
 import NewArticleModal from '@/app/components/NewArticleModal';
+import EditLineaModal from '@/app/components/EditLineaModal';
 
 /* =========================
    Tipos
@@ -28,110 +29,6 @@ const clampInt = (n: number, min = 0, max = Number.MAX_SAFE_INTEGER) =>
 
 const byNombreAsc = <T extends { nombre: string }>(a: T, b: T) =>
   a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
-
-/* =========================
-   Modal para editar línea de un artículo existente
-========================= */
-function EditLineaModal({
-  open,
-  articulo,
-  lineaActual,
-  onCancel,
-  onConfirm,
-  onSaveNewPrice,
-}: {
-  open: boolean;
-  articulo: Articulo | null;
-  lineaActual: Linea | null; // si existe, es edición; si no, es nuevo
-  onCancel: () => void;
-  onConfirm: (nuevoPrecio: number, nuevaQty: number) => void;
-  onSaveNewPrice: (nuevoPrecio: number) => Promise<void>;
-}) {
-  const [precio, setPrecio] = useState<number>(articulo?.precio ?? 0);
-  const [qty, setQty] = useState<number>(lineaActual?.qty ?? 1);
-  const [savingDefault, setSavingDefault] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  useEffect(() => {
-    setPrecio(lineaActual?.precio ?? articulo?.precio ?? 0);
-    setQty(lineaActual?.qty ?? 1);
-    setMsg('');
-  }, [open, articulo, lineaActual]);
-
-  if (!open || !articulo) return null;
-
-  const nombre = articulo.nombre;
-
-  const handleGuardarPorDefecto = async () => {
-    try {
-      setSavingDefault(true);
-      await onSaveNewPrice(clampInt(precio, 0));
-      setMsg('✅ Precio predeterminado actualizado.');
-    } catch (e: any) {
-      setMsg('❌ No se pudo actualizar el precio por defecto: ' + (e?.message ?? e));
-    } finally {
-      setSavingDefault(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <h3 className="text-lg font-semibold">Agregar / Editar artículo</h3>
-          <button onClick={onCancel} className="rounded-full p-1 hover:bg-gray-100" aria-label="Cerrar">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="space-y-3 p-4">
-          <div>
-            <label className="text-xs text-gray-500">ARTÍCULO</label>
-            <input readOnly value={nombre} className="mt-1 w-full rounded border bg-gray-50 px-3 py-2" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500">VALOR (CLP)</label>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={precio}
-                onChange={(e) => setPrecio(clampInt(Number(e.target.value || 0), 0))}
-                className="mt-1 w-full rounded border px-3 py-2"
-              />
-              <button
-                onClick={handleGuardarPorDefecto}
-                disabled={savingDefault}
-                className="mt-2 w-full rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
-              >
-                {savingDefault ? 'Guardando…' : 'Usar como precio predeterminado'}
-              </button>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">CANTIDAD</label>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={qty}
-                onChange={(e) => setQty(clampInt(Number(e.target.value || 1), 1))}
-                className="mt-1 w-full rounded border px-3 py-2"
-              />
-            </div>
-          </div>
-
-          {msg && <div className="text-sm text-gray-700">{msg}</div>}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t p-4">
-          <button onClick={onCancel} className="rounded-lg px-4 py-2 hover:bg-gray-50">Cancelar</button>
-          <button onClick={() => onConfirm(clampInt(precio, 0), clampInt(qty, 1))} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
-            Confirmar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* =========================
    Página
