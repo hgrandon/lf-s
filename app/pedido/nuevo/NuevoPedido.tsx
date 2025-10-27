@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Save, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Save, UserRound } from 'lucide-react';
 import NewArticleModal from '@/app/components/NewArticleModal';
 import EditLineaModal from '@/app/components/EditLineaModal';
 
@@ -58,7 +58,10 @@ export default function NuevoPedido() {
   // Select controlado
   const [selectedId, setSelectedId] = useState<string>('');
 
-  const total = useMemo(() => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0), [lineas]);
+  const total = useMemo(
+    () => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0),
+    [lineas]
+  );
 
   // Sin duplicados en el select
   const articulosDisponibles = useMemo(
@@ -138,18 +141,28 @@ export default function NuevoPedido() {
         c[i] = { ...c[i], precio: clampInt(precio, 0), qty: clampInt(qty, 1) };
         return c.sort(byNombreAsc);
       }
-      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: clampInt(precio, 0), qty: clampInt(qty, 1), estado: ESTADO_DEF }].sort(byNombreAsc);
+      return [
+        ...prev,
+        { articulo_id: art.id, nombre: art.nombre, precio: clampInt(precio, 0), qty: clampInt(qty, 1), estado: ESTADO_DEF }
+      ].sort(byNombreAsc);
     });
   }, []);
 
   const onSaveNewDefaultPrice = useCallback(async (art: Articulo, nuevoPrecio: number) => {
-    const { error } = await supabase.from('articulo').update({ precio: clampInt(nuevoPrecio, 0) }).eq('id', art.id);
+    const { error } = await supabase
+      .from('articulo')
+      .update({ precio: clampInt(nuevoPrecio, 0) })
+      .eq('id', art.id);
     if (error) throw error;
-    setArticulos(prev => prev.map(a => (a.id === art.id ? { ...a, precio: clampInt(nuevoPrecio, 0) } : a)).sort(byNombreAsc));
+    setArticulos(prev =>
+      prev.map(a => (a.id === art.id ? { ...a, precio: clampInt(nuevoPrecio, 0) } : a)).sort(byNombreAsc)
+    );
   }, []);
 
   const changeQty = useCallback((id: number, d: number) => {
-    setLineas(prev => prev.map(l => l.articulo_id === id ? { ...l, qty: clampInt(l.qty + d, 1) } : l));
+    setLineas(prev =>
+      prev.map(l => l.articulo_id === id ? { ...l, qty: clampInt(l.qty + d, 1) } : l)
+    );
   }, []);
 
   const removeLinea = useCallback((id: number) => {
@@ -296,42 +309,79 @@ export default function NuevoPedido() {
             <>
               <h3 className="mb-2 text-sm font-semibold text-gray-700">Artículos Seleccionados</h3>
 
-              {/* Encabezado */}
-              <div className="mb-1 grid grid-cols-[1fr_90px_100px_110px] gap-2 px-2 text-xs font-semibold text-gray-500">
+              {/* Encabezado: solo en >= sm */}
+              <div className="mb-1 hidden grid-cols-[1fr_120px_100px_110px] gap-2 px-2 text-xs font-semibold text-gray-500 sm:grid">
                 <div>Artículo</div>
                 <div className="text-center">Cantidad</div>
                 <div className="text-center">Estado</div>
                 <div className="text-right">Subtotal</div>
               </div>
 
-              <div className="mb-3 space-y-2">
-                {[...lineas].sort(byNombreAsc).map((l) => (
-                  <div key={l.articulo_id} className="grid grid-cols-[1fr_90px_100px_110px] items-center gap-2 rounded-lg border p-3">
-                    <div className="min-w-0">
-                      <div
-                        className="cursor-pointer font-semibold text-gray-900 hover:underline"
-                        title="Editar línea"
-                        onClick={() => {
-                          const art = articulos.find(a => a.id === l.articulo_id);
-                          if (art) abrirModalParaArticulo(art);
-                        }}
-                      >
-                        {l.nombre}
+              <div className="mb-3 space-y-3">
+                {[...lineas].sort(byNombreAsc).map((l) => {
+                  const subtotal = l.precio * l.qty;
+                  return (
+                    <div
+                      key={l.articulo_id}
+                      className="rounded-lg border p-3 sm:grid sm:grid-cols-[1fr_120px_100px_110px] sm:items-center sm:gap-2"
+                    >
+                      {/* Fila 1 (nombre y precio unitario). En móvil, subtotal a la derecha */}
+                      <div className="flex items-start justify-between gap-3 sm:block">
+                        <div
+                          className="min-w-0 cursor-pointer"
+                          title="Editar línea"
+                          onClick={() => {
+                            const art = articulos.find(a => a.id === l.articulo_id);
+                            if (art) abrirModalParaArticulo(art);
+                          }}
+                        >
+                          <div className="truncate text-base font-semibold text-gray-900 sm:text-[15px]">
+                            {l.nombre}
+                          </div>
+                          <div className="mt-0.5 text-[11px] font-bold text-blue-700">{money(l.precio)}</div>
+                        </div>
+
+                        {/* Subtotal en móvil (derecha). En desktop va en su columna al final */}
+                        <div className="text-right text-[15px] font-semibold sm:hidden">
+                          {money(subtotal)}
+                        </div>
                       </div>
-                      <div className="truncate text-[11px] font-bold text-blue-700">{money(l.precio)}</div>
+
+                      {/* Fila 2: Cantidad (centro) */}
+                      <div className="mt-2 flex items-center justify-between sm:mt-0 sm:justify-center">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => changeQty(l.articulo_id, -1)}
+                            className="grid h-8 w-8 place-items-center rounded-full border text-sm sm:h-7 sm:w-7"
+                            aria-label="Disminuir cantidad"
+                          >
+                            −
+                          </button>
+                          <span className="w-6 text-center text-base sm:text-[13px]">{l.qty}</span>
+                          <button
+                            onClick={() => changeQty(l.articulo_id, +1)}
+                            className="grid h-8 w-8 place-items-center rounded-full border text-sm sm:h-7 sm:w-7"
+                            aria-label="Aumentar cantidad"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Estado */}
+                      <div className="mt-2 text-right sm:mt-0 sm:text-center">
+                        <span className="inline-block rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700 sm:bg-transparent sm:px-0 sm:py-0 sm:text-xs">
+                          {l.estado}
+                        </span>
+                      </div>
+
+                      {/* Subtotal en columna fija (desktop) */}
+                      <div className="hidden text-right text-[15px] font-semibold sm:block">
+                        {money(subtotal)}
+                      </div>
                     </div>
-
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded-full border px-2 py-0.5" aria-label="Disminuir cantidad">−</button>
-                      <span className="w-6 text-center">{l.qty}</span>
-                      <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded-full border px-2 py-0.5" aria-label="Aumentar cantidad">+</button>
-                    </div>
-
-                    <div className="text-center text-xs font-medium text-gray-700">{l.estado}</div>
-
-                    <div className="text-right font-semibold">{money(l.precio * l.qty)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -407,6 +457,8 @@ export default function NuevoPedido() {
     </div>
   );
 }
+
+
 
 
 
