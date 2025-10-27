@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound } from 'lucide-react';
 import NewArticleModal from '@/app/components/NewArticleModal';
 import EditLineaModal from '@/app/components/EditLineaModal';
+import CameraButton from '@/app/components/CameraButton';
 
 /* =========================
    Tipos
@@ -47,7 +48,7 @@ export default function NuevoPedido() {
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [fotos, setFotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(''); // solo para ERRORES visibles
 
   // Modales
   const [modalOpen, setModalOpen] = useState(false);
@@ -171,7 +172,7 @@ export default function NuevoPedido() {
 
   const onFiles = useCallback(async (files: FileList | null) => {
     if (!files || !nro) return;
-    setLoading(true);
+    // No mostramos mensajes de éxito; solo errores si los hay.
     try {
       const uploaded = await Promise.all(
         Array.from(files).map(async (file) => {
@@ -185,18 +186,17 @@ export default function NuevoPedido() {
         })
       );
       setFotos(prev => [...prev, ...uploaded]);
-      setMsg(`📷 ${uploaded.length} foto(s) subida(s).`);
     } catch (e: any) {
       setMsg('Error subiendo fotos: ' + (e?.message ?? e));
-    } finally { setLoading(false); }
+    }
   }, [nro]);
 
   const save = useCallback(async () => {
     if (!nro || !cliente) return;
-    if (lineas.length === 0) { setMsg('Agrega al menos un artículo.'); return; }
-    if (loading) return; // evita doble clic
+    if (lineas.length === 0) return;
+    if (loading) return;
 
-    setLoading(true); setMsg('Guardando pedido...');
+    setLoading(true);
     try {
       // Cabecera (snapshot)
       const p_pedido = {
@@ -227,22 +227,20 @@ export default function NuevoPedido() {
       if (rpcError) {
         const { error: upErr } = await supabase.from('pedido').upsert([p_pedido], { onConflict: 'nro' });
         if (upErr) throw upErr;
-
         const { error: delErr } = await supabase.from('pedido_linea').delete().eq('nro', nro);
         if (delErr) throw delErr;
-
         const { error: insErr } = await supabase.from('pedido_linea').insert(p_lineas.map(l => ({ nro, ...l })));
         if (insErr) throw insErr;
       }
 
-      setMsg('✅ Pedido guardado correctamente.');
-      // router.push('/menu');
+      // ✅ Sin mensajes: ir al menú
+      router.push('/menu');
     } catch (e: any) {
-      setMsg('❌ Error guardando pedido: ' + (e?.message ?? e));
+      setMsg('Error guardando pedido: ' + (e?.message ?? e));
     } finally {
       setLoading(false);
     }
-  }, [cliente, fecha, entrega, fotos, lineas, loading, nro, total]);
+  }, [cliente, fecha, entrega, fotos, lineas, loading, nro, total, router]);
 
   /* ---------- UI ---------- */
   return (
@@ -401,10 +399,28 @@ export default function NuevoPedido() {
           {/* Fotos */}
           <div className="mt-4">
             <label className="mb-1 block text-xs text-gray-500">FOTOS (opcional)</label>
-            <input type="file" multiple onChange={(e) => onFiles(e.target.files)} />
+            <div className="flex flex-wrap gap-2">
+              <CameraButton
+                onPick={(files) => onFiles(files)}
+                label="Tomar foto"
+                capture="environment"
+                multiple={false}
+              />
+              <label className="rounded-lg border px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
+                Elegir archivos
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => onFiles(e.target.files)}
+                />
+              </label>
+            </div>
           </div>
 
-          {msg && <div className="mt-3 text-sm text-gray-700">{msg}</div>}
+          {/* Solo mostramos errores */}
+          {msg && <div className="mt-3 text-sm text-red-600">{msg}</div>}
         </div>
       </div>
 
@@ -425,33 +441,31 @@ export default function NuevoPedido() {
         }}
       />
 
-      {/* Modal NUEVO ARTÍCULO (componente externo) */}
+      {/* Modal NUEVO ARTÍCULO */}
       <NewArticleModal
         open={showNewArt}
         onClose={() => setShowNewArt(false)}
         onCreate={async ({ nombre, precio, qty }) => {
-          // 1) crear artículo en Supabase
-          const { data, error } = await supabase
-            .from('articulo')
-            .insert({ nombre: nombre.toUpperCase(), precio: clampInt(precio, 0), activo: true })
-            .select('id,nombre,precio')
-            .single();
-          if (error) throw error;
-          const created = data as Articulo;
+          try {
+            const { data, error } = await supabase
+              .from('articulo')
+              .insert({ nombre: nombre.toUpperCase(), precio: clampInt(precio, 0), activo: true })
+              .select('id,nombre,precio')
+              .single();
+            if (error) throw error;
+            const created = data as Articulo;
 
-          // 2) catálogo en memoria (ordenado)
-          setArticulos(prev => [...prev, created].sort(byNombreAsc));
+            setArticulos(prev => [...prev, created].sort(byNombreAsc));
+            setLineas(prev =>
+              [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty: clampInt(qty, 1), estado: ESTADO_DEF }]
+                .sort(byNombreAsc)
+            );
 
-          // 3) agregar línea al pedido (ordenada)
-          setLineas(prev =>
-            [...prev, { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty: clampInt(qty, 1), estado: ESTADO_DEF }]
-              .sort(byNombreAsc)
-          );
-
-          // 4) cerrar y resetear
-          setShowNewArt(false);
-          setSelectedId('');
-          setMsg('✅ Artículo creado y agregado.');
+            setShowNewArt(false);
+            setSelectedId('');
+          } catch (e: any) {
+            setMsg('Error creando artículo: ' + (e?.message ?? e));
+          }
         }}
       />
     </div>
