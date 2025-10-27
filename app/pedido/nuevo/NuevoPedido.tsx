@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Save, UserRound, X } from 'lucide-react';
+import NewArticleModal from '@/app/components/NewArticleModal';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo   = { id: number; nombre: string; precio: number };
@@ -13,6 +14,7 @@ type Cliente    = { telefono: string; nombre: string; direccion: string };
 
 const CLP = new Intl.NumberFormat('es-CL');
 
+/** Modal para agregar/editar una línea de pedido (usar con artículos existentes) */
 function EditLineaModal({
   open,
   articulo,
@@ -133,6 +135,12 @@ export default function NuevoPedido() {
   const [articuloSeleccionado, setArticuloSeleccionado] = useState<Articulo | null>(null);
   const [lineaEnEdicion, setLineaEnEdicion] = useState<Linea | null>(null);
 
+  // Modal de nuevo artículo (componente externo)
+  const [showNewArt, setShowNewArt] = useState(false);
+
+  // Select controlado para poder resetearlo
+  const [selectedId, setSelectedId] = useState<string>('');
+
   const total = useMemo(() => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0), [lineas]);
 
   // Oculta del select los ya agregados (no duplicar visualmente)
@@ -193,12 +201,14 @@ export default function NuevoPedido() {
   function onSelectArticuloChange(value: string) {
     if (!value) return;
     if (value === '__new__') {
-      setMsg('Función de nuevo artículo: usa tu modal/flujo existente.');
+      setSelectedId('');
+      setShowNewArt(true);  // abrir modal "Nuevo artículo"
       return;
     }
     const id = Number(value);
     const art = articulos.find(a => a.id === id);
     if (art) abrirModalParaArticulo(art);
+    setSelectedId(''); // resetear select
   }
 
   function upsertLinea(art: Articulo, precio: number, qty: number) {
@@ -356,7 +366,7 @@ export default function NuevoPedido() {
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Añadir Artículo</h3>
           <div className="mb-3">
             <select
-              defaultValue=""
+              value={selectedId}
               onChange={(e) => onSelectArticuloChange(e.target.value)}
               className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
@@ -441,8 +451,41 @@ export default function NuevoPedido() {
           await onSaveNewDefaultPrice(articuloSeleccionado, nuevoPrecio);
         }}
       />
+
+      {/* Modal NUEVO ARTÍCULO (componente externo que ya tienes) */}
+      <NewArticleModal
+        open={showNewArt}
+        onClose={() => setShowNewArt(false)}
+        onCreate={async ({ nombre, precio, qty }) => {
+          // 1) crear artículo en Supabase
+          const { data, error } = await supabase
+            .from('articulo')
+            .insert({ nombre, precio, activo: true })
+            .select('id,nombre,precio')
+            .single();
+          if (error) throw error;
+          const created = data as Articulo;
+
+          // 2) agregar al catálogo en memoria (ordenado)
+          setArticulos(prev =>
+            [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre))
+          );
+
+          // 3) agregar al pedido inmediatamente
+          setLineas(prev => [
+            ...prev,
+            { articulo_id: created.id, nombre: created.nombre, precio: created.precio, qty, estado: 'LAVAR' }
+          ]);
+
+          // 4) cerrar modal / resetear select
+          setShowNewArt(false);
+          setSelectedId('');
+          setMsg('✅ Artículo creado y agregado.');
+        }}
+      />
     </div>
   );
 }
+
 
 
