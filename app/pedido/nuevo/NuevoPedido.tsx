@@ -4,8 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft, Save, UserRound } from 'lucide-react';
-import NewArticleModal from '@/app/components/NewArticleModal';
+import { ArrowLeft, Save, UserRound, X } from 'lucide-react';
 
 type NextNumber = { nro: number; fecha: string; entrega: string };
 type Articulo   = { id: number; nombre: string; precio: number };
@@ -13,6 +12,105 @@ type Linea      = { articulo_id: number; nombre: string; precio: number; qty: nu
 type Cliente    = { telefono: string; nombre: string; direccion: string };
 
 const CLP = new Intl.NumberFormat('es-CL');
+
+function EditLineaModal({
+  open,
+  articulo,
+  lineaActual,
+  onCancel,
+  onConfirm,
+  onSaveNewPrice,
+}: {
+  open: boolean;
+  articulo: Articulo | null;
+  lineaActual: Linea | null; // si existe, es edición; si no, es nuevo
+  onCancel: () => void;
+  onConfirm: (nuevoPrecio: number, nuevaQty: number) => void;
+  onSaveNewPrice: (nuevoPrecio: number) => Promise<void>;
+}) {
+  const [precio, setPrecio] = useState<number>(articulo?.precio ?? 0);
+  const [qty, setQty] = useState<number>(lineaActual?.qty ?? 1);
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    setPrecio(lineaActual?.precio ?? articulo?.precio ?? 0);
+    setQty(lineaActual?.qty ?? 1);
+    setMsg('');
+  }, [open, articulo, lineaActual]);
+
+  if (!open || !articulo) return null;
+
+  const nombre = articulo.nombre;
+
+  const handleGuardarPorDefecto = async () => {
+    try {
+      setSavingDefault(true);
+      await onSaveNewPrice(precio);
+      setMsg('✅ Precio predeterminado actualizado.');
+    } catch (e: any) {
+      setMsg('❌ No se pudo actualizar el precio por defecto: ' + (e?.message ?? e));
+    } finally {
+      setSavingDefault(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <h3 className="text-lg font-semibold">Agregar / Editar artículo</h3>
+          <button onClick={onCancel} className="rounded-full p-1 hover:bg-gray-100">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="space-y-3 p-4">
+          <div>
+            <label className="text-xs text-gray-500">ARTÍCULO</label>
+            <input readOnly value={nombre} className="mt-1 w-full rounded border bg-gray-50 px-3 py-2" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500">VALOR (CLP)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={precio}
+                onChange={(e) => setPrecio(Math.max(0, Number(e.target.value || 0)))}
+                className="mt-1 w-full rounded border px-3 py-2"
+              />
+              <button
+                onClick={handleGuardarPorDefecto}
+                disabled={savingDefault}
+                className="mt-2 w-full rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+              >
+                {savingDefault ? 'Guardando…' : 'Usar como precio predeterminado'}
+              </button>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">CANTIDAD</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={qty}
+                onChange={(e) => setQty(Math.max(1, Number(e.target.value || 1)))}
+                className="mt-1 w-full rounded border px-3 py-2"
+              />
+            </div>
+          </div>
+
+          {msg && <div className="text-sm text-gray-700">{msg}</div>}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t p-4">
+          <button onClick={onCancel} className="rounded-lg px-4 py-2 hover:bg-gray-50">Cancelar</button>
+          <button onClick={() => onConfirm(precio, qty)} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function NuevoPedido() {
   const router = useRouter();
@@ -25,14 +123,23 @@ export default function NuevoPedido() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
 
   const [articulos, setArticulos] = useState<Articulo[]>([]);
-  const [selectedId, setSelectedId] = useState<number | '__new__' | ''>('');
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [fotos, setFotos] = useState<string[]>([]);
-  const [showNewArt, setShowNewArt] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
+  // Modal de edición/alta de línea
+  const [modalOpen, setModalOpen] = useState(false);
+  const [articuloSeleccionado, setArticuloSeleccionado] = useState<Articulo | null>(null);
+  const [lineaEnEdicion, setLineaEnEdicion] = useState<Linea | null>(null);
+
   const total = useMemo(() => lineas.reduce((acc, l) => acc + l.precio * l.qty, 0), [lineas]);
+
+  // Oculta del select los ya agregados (no duplicar visualmente)
+  const articulosDisponibles = useMemo(
+    () => articulos.filter(a => !lineas.some(l => l.articulo_id === a.id)),
+    [articulos, lineas]
+  );
 
   useEffect(() => {
     if (!tel || tel.length !== 9) {
@@ -45,7 +152,9 @@ export default function NuevoPedido() {
         const { data, error } = await supabase.rpc('pedido_next_number');
         if (error) throw error;
         const row = (data as NextNumber[])[0];
-        setNro(row.nro); setFecha(row.fecha); setEntrega(row.entrega);
+        setNro(row.nro);
+        setFecha(row.fecha);
+        setEntrega(row.entrega);
 
         // cliente
         const q = await supabase.rpc('clientes_get_by_tel', { p_telefono: tel });
@@ -57,7 +166,7 @@ export default function NuevoPedido() {
         // artículos
         const rpc = await supabase.rpc('active_articles_list');
         if (!rpc.error && rpc.data) {
-          setArticulos(rpc.data as Articulo[]);
+          setArticulos((rpc.data as Articulo[]).sort((a, b) => a.nombre.localeCompare(b.nombre)));
         } else {
           const f = await supabase
             .from('articulo')
@@ -65,7 +174,7 @@ export default function NuevoPedido() {
             .eq('activo', true)
             .order('nombre', { ascending: true });
           if (f.error) throw f.error;
-          setArticulos((f.data || []) as Articulo[]);
+          setArticulos(((f.data || []) as Articulo[]).sort((a, b) => a.nombre.localeCompare(b.nombre)));
         }
       } catch (e: any) {
         setMsg('Error cargando datos: ' + (e?.message ?? e));
@@ -74,34 +183,43 @@ export default function NuevoPedido() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
-  /** Agrega o incrementa el artículo indicado */
-  function pushArticulo(art: Articulo) {
+  function abrirModalParaArticulo(art: Articulo) {
+    const existente = lineas.find(l => l.articulo_id === art.id) ?? null;
+    setArticuloSeleccionado(art);
+    setLineaEnEdicion(existente);
+    setModalOpen(true);
+  }
+
+  function onSelectArticuloChange(value: string) {
+    if (!value) return;
+    if (value === '__new__') {
+      setMsg('Función de nuevo artículo: usa tu modal/flujo existente.');
+      return;
+    }
+    const id = Number(value);
+    const art = articulos.find(a => a.id === id);
+    if (art) abrirModalParaArticulo(art);
+  }
+
+  function upsertLinea(art: Articulo, precio: number, qty: number) {
     setLineas(prev => {
       const i = prev.findIndex(l => l.articulo_id === art.id);
       if (i >= 0) {
         const c = [...prev];
-        c[i] = { ...c[i], qty: c[i].qty + 1 };
+        c[i] = { ...c[i], precio, qty };
         return c;
-        }
-      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio: art.precio, qty: 1, estado: 'LAVAR' }];
+      }
+      return [...prev, { articulo_id: art.id, nombre: art.nombre, precio, qty, estado: 'LAVAR' }];
     });
   }
 
-  /** Cambio del select:
-   * - si es "__new__": abre modal
-   * - si es un ID válido: agrega inmediatamente
-   */
-  function onSelectArticulo(v: string) {
-    if (!v) return;
-    if (v === '__new__') {
-      setSelectedId('');
-      setShowNewArt(true);
-      return;
-    }
-    const id = Number(v);
-    const art = articulos.find(a => a.id === id);
-    if (art) pushArticulo(art);
-    setSelectedId('');
+  async function onSaveNewDefaultPrice(art: Articulo, nuevoPrecio: number) {
+    const { error } = await supabase.from('articulo').update({ precio: nuevoPrecio }).eq('id', art.id);
+    if (error) throw error;
+    setArticulos(prev =>
+      prev.map(a => (a.id === art.id ? { ...a, precio: nuevoPrecio } : a))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre))
+    );
   }
 
   function changeQty(id: number, d: number) {
@@ -136,19 +254,59 @@ export default function NuevoPedido() {
   async function save() {
     if (!nro || !cliente) return;
     if (lineas.length === 0) { setMsg('Agrega al menos un artículo.'); return; }
+
     setLoading(true); setMsg('Guardando pedido...');
     try {
-      const p_pedido = { nro, fecha, entrega, telefono: cliente.telefono, total };
+      // --- Cabecera (snapshot incluido)
+      const p_pedido = {
+        nro,
+        fecha,
+        entrega,
+        telefono: cliente.telefono,
+        nombre: cliente.nombre,        // snapshot
+        direccion: cliente.direccion,  // snapshot
+        estado_pago: 'PENDIENTE',
+        tipo_entrega: 'LOCAL',
+        total
+      };
+
+      // --- Líneas
       const p_lineas = lineas.map(l => ({
-        articulo_id: l.articulo_id, nombre: l.nombre, precio: l.precio, qty: l.qty, estado: l.estado
+        articulo_id: l.articulo_id,
+        nombre: l.nombre,
+        precio: l.precio,
+        qty: l.qty,
+        estado: l.estado
       }));
-      const { error } = await supabase.rpc('pedido_upsert', { p_pedido, p_lineas, p_fotos: fotos });
-      if (error) throw error;
-      setMsg('✅ Pedido guardado');
+
+      // 1) RPC oficial
+      const { error: rpcError } = await supabase.rpc('pedido_upsert', { p_pedido, p_lineas, p_fotos: fotos });
+
+      // 2) Fallback si falla el RPC
+      if (rpcError) {
+        // Upsert cabecera con snapshot
+        const { error: upErr } = await supabase
+          .from('pedido')
+          .upsert([p_pedido], { onConflict: 'nro' });
+        if (upErr) throw upErr;
+
+        // Reemplazar líneas
+        const { error: delErr } = await supabase.from('pedido_linea').delete().eq('nro', nro);
+        if (delErr) throw delErr;
+
+        const { error: insErr } = await supabase
+          .from('pedido_linea')
+          .insert(p_lineas.map(l => ({ nro, ...l })));
+        if (insErr) throw insErr;
+      }
+
+      setMsg('✅ Pedido guardado correctamente.');
       // router.push('/menu');
     } catch (e: any) {
-      setMsg('❌ ' + (e?.message ?? e));
-    } finally { setLoading(false); }
+      setMsg('❌ Error guardando pedido: ' + (e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -194,16 +352,16 @@ export default function NuevoPedido() {
             </div>
           )}
 
-          {/* Añadir artículo */}
+          {/* Añadir artículo (sin botón extra) */}
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Añadir Artículo</h3>
           <div className="mb-3">
             <select
-              value={selectedId || ''}
-              onChange={(e) => onSelectArticulo(e.target.value)}
+              defaultValue=""
+              onChange={(e) => onSelectArticuloChange(e.target.value)}
               className="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">Seleccionar artículo…</option>
-              {articulos.map((a) => (
+              {articulosDisponibles.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
                 </option>
@@ -219,16 +377,25 @@ export default function NuevoPedido() {
               <div className="mb-3 space-y-2">
                 {lineas.map((l) => (
                   <div key={l.articulo_id} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <div className="font-semibold text-gray-900">{l.nombre}</div>
-                      <div className="text-xs text-blue-700 font-bold">{CLP.format(l.precio)}</div>
+                    <div className="min-w-0">
+                      <div
+                        className="cursor-pointer font-semibold text-gray-900 hover:underline"
+                        title="Editar línea"
+                        onClick={() => {
+                          const art = articulos.find(a => a.id === l.articulo_id);
+                          if (art) abrirModalParaArticulo(art);
+                        }}
+                      >
+                        {l.nombre}
+                      </div>
+                      <div className="truncate text-xs font-bold text-blue-700">{CLP.format(l.precio)}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => changeQty(l.articulo_id, -1)} className="rounded-full border px-3 py-1">−</button>
                       <span className="w-6 text-center">{l.qty}</span>
                       <button onClick={() => changeQty(l.articulo_id, +1)} className="rounded-full border px-3 py-1">+</button>
                     </div>
-                    <div className="min-w-[80px] text-right font-semibold">{CLP.format(l.precio * l.qty)}</div>
+                    <div className="min-w-[90px] text-right font-semibold">{CLP.format(l.precio * l.qty)}</div>
                     <button onClick={() => removeLinea(l.articulo_id)} className="text-red-600 text-sm underline">Quitar</button>
                   </div>
                 ))}
@@ -258,44 +425,24 @@ export default function NuevoPedido() {
         </div>
       </div>
 
-      {/* Modal nuevo artículo */}
-      <NewArticleModal
-        open={showNewArt}
-        onClose={() => setShowNewArt(false)}
-        onCreate={async ({ nombre, precio, qty }) => {
-          try {
-            setLoading(true);
-            const { data, error } = await supabase
-              .from('articulo')
-              .insert({ nombre, precio, activo: true })
-              .select('id,nombre,precio')
-              .single();
-            if (error) throw error;
-            const created = data as Articulo;
-
-            // Mantener catálogo ordenado
-            setArticulos(prev => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-
-            // Agregar al pedido inmediatamente
-            setLineas(prev => [...prev, {
-              articulo_id: created.id,
-              nombre: created.nombre,
-              precio: created.precio,
-              qty,
-              estado: 'LAVAR'
-            }]);
-
-            setShowNewArt(false);
-            setSelectedId('');
-            setMsg('✅ Artículo creado y agregado.');
-          } catch (e: any) {
-            setMsg('❌ ' + (e?.message ?? e));
-          } finally {
-            setLoading(false);
-          }
+      {/* Modal agregar/editar línea */}
+      <EditLineaModal
+        open={modalOpen}
+        articulo={articuloSeleccionado}
+        lineaActual={lineaEnEdicion}
+        onCancel={() => setModalOpen(false)}
+        onConfirm={(precio, qty) => {
+          if (!articuloSeleccionado) return;
+          upsertLinea(articuloSeleccionado, precio, qty);
+          setModalOpen(false);
+        }}
+        onSaveNewPrice={async (nuevoPrecio) => {
+          if (!articuloSeleccionado) return;
+          await onSaveNewDefaultPrice(articuloSeleccionado, nuevoPrecio);
         }}
       />
     </div>
   );
 }
+
 

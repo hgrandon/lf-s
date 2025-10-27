@@ -1,4 +1,3 @@
-// app/pedido/nuevo/page.tsx
 import { Suspense } from 'react';
 import NuevoPedido from './NuevoPedido';
 
@@ -11,5 +10,4 @@ export default function Page() {
     </Suspense>
   );
 }
-
 
