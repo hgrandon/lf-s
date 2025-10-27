@@ -1,56 +1,59 @@
+// appweb/app/components/CameraButton.tsx
 'use client';
 
-import { useId } from 'react';
+import { useRef, useState } from 'react';
+import { uploadPhoto } from '@/lib/uploadPhoto';
 
 type Props = {
-  /** Llama tu handler existente: recibe FileList | null */
-  onPick: (files: FileList | null) => void;
-  /** Texto del botón (opcional) */
+  orderId: string | number;
+  onUploaded?: (url: string) => void; // te devuelve la URL pública
   label?: string;
-  /** Acepta solo imágenes (por defecto) */
-  accept?: string;
-  /** Forzar cámara trasera en móviles compatibles */
-  capture?: 'environment' | 'user' | undefined;
-  /** Permitir varias fotos (por defecto false) */
-  multiple?: boolean;
-  /** Clases extra para el botón */
-  className?: string;
 };
 
-export default function CameraButton({
-  onPick,
-  label = 'Tomar foto',
-  accept = 'image/*',
-  capture = 'environment',
-  multiple = false,
-  className = '',
-}: Props) {
-  const inputId = useId();
+export default function CameraButton({ orderId, onUploaded, label = 'Tomar foto / Elegir archivo' }: Props) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function handleSelectFile(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      setMsg('');
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setLoading(true);
+      const { publicUrl } = await uploadPhoto(file, orderId);
+      onUploaded?.(publicUrl);
+      setMsg('✅ Foto subida correctamente');
+    } catch (err: any) {
+      console.error(err);
+      setMsg(`❌ Error subiendo fotos: ${err?.message || err}`);
+    } finally {
+      setLoading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
 
   return (
-    <div className="inline-block">
-      {/* input oculto */}
+    <div className="flex flex-col gap-2">
       <input
-        id={inputId}
+        ref={inputRef}
         type="file"
-        accept={accept}
-        capture={capture}
-        multiple={multiple}
+        accept="image/*"
+        capture="environment"    // cámara trasera en móvil
+        onChange={handleSelectFile}
         className="hidden"
-        onChange={(e) => onPick(e.target.files)}
       />
-
-      {/* botón visible */}
       <button
         type="button"
-        onClick={() => document.getElementById(inputId)?.click()}
-        className={
-          className ||
-          'rounded-lg bg-purple-600 px-3 py-2 text-white text-sm font-semibold hover:bg-purple-700'
-        }
+        onClick={() => inputRef.current?.click()}
+        className="px-3 py-2 rounded bg-violet-600 text-white disabled:opacity-60"
+        disabled={loading}
       >
-        {label}
+        {loading ? 'Subiendo…' : label}
       </button>
+      {msg && <span className="text-xs">{msg}</span>}
     </div>
   );
 }
+

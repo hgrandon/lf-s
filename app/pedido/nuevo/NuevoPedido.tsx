@@ -23,6 +23,7 @@ type Cliente    = { telefono: string; nombre: string; direccion: string };
 ========================= */
 const CLP = new Intl.NumberFormat('es-CL');
 const ESTADO_DEF: EstadoLinea = 'LAVAR';
+const BUCKET = 'fotos';
 
 const money = (n: number) => CLP.format(Math.max(0, Math.round(n || 0)));
 const clampInt = (n: number, min = 0, max = Number.MAX_SAFE_INTEGER) =>
@@ -30,6 +31,10 @@ const clampInt = (n: number, min = 0, max = Number.MAX_SAFE_INTEGER) =>
 
 const byNombreAsc = <T extends { nombre: string }>(a: T, b: T) =>
   a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+
+/** Obtiene URL pública segura del Storage */
+const publicUrlOf = (path: string) =>
+  supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
 /* =========================
    Página
@@ -46,7 +51,7 @@ export default function NuevoPedido() {
 
   const [articulos, setArticulos] = useState<Articulo[]>([]);
   const [lineas, setLineas] = useState<Linea[]>([]);
-  const [fotos, setFotos] = useState<string[]>([]);
+  const [fotos, setFotos] = useState<string[]>([]); // guardamos URL pública
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(''); // solo para ERRORES visibles
 
@@ -170,22 +175,26 @@ export default function NuevoPedido() {
     setLineas(prev => prev.filter(l => l.articulo_id !== id));
   }, []);
 
+  /** Subida de fotos → guarda URL pública en `fotos` */
   const onFiles = useCallback(async (files: FileList | null) => {
     if (!files || !nro) return;
-    // No mostramos mensajes de éxito; solo errores si los hay.
     try {
-      const uploaded = await Promise.all(
+      const uploadedUrls = await Promise.all(
         Array.from(files).map(async (file) => {
-          const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-          const path = `${nro}/${crypto.randomUUID()}.${ext}`;
+          const cleanName = (file.name || 'foto').replace(/\s+/g, '_');
+          const path = `pedido-${nro}/${crypto.randomUUID()}-${cleanName}`;
           const { error } = await supabase.storage
-            .from('pedido_fotos')
-            .upload(path, file, { upsert: false, contentType: file.type || 'image/jpeg' });
+            .from(BUCKET) // <- bucket correcto: 'fotos'
+            .upload(path, file, {
+              upsert: true,
+              cacheControl: '3600',
+              contentType: file.type || 'image/jpeg',
+            });
           if (error) throw error;
-          return path;
+          return publicUrlOf(path); // devolvemos URL pública
         })
       );
-      setFotos(prev => [...prev, ...uploaded]);
+      setFotos(prev => [...prev, ...uploadedUrls]);
     } catch (e: any) {
       setMsg('Error subiendo fotos: ' + (e?.message ?? e));
     }
@@ -208,7 +217,8 @@ export default function NuevoPedido() {
         direccion: cliente.direccion,
         estado_pago: 'PENDIENTE',
         tipo_entrega: 'LOCAL',
-        total
+        total,
+        fotos_urls: fotos, // <- guarda URLs (text[] o jsonb en tu tabla)
       };
 
       // Líneas
@@ -233,7 +243,6 @@ export default function NuevoPedido() {
         if (insErr) throw insErr;
       }
 
-      // ✅ Sin mensajes: ir al menú
       router.push('/menu');
     } catch (e: any) {
       setMsg('Error guardando pedido: ' + (e?.message ?? e));
@@ -323,7 +332,7 @@ export default function NuevoPedido() {
                       key={l.articulo_id}
                       className="rounded-lg border p-3 sm:grid sm:grid-cols-[1fr_120px_100px_110px] sm:items-center sm:gap-2"
                     >
-                      {/* Fila 1 (nombre y precio unitario). En móvil, subtotal a la derecha */}
+                      {/* Fila 1 */}
                       <div className="flex items-start justify-between gap-3 sm:block">
                         <div
                           className="min-w-0 cursor-pointer"
@@ -339,13 +348,13 @@ export default function NuevoPedido() {
                           <div className="mt-0.5 text-[11px] font-bold text-blue-700">{money(l.precio)}</div>
                         </div>
 
-                        {/* Subtotal en móvil (derecha). En desktop va en su columna al final */}
+                        {/* Subtotal móvil */}
                         <div className="text-right text-[15px] font-semibold sm:hidden">
                           {money(subtotal)}
                         </div>
                       </div>
 
-                      {/* Fila 2: Cantidad (centro) */}
+                      {/* Cantidad */}
                       <div className="mt-2 flex items-center justify-between sm:mt-0 sm:justify-center">
                         <div className="flex items-center gap-2">
                           <button
@@ -373,7 +382,7 @@ export default function NuevoPedido() {
                         </span>
                       </div>
 
-                      {/* Subtotal en columna fija (desktop) */}
+                      {/* Subtotal desktop */}
                       <div className="hidden text-right text-[15px] font-semibold sm:block">
                         {money(subtotal)}
                       </div>
@@ -417,9 +426,21 @@ export default function NuevoPedido() {
                 />
               </label>
             </div>
+
+            {/* Preview */}
+            {fotos.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {fotos.map((u) => (
+                  <div key={u} className="rounded overflow-hidden border border-white/10 bg-white/5">
+                    <img src={u} alt="Foto del pedido" className="w-full h-40 object-cover" />
+                    <div className="px-2 py-1 text-[10px] break-all text-gray-600">{u}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Solo mostramos errores */}
+          {/* Solo errores */}
           {msg && <div className="mt-3 text-sm text-red-600">{msg}</div>}
         </div>
       </div>
