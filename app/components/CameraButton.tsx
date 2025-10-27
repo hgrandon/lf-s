@@ -1,58 +1,50 @@
-// appweb/app/components/CameraButton.tsx
 'use client';
-
-import { useRef, useState } from 'react';
-import { uploadPhoto } from '@/lib/uploadPhoto';
+import { useRef } from 'react';
 
 type Props = {
-  orderId: string | number;
-  onUploaded?: (url: string) => void; // te devuelve la URL pública
+  /** Devuelve los archivos seleccionados (o null si el usuario cancela) */
+  onPick: (files: FileList | null) => void;
+  /** Texto del botón */
   label?: string;
+  /** Cámara a usar en móviles (environment = trasera, user = frontal) */
+  capture?: 'environment' | 'user';
+  /** Permitir seleccionar múltiples archivos */
+  multiple?: boolean;
 };
 
-export default function CameraButton({ orderId, onUploaded, label = 'Tomar foto / Elegir archivo' }: Props) {
+export default function CameraButton({
+  onPick,
+  label = 'Tomar foto',
+  capture = 'environment',
+  multiple = false,
+}: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
 
-  async function handleSelectFile(e: React.ChangeEvent<HTMLInputElement>) {
-    try {
-      setMsg('');
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setLoading(true);
-      const { publicUrl } = await uploadPhoto(file, orderId);
-      onUploaded?.(publicUrl);
-      setMsg('✅ Foto subida correctamente');
-    } catch (err: any) {
-      console.error(err);
-      setMsg(`❌ Error subiendo fotos: ${err?.message || err}`);
-    } finally {
-      setLoading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onPick(e.target.files);
+    // limpiar para permitir volver a elegir el mismo archivo
+    if (inputRef.current) inputRef.current.value = '';
+  };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="inline-flex">
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"    // cámara trasera en móvil
-        onChange={handleSelectFile}
+        // @ts-expect-error - prop estándar en móviles; TS no la tipa en React
+        capture={capture}
+        multiple={multiple}
         className="hidden"
+        onChange={handleChange}
       />
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="px-3 py-2 rounded bg-violet-600 text-white disabled:opacity-60"
-        disabled={loading}
+        className="rounded-lg border px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
       >
-        {loading ? 'Subiendo…' : label}
+        {label}
       </button>
-      {msg && <span className="text-xs">{msg}</span>}
     </div>
   );
 }
