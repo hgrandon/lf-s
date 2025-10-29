@@ -33,7 +33,7 @@ export default function ClientesApp() {
       try {
         const term = buscar.trim();
         let q = supabase
-          .from('cliente')
+          .from('clientes')
           .select('telefono,nombre,direccion')
           .order('nombre', { ascending: true })
           .limit(100);
@@ -87,7 +87,7 @@ export default function ClientesApp() {
 
     setCreating(true);
     try {
-      const { error } = await supabase.from('cliente').insert({ telefono: tel, nombre: nom, direccion: dir });
+      const { error } = await supabase.from('clientes').insert({ telefono: tel, nombre: nom, direccion: dir });
       if (error) throw error;
 
       // limpia y recarga
@@ -95,7 +95,7 @@ export default function ClientesApp() {
       setShowCrear(false);
 
       const { data } = await supabase
-        .from('cliente')
+        .from('clientes')
         .select('telefono,nombre,direccion')
         .order('nombre', { ascending: true })
         .limit(100);
