@@ -7,14 +7,16 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
+type Estado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+
 type Pedido = {
-  id: number; // alias de nro
-  cliente: string;
+  id: number;             // nro
+  cliente: string;        // nombre o telefono
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+  estado: Estado;
   detalle?: string | null;
   foto_url?: string | null;
-  pagado?: boolean | null;
+  pagado?: boolean | null; // mapeado desde estado_pago
   items?: Item[];
 };
 
@@ -28,15 +30,14 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
-        return null;
+        return Array.isArray(arr) && typeof arr[0] === 'string' ? arr[0] : null;
       } catch {
         return null;
       }
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
+  if (Array.isArray(input) && typeof input[0] === 'string') return input[0];
   return null;
 }
 
@@ -51,24 +52,47 @@ export default function LavarPage() {
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [canUpdateEstado, setCanUpdateEstado] = useState(true); // se pone en false si no existe columna estado
 
   const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function load() {
       try {
         setLoading(true);
         setErrMsg(null);
+        setCanUpdateEstado(true);
 
-        // 1) pedidos (usa estado_pedido y nro)
-        const { data: rows, error: e1 } = await supabase
+        // 1) Intento principal: leer desde public.pedido (con columna estado)
+        let rows: any[] | null = null;
+        let e1: any = null;
+
+        const q1 = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado_pedido, detalle, pagado, fotos_urls')
-          .eq('estado_pedido', 'LAVAR')
+          .select('id:nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
+          .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
 
-        if (e1) throw e1;
+        if (q1.error) e1 = q1.error;
+        rows = q1.data || null;
+
+        // Si la columna "estado" no existe (error 42703), hacemos fallback a la vista
+        if (e1 && String(e1.message).toLowerCase().includes('column') && String(e1.message).toLowerCase().includes('does not exist')) {
+          setCanUpdateEstado(false);
+
+          const qView = await supabase
+            .from('vw_pedido_resumen')
+            .select('id:nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
+            .eq('estado', 'LAVAR')
+            .order('nro', { ascending: false });
+
+          if (qView.error) throw qView.error;
+          rows = qView.data || null;
+        } else if (e1) {
+          throw e1;
+        }
 
         const ids = (rows ?? []).map(r => r.id);
         const tels = (rows ?? []).map(r => r.telefono).filter(Boolean);
@@ -81,36 +105,36 @@ export default function LavarPage() {
           return;
         }
 
-        // 2) líneas (clave foránea: nro)
-        const { data: lineas, error: e2 } = await supabase
+        // 2) Líneas por nro
+        const q2 = await supabase
           .from('pedido_linea')
           .select('pedido_id:nro, articulo, cantidad, valor')
           .in('nro', ids);
 
-        if (e2) throw e2;
+        if (q2.error) throw q2.error;
 
-        // 3) fotos respaldo
-        const { data: fotos, error: e3 } = await supabase
+        // 3) Fotos de respaldo en pedido_foto (por nro)
+        const q3 = await supabase
           .from('pedido_foto')
           .select('nro, url')
           .in('nro', ids);
 
-        if (e3) throw e3;
+        if (q3.error) throw q3.error;
 
-        // 4) clientes por teléfono
-        const { data: cli, error: e4 } = await supabase
+        // 4) Nombres por teléfono
+        const q4 = await supabase
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
 
-        if (e4) throw e4;
+        if (q4.error) throw q4.error;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
+        (q4.data ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
-        (lineas ?? []).forEach(l => {
-          const pid = Number((l as any).pedido_id ?? (l as any).nro);
+        (q2.data ?? []).forEach((l: any) => {
+          const pid = Number(l.pedido_id ?? l.nro);
           const arr = itemsByPedido.get(pid) ?? [];
           arr.push({
             articulo: String(l.articulo ?? ''),
@@ -121,25 +145,27 @@ export default function LavarPage() {
         });
 
         const fotoByPedido = new Map<number, string>();
-        (rows ?? []).forEach(r => {
-          const f = firstFotoFromMixed((r as any).fotos_urls);
+        // prioridad: fotos_urls en la fila de pedido (o de la vista)
+        (rows ?? []).forEach((r: any) => {
+          const f = firstFotoFromMixed(r.fotos_urls);
           if (f) fotoByPedido.set(r.id, f);
         });
-        (fotos ?? []).forEach(f => {
-          const pid = Number((f as any).nro);
+        // respaldo: pedido_foto
+        (q3.data ?? []).forEach((f: any) => {
+          const pid = Number(f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map(r => ({
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
           id: r.id,
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
-          estado: r.estado_pedido,
+          estado: r.estado as Estado,
           detalle: r.detalle ?? null,
           foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
+          pagado: (r.estado_pago ?? '').toString().toUpperCase() === 'PAGADO',
           items: itemsByPedido.get(r.id) ?? [],
         }));
 
@@ -154,8 +180,9 @@ export default function LavarPage() {
           setLoading(false);
         }
       }
-    })();
+    }
 
+    load();
     return () => {
       cancelled = true;
     };
@@ -168,20 +195,19 @@ export default function LavarPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambiar estado (update estado_pedido por nro)
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  // Cambiar estado (requiere columna 'estado' en public.pedido)
+  async function changeEstado(id: number, next: Estado) {
     if (!id) return;
+    if (!canUpdateEstado) {
+      snack('Para cambiar el estado crea la columna "estado" en public.pedido (ver SQL más abajo).');
+      return;
+    }
+
     setSaving(true);
     const prev = pedidos;
     setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase
-      .from('pedido')
-      .update({ estado_pedido: next })
-      .eq('nro', id)
-      .select('nro')
-      .single();
-
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
     if (error) {
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
@@ -197,7 +223,7 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // Toggle pagado (por nro)
+  // Toggle pago (usa estado_pago en public.pedido)
   async function togglePago(id: number) {
     if (!id) return;
     setSaving(true);
@@ -205,12 +231,8 @@ export default function LavarPage() {
     const actual = prev.find(p => p.id === id)?.pagado ?? false;
     setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase
-      .from('pedido')
-      .update({ pagado: !actual })
-      .eq('nro', id)
-      .select('nro')
-      .single();
+    const nuevo = !actual ? 'PAGADO' : 'PENDIENTE';
+    const { error } = await supabase.from('pedido').update({ estado_pago: nuevo }).eq('nro', id).select('nro').single();
 
     if (error) {
       console.error('No se pudo actualizar pago:', error);
@@ -253,8 +275,7 @@ export default function LavarPage() {
           <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
         )}
 
-        {!loading &&
-          !errMsg &&
+        {!loading && !errMsg &&
           pedidos.map(p => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
@@ -373,25 +394,25 @@ export default function LavarPage() {
           <div className="grid grid-cols-5 gap-3">
             <ActionBtn
               label="Lavando"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || !canUpdateEstado}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
             />
             <ActionBtn
               label="Guardado"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || !canUpdateEstado}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
             />
             <ActionBtn
               label="Entregar"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || !canUpdateEstado}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
               active={pedidoAbierto?.estado === 'GUARDAR'}
             />
             <ActionBtn
               label="Entregado"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || !canUpdateEstado}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
@@ -410,6 +431,11 @@ export default function LavarPage() {
                 <span className="inline-flex items-center gap-1">
                   <Loader2 size={14} className="animate-spin" /> Guardando…
                 </span>
+              )}
+              {!canUpdateEstado && (
+                <div className="mt-1 text-amber-200/90">
+                  Estados en modo lectura: crea la columna <b>estado</b> en <b>public.pedido</b> para habilitar.
+                </div>
               )}
             </div>
           ) : (
@@ -444,7 +470,9 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
