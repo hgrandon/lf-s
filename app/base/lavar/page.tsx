@@ -7,21 +7,21 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type Estado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 
 type Pedido = {
-  id: number;             // nro
-  cliente: string;        // nombre o telefono
-  total: number | null;
-  estado: Estado;
+  id: number;              // nro de pedido
+  cliente: string;         // nombre por teléfono o el propio teléfono
+  total: number | null;    // total del pedido si no hay líneas
+  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
   detalle?: string | null;
   foto_url?: string | null;
-  pagado?: boolean | null; // mapeado desde estado_pago
+  estado_pago?: 'PAGADO' | 'PENDIENTE' | null; // tomado de pedido.estado_pago
   items?: Item[];
 };
 
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
+/** Acepta: null | '' | url simple | '[]' | '["url"]' y devuelve la primera url válida o null */
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
   if (typeof input === 'string') {
@@ -52,50 +52,31 @@ export default function LavarPage() {
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [canUpdateEstado, setCanUpdateEstado] = useState(true); // se pone en false si no existe columna estado
 
   const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const subtotal = (it: Item) => it.qty * it.valor;
+  const totalDe = (p: Pedido) => (p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0);
+
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1800);
+  }
 
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
+    (async () => {
       try {
         setLoading(true);
         setErrMsg(null);
-        setCanUpdateEstado(true);
 
-        // 1) Intento principal: leer desde public.pedido (con columna estado)
-        let rows: any[] | null = null;
-        let e1: any = null;
-
-        const q1 = await supabase
+        // 1) Pedidos: usar tabla "pedido" (NO la vista) — filtramos por estado='LAVAR'
+        const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
+          .select('nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
           .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
 
-        if (q1.error) e1 = q1.error;
-        rows = q1.data || null;
-
-        // Si la columna "estado" no existe (error 42703), hacemos fallback a la vista
-        if (e1 && String(e1.message).toLowerCase().includes('column') && String(e1.message).toLowerCase().includes('does not exist')) {
-          setCanUpdateEstado(false);
-
-          const qView = await supabase
-            .from('vw_pedido_resumen')
-            .select('id:nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
-            .eq('estado', 'LAVAR')
-            .order('nro', { ascending: false });
-
-          if (qView.error) throw qView.error;
-          rows = qView.data || null;
-        } else if (e1) {
-          throw e1;
-        }
-
-        const ids = (rows ?? []).map(r => r.id);
-        const tels = (rows ?? []).map(r => r.telefono).filter(Boolean);
+        if (e1) throw e1;
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -105,68 +86,72 @@ export default function LavarPage() {
           return;
         }
 
-        // 2) Líneas por nro
-        const q2 = await supabase
+        const nros = rows.map(r => r.nro);
+        const telefonos = rows.map(r => r.telefono).filter(Boolean) as string[];
+
+        // 2) Líneas del pedido
+        const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('pedido_id:nro, articulo, cantidad, valor')
-          .in('nro', ids);
+          .select('nro, articulo, cantidad, valor')
+          .in('nro', nros);
 
-        if (q2.error) throw q2.error;
+        if (e2) throw e2;
 
-        // 3) Fotos de respaldo en pedido_foto (por nro)
-        const q3 = await supabase
+        // 3) Respaldo de fotos (si no viene en fotos_urls)
+        const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
-          .in('nro', ids);
+          .in('nro', nros);
 
-        if (q3.error) throw q3.error;
+        if (e3) throw e3;
 
-        // 4) Nombres por teléfono
-        const q4 = await supabase
+        // 4) Clientes para nombre por teléfono
+        const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
-          .in('telefono', tels);
+          .in('telefono', telefonos);
 
-        if (q4.error) throw q4.error;
+        if (e4) throw e4;
 
+        // Mapas auxiliares
         const nombreByTel = new Map<string, string>();
-        (q4.data ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
 
-        const itemsByPedido = new Map<number, Item[]>();
-        (q2.data ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id ?? l.nro);
-          const arr = itemsByPedido.get(pid) ?? [];
+        const itemsByNro = new Map<number, Item[]>();
+        (lineas ?? []).forEach(l => {
+          const key = Number(l.nro);
+          const arr = itemsByNro.get(key) ?? [];
           arr.push({
             articulo: String(l.articulo ?? ''),
             qty: Number(l.cantidad ?? 0),
             valor: Number(l.valor ?? 0),
           });
-          itemsByPedido.set(pid, arr);
+          itemsByNro.set(key, arr);
         });
 
-        const fotoByPedido = new Map<number, string>();
-        // prioridad: fotos_urls en la fila de pedido (o de la vista)
-        (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.fotos_urls);
-          if (f) fotoByPedido.set(r.id, f);
+        const fotoByNro = new Map<number, string>();
+        // Prioridad: fotos_urls del propio pedido
+        rows.forEach(r => {
+          const f = firstFotoFromMixed((r as any).fotos_urls);
+          if (f) fotoByNro.set(r.nro, f);
         });
-        // respaldo: pedido_foto
-        (q3.data ?? []).forEach((f: any) => {
-          const pid = Number(f.nro);
-          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
-            fotoByPedido.set(pid, f.url);
+        // Respaldo: pedido_foto
+        (fotos ?? []).forEach(f => {
+          const key = Number(f.nro);
+          if (!fotoByNro.has(key) && typeof f.url === 'string' && f.url) {
+            fotoByNro.set(key, f.url);
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
+        const mapped: Pedido[] = rows.map(r => ({
+          id: r.nro,
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
-          estado: r.estado as Estado,
+          estado: r.estado as Pedido['estado'],
           detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: (r.estado_pago ?? '').toString().toUpperCase() === 'PAGADO',
-          items: itemsByPedido.get(r.id) ?? [],
+          foto_url: fotoByNro.get(r.nro) ?? null,
+          estado_pago: (r.estado_pago as 'PAGADO' | 'PENDIENTE' | null) ?? 'PENDIENTE',
+          items: itemsByNro.get(r.nro) ?? [],
         }));
 
         if (!cancelled) {
@@ -180,37 +165,25 @@ export default function LavarPage() {
           setLoading(false);
         }
       }
-    }
+    })();
 
-    load();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const subtotal = (it: Item) => it.qty * it.valor;
-
-  function snack(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 1800);
-  }
-
-  // Cambiar estado (requiere columna 'estado' en public.pedido)
-  async function changeEstado(id: number, next: Estado) {
+  // Cambiar estado (usa columna nro)
+  async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
-    if (!canUpdateEstado) {
-      snack('Para cambiar el estado crea la columna "estado" en public.pedido (ver SQL más abajo).');
-      return;
-    }
-
     setSaving(true);
     const prev = pedidos;
     setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
 
     const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
+
     if (error) {
       console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev);
+      setPedidos(prev); // revert
       setSaving(false);
       return;
     }
@@ -223,25 +196,26 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // Toggle pago (usa estado_pago en public.pedido)
+  // Toggle pago usando columna texto "estado_pago" (PAGADO/PENDIENTE)
   async function togglePago(id: number) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find(p => p.id === id)?.estado_pago ?? 'PENDIENTE';
+    const next = actual === 'PAGADO' ? 'PENDIENTE' : 'PAGADO';
 
-    const nuevo = !actual ? 'PAGADO' : 'PENDIENTE';
-    const { error } = await supabase.from('pedido').update({ estado_pago: nuevo }).eq('nro', id).select('nro').single();
+    setPedidos(prev.map(p => (p.id === id ? { ...p, estado_pago: next } : p)));
+
+    const { error } = await supabase.from('pedido').update({ estado_pago: next }).eq('nro', id).select('nro').single();
 
     if (error) {
-      console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev);
+      console.error('No se pudo actualizar estado_pago:', error);
+      setPedidos(prev); // revert
       setSaving(false);
       return;
     }
 
-    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
+    snack(`Pedido #${id} marcado como ${next}`);
     setSaving(false);
   }
 
@@ -275,11 +249,12 @@ export default function LavarPage() {
           <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
         )}
 
-        {!loading && !errMsg &&
+        {!loading &&
+          !errMsg &&
           pedidos.map(p => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
+            const totalCalc = totalDe(p);
 
             return (
               <div
@@ -289,6 +264,7 @@ export default function LavarPage() {
                   isOpen ? 'border-white/40' : 'border-white/15',
                 ].join(' ')}
               >
+                {/* Cabecera */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
@@ -300,7 +276,7 @@ export default function LavarPage() {
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        {p.cliente} • {p.estado_pago === 'PAGADO' ? 'PAGADO' : 'PENDIENTE'}
                       </div>
                     </div>
                   </div>
@@ -310,9 +286,11 @@ export default function LavarPage() {
                   </div>
                 </button>
 
+                {/* Cuerpo */}
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                      {/* Acordeón de detalle */}
                       <button
                         onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
@@ -364,6 +342,7 @@ export default function LavarPage() {
                         </div>
                       )}
 
+                      {/* Imagen siempre debajo */}
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div className="relative w-full aspect-[16/9] lg:h-72">
@@ -389,38 +368,39 @@ export default function LavarPage() {
           })}
       </section>
 
+      {/* Acciones inferiores */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
             <ActionBtn
               label="Lavando"
-              disabled={!pedidoAbierto || saving || !canUpdateEstado}
+              disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
             />
             <ActionBtn
               label="Guardado"
-              disabled={!pedidoAbierto || saving || !canUpdateEstado}
+              disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
             />
             <ActionBtn
               label="Entregar"
-              disabled={!pedidoAbierto || saving || !canUpdateEstado}
+              disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
               active={pedidoAbierto?.estado === 'GUARDAR'}
             />
             <ActionBtn
               label="Entregado"
-              disabled={!pedidoAbierto || saving || !canUpdateEstado}
+              disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
-              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
+              label={pedidoAbierto?.estado_pago === 'PAGADO' ? 'Pago' : 'Pendiente'}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
-              active={!!pedidoAbierto?.pagado}
+              active={pedidoAbierto?.estado_pago === 'PAGADO'}
             />
           </div>
 
@@ -431,11 +411,6 @@ export default function LavarPage() {
                 <span className="inline-flex items-center gap-1">
                   <Loader2 size={14} className="animate-spin" /> Guardando…
                 </span>
-              )}
-              {!canUpdateEstado && (
-                <div className="mt-1 text-amber-200/90">
-                  Estados en modo lectura: crea la columna <b>estado</b> en <b>public.pedido</b> para habilitar.
-                </div>
               )}
             </div>
           ) : (
@@ -470,9 +445,7 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
