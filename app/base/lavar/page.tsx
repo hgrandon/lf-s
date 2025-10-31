@@ -135,7 +135,7 @@ export default function LavarPage() {
                                 p.items.map((it, idx) => (
                                   <tr key={idx}>
                                     <td className="px-3 py-2 truncate">
-                                      {it.articulo.length > 20 ? it.articulo.slice(0, 20) + '...' : it.articulo}
+                                      {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
                                     </td>
                                     <td className="px-3 py-2 text-right">{it.qty}</td>
                                     <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
