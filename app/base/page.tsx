@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import {
   Droplet,
   WashingMachine,
@@ -18,36 +19,40 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-type EstadoKey =
-  | 'LAVAR'
-  | 'LAVANDO'
-  | 'GUARDAR'
-  | 'GUARDADO'
-  | 'ENTREGADO'
-  | 'ENTREGAR';
+/* =========================
+   Tipos y constantes
+========================= */
+type EstadoKey = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 type PedidoRow = { estado: string | null };
 
-const ESTADOS: EstadoKey[] = [
-  'LAVAR',
-  'LAVANDO',
-  'GUARDAR',
-  'GUARDADO',
-  'ENTREGADO',
-  'ENTREGAR',
-];
+const ESTADOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
 
+const EMPTY_COUNTS: Record<EstadoKey, number> = {
+  LAVAR: 0,
+  LAVANDO: 0,
+  GUARDAR: 0,
+  GUARDADO: 0,
+  ENTREGADO: 0,
+  ENTREGAR: 0,
+};
+
+/* =========================
+   Página
+========================= */
 export default function BasePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [counts, setCounts] = useState<Record<EstadoKey, number>>({
-    LAVAR: 0,
-    LAVANDO: 0,
-    GUARDAR: 0,
-    GUARDADO: 0,
-    ENTREGADO: 0,
-    ENTREGAR: 0,
-  });
+  const [counts, setCounts] = useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
+
+  // Evita setState luego de unmount
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const normalizeEstado = (v: string | null): EstadoKey | null => {
     if (!v) return null;
@@ -56,89 +61,71 @@ export default function BasePage() {
   };
 
   const fetchCounts = async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
     try {
+      // Traemos solo la columna necesaria
       const { data, error } = await supabase.from('pedido').select('estado');
       if (error) throw error;
 
-      const next: Record<EstadoKey, number> = {
-        LAVAR: 0,
-        LAVANDO: 0,
-        GUARDAR: 0,
-        GUARDADO: 0,
-        ENTREGADO: 0,
-        ENTREGAR: 0,
-      };
-
+      const next = { ...EMPTY_COUNTS };
       (data as PedidoRow[]).forEach((row) => {
         const estado = normalizeEstado(row.estado);
-        // 👇 se cuentan todos excepto GUARDAR
+        // Contamos todos excepto GUARDAR (Editar es solo visual)
         if (estado && estado !== 'GUARDAR') {
           next[estado] += 1;
         }
       });
 
-      setCounts(next);
+      if (mountedRef.current) setCounts(next);
     } catch (e: any) {
-      setErr(e?.message ?? 'Error desconocido al cargar');
-      console.error(e);
+      if (mountedRef.current) setErr(e?.message ?? 'Error desconocido al cargar');
+      console.error('fetchCounts error:', e);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCounts();
-    const channel = supabase
+    // IIFE para cargar al entrar
+    (async () => {
+      await fetchCounts();
+    })();
+
+    // Realtime con callback de estado (no devuelve promesa del efecto)
+    let channel: RealtimeChannel | null = supabase
       .channel('pedido-counts')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pedido' },
-        () => fetchCounts()
+        () => {
+          // Recalcula ante cualquier cambio en la tabla
+          fetchCounts();
+        }
       )
-      .subscribe();
-    return () => supabase.removeChannel(channel);
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Opcional: refresco inicial al quedar suscrito
+          fetchCounts();
+        }
+      });
+
+    // Cleanup correcto
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+      channel = null;
+    };
   }, []);
 
   const tiles = useMemo(
     () => [
-      {
-        title: 'Lavar',
-        key: 'LAVAR' as EstadoKey,
-        icon: Droplet,
-        href: '/base/lavar',
-      },
-      {
-        title: 'Lavando',
-        key: 'LAVANDO' as EstadoKey,
-        icon: WashingMachine,
-        href: '/base/lavando',
-      },
-      {
-        title: 'Editar', // visualmente visible pero no cuenta
-        key: 'GUARDAR' as EstadoKey,
-        icon: Archive,
-        href: '/base/guardar',
-      },
-      {
-        title: 'Guardado',
-        key: 'GUARDADO' as EstadoKey,
-        icon: CheckCircle2,
-        href: '/base/guardado',
-      },
-      {
-        title: 'Entregado',
-        key: 'ENTREGADO' as EstadoKey,
-        icon: PackageCheck,
-        href: '/base/entregado',
-      },
-      {
-        title: 'Entregar',
-        key: 'ENTREGAR' as EstadoKey,
-        icon: Truck,
-        href: '/entrega',
-      },
+      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: '/base/lavar' },
+      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
+      { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive, href: '/base/guardar' }, // siempre 0
+      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
+      { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck, href: '/base/entregado' },
+      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/entrega' },
     ],
     []
   );
@@ -160,7 +147,9 @@ export default function BasePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchCounts}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15"
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+            aria-busy={loading}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             {loading ? 'Actualizando…' : 'Actualizar'}
@@ -184,7 +173,8 @@ export default function BasePage() {
       )}
 
       {/* Grid */}
-      <section className="relative z-10 mx-auto max-w-5xl px-6">
+      <section className="relative z-10 mx-auto max-w-4xl px-6">
+        {/* centrado y consistente en móvil */}
         <div className="grid gap-5 grid-cols-1 sm:grid-cols-2">
           {tiles.map((t) => {
             const Icon = t.icon;
