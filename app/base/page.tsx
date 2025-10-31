@@ -1,4 +1,3 @@
-// app/base/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -19,14 +18,26 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-type EstadoKey = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type EstadoKey =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
 type PedidoRow = { estado: string | null };
 
-const ESTADOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
+const ESTADOS: EstadoKey[] = [
+  'LAVAR',
+  'LAVANDO',
+  'GUARDAR',
+  'GUARDADO',
+  'ENTREGADO',
+  'ENTREGAR',
+];
 
 export default function BasePage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<EstadoKey, number>>({
@@ -61,8 +72,11 @@ export default function BasePage() {
       };
 
       (data as PedidoRow[]).forEach((row) => {
-        const k = normalizeEstado(row.estado);
-        if (k) next[k] += 1;
+        const estado = normalizeEstado(row.estado);
+        // 👇 se cuentan todos excepto GUARDAR
+        if (estado && estado !== 'GUARDAR') {
+          next[estado] += 1;
+        }
       });
 
       setCounts(next);
@@ -76,7 +90,6 @@ export default function BasePage() {
 
   useEffect(() => {
     fetchCounts();
-
     const channel = supabase
       .channel('pedido-counts')
       .on(
@@ -85,20 +98,47 @@ export default function BasePage() {
         () => fetchCounts()
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, []);
 
   const tiles = useMemo(
     () => [
-      { title: 'Lavar',     key: 'LAVAR' as EstadoKey,     icon: Droplet,         href: '/base/lavar' },
-      { title: 'Lavando',   key: 'LAVANDO' as EstadoKey,   icon: WashingMachine,  href: '/base/lavando' },
-      { title: 'Editar',    key: 'GUARDAR' as EstadoKey,   icon: Archive,         href: '/base/guardar' },
-      { title: 'Guardado',  key: 'GUARDADO' as EstadoKey,  icon: CheckCircle2,    href: '/base/guardado' },
-      { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck,    href: '/base/entregado' },
-      { title: 'Entregar',  key: 'ENTREGAR' as EstadoKey,  icon: Truck,           href: '/entrega' },
+      {
+        title: 'Lavar',
+        key: 'LAVAR' as EstadoKey,
+        icon: Droplet,
+        href: '/base/lavar',
+      },
+      {
+        title: 'Lavando',
+        key: 'LAVANDO' as EstadoKey,
+        icon: WashingMachine,
+        href: '/base/lavando',
+      },
+      {
+        title: 'Editar', // visualmente visible pero no cuenta
+        key: 'GUARDAR' as EstadoKey,
+        icon: Archive,
+        href: '/base/guardar',
+      },
+      {
+        title: 'Guardado',
+        key: 'GUARDADO' as EstadoKey,
+        icon: CheckCircle2,
+        href: '/base/guardado',
+      },
+      {
+        title: 'Entregado',
+        key: 'ENTREGADO' as EstadoKey,
+        icon: PackageCheck,
+        href: '/base/entregado',
+      },
+      {
+        title: 'Entregar',
+        key: 'ENTREGAR' as EstadoKey,
+        icon: Truck,
+        href: '/entrega',
+      },
     ],
     []
   );
@@ -114,6 +154,7 @@ export default function BasePage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
+      {/* Header */}
       <header className="relative z-10 flex items-center justify-between px-6 py-6 max-w-6xl mx-auto">
         <h1 className="font-bold text-2xl">Base de Pedidos</h1>
         <div className="flex items-center gap-3">
@@ -142,13 +183,12 @@ export default function BasePage() {
         </div>
       )}
 
-      {/* Grid estilo “tarjeta con número grande a la derecha” */}
+      {/* Grid */}
       <section className="relative z-10 mx-auto max-w-5xl px-6">
         <div className="grid gap-5 grid-cols-1 sm:grid-cols-2">
           {tiles.map((t) => {
             const Icon = t.icon;
             const value = loading ? null : counts[t.key];
-
             return (
               <button
                 key={t.key}
@@ -164,16 +204,12 @@ export default function BasePage() {
                       {t.title}
                     </span>
                   </div>
-
                   <div className="text-right">
                     {value === null ? (
                       <span className="inline-block h-8 w-12 md:w-14 rounded bg-white/20 animate-pulse" />
                     ) : (
-                      <span
-                        className="block text-4xl md:text-5xl font-extrabold leading-none
-                                   tracking-tight drop-shadow-sm"
-                      >
-                        {value}
+                      <span className="block text-4xl md:text-5xl font-extrabold leading-none tracking-tight drop-shadow-sm">
+                        {t.key === 'GUARDAR' ? 0 : value}
                       </span>
                     )}
                   </div>
@@ -184,6 +220,7 @@ export default function BasePage() {
         </div>
       </section>
 
+      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto max-w-6xl rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
