@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
 type Pedido = {
-  id: number; // <- alias de nro
+  id: number; // alias de nro
   cliente: string;
   total: number | null;
   estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
@@ -21,7 +21,6 @@ type Pedido = {
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
 function firstFotoFromMixed(input: unknown): string | null {
-  // Puede venir null, '', una URL suelta, o un JSON tipo "[]"/'["..."]'
   if (!input) return null;
   if (typeof input === 'string') {
     const s = input.trim();
@@ -35,7 +34,7 @@ function firstFotoFromMixed(input: unknown): string | null {
         return null;
       }
     }
-    return s; // asumimos URL suelta
+    return s;
   }
   if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
   return null;
@@ -62,11 +61,11 @@ export default function LavarPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) pedidos (alias id:nro). Toma también fotos_urls si existe.
+        // 1) pedidos (usa estado_pedido y nro)
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
-          .eq('estado', 'LAVAR')
+          .select('id:nro, telefono, total, estado_pedido, detalle, pagado, fotos_urls')
+          .eq('estado_pedido', 'LAVAR')
           .order('nro', { ascending: false });
 
         if (e1) throw e1;
@@ -82,7 +81,7 @@ export default function LavarPage() {
           return;
         }
 
-        // 2) líneas (clave foránea por nro). Alias pedido_id:nro
+        // 2) líneas (clave foránea: nro)
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id:nro, articulo, cantidad, valor')
@@ -90,7 +89,7 @@ export default function LavarPage() {
 
         if (e2) throw e2;
 
-        // 3) respaldo de fotos desde pedido_foto (por si no vino en fotos_urls)
+        // 3) fotos respaldo
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
@@ -98,7 +97,7 @@ export default function LavarPage() {
 
         if (e3) throw e3;
 
-        // 4) nombres de clientes (por teléfono)
+        // 4) clientes por teléfono
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -106,13 +105,12 @@ export default function LavarPage() {
 
         if (e4) throw e4;
 
-        // Mapas auxiliares
         const nombreByTel = new Map<string, string>();
         (cli ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach(l => {
-          const pid = Number((l as any).pedido_id ?? (l as any).nro); // alias seguro
+          const pid = Number((l as any).pedido_id ?? (l as any).nro);
           const arr = itemsByPedido.get(pid) ?? [];
           arr.push({
             articulo: String(l.articulo ?? ''),
@@ -123,12 +121,10 @@ export default function LavarPage() {
         });
 
         const fotoByPedido = new Map<number, string>();
-        // Prioridad 1: fotos_urls de la propia fila de pedido
         (rows ?? []).forEach(r => {
           const f = firstFotoFromMixed((r as any).fotos_urls);
           if (f) fotoByPedido.set(r.id, f);
         });
-        // Respaldo: pedido_foto
         (fotos ?? []).forEach(f => {
           const pid = Number((f as any).nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
@@ -137,10 +133,10 @@ export default function LavarPage() {
         });
 
         const mapped: Pedido[] = (rows ?? []).map(r => ({
-          id: r.id, // es nro
+          id: r.id,
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
-          estado: r.estado,
+          estado: r.estado_pedido,
           detalle: r.detalle ?? null,
           foto_url: fotoByPedido.get(r.id) ?? null,
           pagado: r.pagado ?? false,
@@ -172,23 +168,27 @@ export default function LavarPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambiar estado (usa columna nro para filtrar)
+  // Cambiar estado (update estado_pedido por nro)
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
     setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
+    const { error } = await supabase
+      .from('pedido')
+      .update({ estado_pedido: next })
+      .eq('nro', id)
+      .select('nro')
+      .single();
 
     if (error) {
       console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev); // revert
+      setPedidos(prev);
       setSaving(false);
       return;
     }
 
-    // Si ya no está en LAVAR, sácalo del listado actual
     if (next !== 'LAVAR') {
       setPedidos(curr => curr.filter(p => p.id !== id));
       setOpenId(null);
@@ -197,7 +197,7 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // Toggle pagado (usa columna nro para filtrar)
+  // Toggle pagado (por nro)
   async function togglePago(id: number) {
     if (!id) return;
     setSaving(true);
@@ -205,11 +205,16 @@ export default function LavarPage() {
     const actual = prev.find(p => p.id === id)?.pagado ?? false;
     setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
+    const { error } = await supabase
+      .from('pedido')
+      .update({ pagado: !actual })
+      .eq('nro', id)
+      .select('nro')
+      .single();
 
     if (error) {
       console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev); // revert
+      setPedidos(prev);
       setSaving(false);
       return;
     }
@@ -279,9 +284,7 @@ export default function LavarPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(totalCalc)}
-                    </div>
+                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
                 </button>
@@ -441,9 +444,7 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
