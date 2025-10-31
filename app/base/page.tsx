@@ -16,14 +16,19 @@ import {
   Settings,
   LayoutDashboard,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 type EstadoKey = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 type PedidoRow = { estado: string | null };
 
+const ESTADOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
+
 export default function BasePage() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<EstadoKey, number>>({
     LAVAR: 0,
     LAVANDO: 0,
@@ -33,38 +38,63 @@ export default function BasePage() {
     ENTREGAR: 0,
   });
 
-  // === Cargar contadores ===
+  // Normaliza el valor de "estado" y devuelve la clave del mapa si existe
+  const normalizeEstado = (v: string | null): EstadoKey | null => {
+    if (!v) return null;
+    const key = v.trim().toUpperCase();
+    return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
+  };
+
+  // Carga los contadores (único fetch, se agrupa en front para compatibilidad total)
   const fetchCounts = async () => {
     setLoading(true);
+    setErr(null);
     try {
       const { data, error } = await supabase.from('pedido').select('estado');
       if (error) throw error;
 
-      const next = { LAVAR: 0, LAVANDO: 0, GUARDAR: 0, GUARDADO: 0, ENTREGADO: 0, ENTREGAR: 0 };
+      const next: Record<EstadoKey, number> = {
+        LAVAR: 0,
+        LAVANDO: 0,
+        GUARDAR: 0,
+        GUARDADO: 0,
+        ENTREGADO: 0,
+        ENTREGAR: 0,
+      };
 
       (data as PedidoRow[]).forEach((row) => {
-        const estado = (row.estado || '').trim().toUpperCase();
-        if (estado === 'LAVAR') next.LAVAR++;
-        else if (estado === 'LAVANDO') next.LAVANDO++;
-        else if (estado === 'GUARDAR') next.GUARDAR++;
-        else if (estado === 'GUARDADO') next.GUARDADO++;
-        else if (estado === 'ENTREGADO') next.ENTREGADO++;
-        else if (estado === 'ENTREGAR') next.ENTREGAR++;
+        const k = normalizeEstado(row.estado);
+        if (k) next[k] += 1;
       });
 
       setCounts(next);
-    } catch (e) {
-      console.error('Error cargando contadores:', e);
+    } catch (e: any) {
+      console.error(e);
+      setErr(e?.message ?? 'Error desconocido al cargar');
     } finally {
       setLoading(false);
     }
   };
 
+  // Primer fetch + realtime (se actualiza solo ante INSERT/UPDATE/DELETE)
   useEffect(() => {
     fetchCounts();
+
+    const channel = supabase
+      .channel('pedido-counts')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedido' },
+        () => fetchCounts()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // === Mapa UI ===
+  // Tarjetas de navegación
   const tiles = useMemo(
     () => [
       { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: <Droplet className="w-6 h-6 text-white/90" />, href: '/base/lavar' },
@@ -89,14 +119,15 @@ export default function BasePage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
-        <h1 className="font-bold text-lg">Base de Pedidos</h1>
+      <header className="relative z-10 flex items-center justify-between px-6 py-5 max-w-6xl mx-auto">
+        <h1 className="font-bold text-xl tracking-tight">Base de Pedidos</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={fetchCounts}
             className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15"
           >
-            <RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Actualizando…' : 'Actualizar'}
           </button>
           <button
             onClick={() => router.push('/menu')}
@@ -107,8 +138,18 @@ export default function BasePage() {
         </div>
       </header>
 
+      {/* Error banner (si ocurre) */}
+      {err && (
+        <div className="relative z-10 mx-auto max-w-6xl px-6">
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
+            <AlertTriangle size={16} />
+            <span>No se pudieron cargar los contadores: {err}</span>
+          </div>
+        </div>
+      )}
+
       {/* Grid centrada */}
-      <section className="relative z-10 mx-auto max-w-6xl px-6 py-4">
+      <section className="relative z-10 mx-auto max-w-6xl px-6 py-2">
         <div className="grid justify-items-center gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
           {tiles.map((t) => (
             <button
@@ -117,12 +158,25 @@ export default function BasePage() {
               className="w-full rounded-2xl bg-white/10 backdrop-blur-md border border-white/15
                          shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:bg-white/14 transition p-4 text-left"
             >
-              <div className="flex items-center gap-2">
-                {t.icon}
-                <span className="font-semibold">{t.title}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {t.icon}
+                  <span className="font-semibold">{t.title}</span>
+                </div>
+
+                {/* Badge con conteo */}
+                <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-xs">
+                  {loading ? '—' : counts[t.key]}
+                </span>
               </div>
-              <p className="text-sm text-white/80 mt-1">
-                {loading ? '—' : counts[t.key]} Orders
+
+              {/* Subtexto o skeleton */}
+              <p className="text-sm text-white/80 mt-2">
+                {loading ? (
+                  <span className="inline-block h-2 w-24 animate-pulse rounded bg-white/20" />
+                ) : (
+                  `${counts[t.key]} Orders`
+                )}
               </p>
             </button>
           ))}
