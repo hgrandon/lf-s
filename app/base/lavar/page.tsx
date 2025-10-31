@@ -351,17 +351,18 @@ export default function LavarPage() {
 
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
-                          <div className="relative w-full aspect-[16/9] lg:h-72">
-                            <Image
-                              src={p.foto_url}
-                              alt={`Foto pedido ${p.id}`}
-                              fill
-                              sizes="(max-width: 1024px) 100vw, 1200px"
-                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
-                              className="object-cover"
-                              priority={false}
-                            />
-                          </div>
+                                <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
+                                <Image
+                                    src={p.foto_url!}
+                                    alt={`Foto pedido ${p.id}`}
+                                    width={0}
+                                    height={0}
+                                    sizes="100vw"
+                                    style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                    onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                                    priority={false}
+                                />
+                                </div>
                         ) : (
                           <div className="p-6 text-sm text-white/70">Sin imagen adjunta.</div>
                         )}
