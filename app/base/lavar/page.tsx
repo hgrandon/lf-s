@@ -184,47 +184,44 @@ export default function LavarPage() {
                       {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
 
-                    {detOpen && (
-                      <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10">
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-xs lg:text-sm">
-                            <thead className="bg-white/10 text-white">
-                              <tr>
-                                <th className="text-left px-3 py-2">Artículo</th>
-                                <th className="text-right px-3 py-2">Cantidad</th>
-                                <th className="text-right px-3 py-2">Valor</th>
-                                <th className="text-right px-3 py-2">Subtotal</th>
-                                <th className="text-left px-3 py-2">Estado</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/10">
-                              {p.items?.length ? (
-                                p.items.map((it, idx) => (
-                                  <tr key={idx} className="text-white/95">
-                                    <td className="px-3 py-2">{it.articulo}</td>
-                                    <td className="px-3 py-2 text-right">{it.qty}</td>
-                                    <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                    <td className="px-3 py-2 text-right">
-                                      {CLP.format(subtotal(it))}
-                                    </td>
-                                    <td className="px-3 py-2">{it.estado}</td>
-                                  </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td className="px-3 py-4 text-white/70" colSpan={5}>
-                                    Sin items registrados para este pedido.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div className="px-3 py-3 bg-white/10 text-right font-extrabold">
-                          Total: {CLP.format(totalCalc)}
-                        </div>
-                      </div>
-                    )}
+{detOpen && (
+  <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+    <div className="overflow-x-auto w-full max-w-4xl">
+      <table className="w-full text-xs lg:text-sm text-white/95">
+        <thead className="bg-white/10 text-white/90">
+          <tr>
+            <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+            <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+            <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+            <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/10">
+          {p.items?.length ? (
+            p.items.map((it, idx) => (
+              <tr key={idx}>
+                <td className="px-3 py-2 truncate">{it.articulo}</td>
+                <td className="px-3 py-2 text-right">{it.qty}</td>
+                <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                <td className="px-3 py-2 text-right">{CLP.format(subtotal(it))}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                Sin artículos registrados.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+        Total: {CLP.format(totalCalc)}
+      </div>
+    </div>
+  </div>
+)}
+
                   </div>
                 </div>
               )}
