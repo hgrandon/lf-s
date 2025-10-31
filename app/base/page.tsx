@@ -65,7 +65,6 @@ export default function BasePage() {
     setLoading(true);
     setErr(null);
     try {
-      // Traemos solo la columna necesaria
       const { data, error } = await supabase.from('pedido').select('estado');
       if (error) throw error;
 
@@ -73,9 +72,7 @@ export default function BasePage() {
       (data as PedidoRow[]).forEach((row) => {
         const estado = normalizeEstado(row.estado);
         // Contamos todos excepto GUARDAR (Editar es solo visual)
-        if (estado && estado !== 'GUARDAR') {
-          next[estado] += 1;
-        }
+        if (estado && estado !== 'GUARDAR') next[estado] += 1;
       });
 
       if (mountedRef.current) setCounts(next);
@@ -88,30 +85,21 @@ export default function BasePage() {
   };
 
   useEffect(() => {
-    // IIFE para cargar al entrar
     (async () => {
       await fetchCounts();
     })();
 
-    // Realtime con callback de estado (no devuelve promesa del efecto)
     let channel: RealtimeChannel | null = supabase
       .channel('pedido-counts')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pedido' },
-        () => {
-          // Recalcula ante cualquier cambio en la tabla
-          fetchCounts();
-        }
+        () => fetchCounts()
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // Opcional: refresco inicial al quedar suscrito
-          fetchCounts();
-        }
+        if (status === 'SUBSCRIBED') fetchCounts();
       });
 
-    // Cleanup correcto
     return () => {
       if (channel) supabase.removeChannel(channel);
       channel = null;
@@ -120,12 +108,12 @@ export default function BasePage() {
 
   const tiles = useMemo(
     () => [
-      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: '/base/lavar' },
+      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet,       href: '/base/lavar' },
       { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
-      { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive, href: '/base/guardar' }, // siempre 0
+      { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive,    href: '/base/guardar' }, // siempre 0
       { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
       { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck, href: '/base/entregado' },
-      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/entrega' },
+      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck,   href: '/entrega' },
     ],
     []
   );
@@ -141,10 +129,10 @@ export default function BasePage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-6 max-w-6xl mx-auto">
-        <h1 className="font-bold text-2xl">Base de Pedidos</h1>
-        <div className="flex items-center gap-3">
+      {/* Header compacto para móvil */}
+      <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
+        <h1 className="font-bold text-xl sm:text-2xl">Base de Pedidos</h1>
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={fetchCounts}
             disabled={loading}
@@ -164,7 +152,7 @@ export default function BasePage() {
       </header>
 
       {err && (
-        <div className="relative z-10 mx-auto max-w-6xl px-6">
+        <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
             <span>No se pudieron cargar los contadores: {err}</span>
@@ -172,10 +160,9 @@ export default function BasePage() {
         </div>
       )}
 
-      {/* Grid */}
-      <section className="relative z-10 mx-auto max-w-4xl px-6">
-        {/* centrado y consistente en móvil */}
-        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2">
+      {/* Grid: SIEMPRE 2 columnas (3 tarjetas por lado) */}
+      <section className="relative z-10 mx-auto max-w-6xl px-4">
+        <div className="grid grid-cols-2 gap-4 sm:gap-5">
           {tiles.map((t) => {
             const Icon = t.icon;
             const value = loading ? null : counts[t.key];
@@ -185,20 +172,20 @@ export default function BasePage() {
                 onClick={() => router.push(t.href)}
                 className="group w-full rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md
                            shadow-[0_6px_24px_rgba(0,0,0,0.20)] hover:bg-white/14 hover:shadow-[0_10px_28px_rgba(0,0,0,0.25)]
-                           transition p-5 md:p-6 text-left h-28 md:h-32"
+                           transition p-4 sm:p-5 text-left h-28 active:scale-[.99]"
               >
                 <div className="flex items-center justify-between h-full">
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <Icon className="w-7 h-7 md:w-8 md:h-8 text-white/90" />
-                    <span className="text-lg md:text-xl font-extrabold tracking-tight drop-shadow">
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-7 h-7 text-white/90" />
+                    <span className="text-base sm:text-lg font-extrabold tracking-tight drop-shadow">
                       {t.title}
                     </span>
                   </div>
                   <div className="text-right">
                     {value === null ? (
-                      <span className="inline-block h-8 w-12 md:w-14 rounded bg-white/20 animate-pulse" />
+                      <span className="inline-block h-7 w-10 sm:w-12 rounded bg-white/20 animate-pulse" />
                     ) : (
-                      <span className="block text-4xl md:text-5xl font-extrabold leading-none tracking-tight drop-shadow-sm">
+                      <span className="block text-3xl sm:text-4xl font-extrabold leading-none tracking-tight drop-shadow-sm">
                         {t.key === 'GUARDAR' ? 0 : value}
                       </span>
                     )}
@@ -211,7 +198,7 @@ export default function BasePage() {
       </section>
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 pt-2 pb-4 backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-3 pt-2 pb-3 backdrop-blur-md">
         <div className="mx-auto max-w-6xl rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
             {shortcuts.map((item) => (
