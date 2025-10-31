@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Camera } from 'lucide-react';
+import type { Entrega, Estado, Pago } from '@/app/types/pedido';
 
 type Props = {
   open: boolean;
@@ -9,12 +10,16 @@ type Props = {
   onSave: () => void;
   saving: boolean;
   nro?: number;
-  estado: string;
-  entrega: string;
-  pago: string;
-  setEstado: (v: string) => void;
-  setEntrega: (v: string) => void;
-  setPago: (v: string) => void;
+
+  // valores actuales
+  estado: Estado;
+  entrega: Entrega;
+  pago: Pago;
+
+  // setters tipados
+  setEstado: React.Dispatch<React.SetStateAction<Estado>>;
+  setEntrega: React.Dispatch<React.SetStateAction<Entrega>>;
+  setPago: React.Dispatch<React.SetStateAction<Pago>>;
 };
 
 export default function EditPedidoModal({
@@ -45,7 +50,7 @@ export default function EditPedidoModal({
             <span className="text-sm font-semibold text-violet-700">Estado:</span>
             <select
               value={estado}
-              onChange={(e) => setEstado(e.target.value)}
+              onChange={(e) => setEstado(e.target.value as Estado)}
               className="rounded-xl border border-violet-200 px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="LAVAR">LAVAR</option>
@@ -59,7 +64,7 @@ export default function EditPedidoModal({
             <span className="text-sm font-semibold text-violet-700">Entrega:</span>
             <select
               value={entrega}
-              onChange={(e) => setEntrega(e.target.value)}
+              onChange={(e) => setEntrega(e.target.value as Entrega)}
               className="rounded-xl border border-violet-200 px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="LOCAL">LOCAL</option>
@@ -72,7 +77,7 @@ export default function EditPedidoModal({
             <span className="text-sm font-semibold text-violet-700">Pago:</span>
             <select
               value={pago}
-              onChange={(e) => setPago(e.target.value)}
+              onChange={(e) => setPago(e.target.value as Pago)}
               className="rounded-xl border border-violet-200 px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="PENDIENTE">PENDIENTE</option>
@@ -80,17 +85,17 @@ export default function EditPedidoModal({
             </select>
           </label>
 
-          {/* Botón cámara */}
-          <div className="flex justify-center mt-3">
+          {/* Botón cámara (placeholder) */}
+          <div className="mt-3 flex justify-center">
             <button
               title="Abrir cámara"
-              className="rounded-full bg-violet-600 p-4 text-white hover:bg-violet-700 shadow-lg"
+              className="rounded-full bg-violet-600 p-4 text-white shadow-lg hover:bg-violet-700"
             >
               <Camera size={24} />
             </button>
           </div>
 
-          {/* Botón guardar */}
+          {/* Guardar */}
           <button
             onClick={onSave}
             disabled={saving}
