@@ -64,8 +64,13 @@ export default function BasePage() {
       };
 
       (data as PedidoRow[]).forEach((r) => {
-        const e = (r.estado || '').toString().toUpperCase() as EstadoKey;
-        if (e in next) next[e]++;
+            const e = (r.estado || '').toString().trim().toLowerCase();
+            if (e.includes('lavar')) next.LAVAR++;
+            else if (e.includes('lavando')) next.LAVANDO++;
+            else if (e.includes('guardar') && !e.includes('guardado')) next.GUARDAR++;
+            else if (e.includes('guardado')) next.GUARDADO++;
+            else if (e.includes('entregar')) next.ENTREGAR++;
+            else if (e.includes('entregado')) next.ENTREGADO++;
       });
 
       setCounts(next);
