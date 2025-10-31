@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -52,6 +52,12 @@ export default function LavarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // estado para picker de foto
+  const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const inputCamRef = useRef<HTMLInputElement>(null);
+  const inputFileRef = useRef<HTMLInputElement>(null);
+
   const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
@@ -61,7 +67,6 @@ export default function LavarPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Pedidos (alias id:nro). Tomamos fotos_urls si existe.
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
@@ -70,8 +75,8 @@ export default function LavarPage() {
 
         if (e1) throw e1;
 
-        const ids = (rows ?? []).map(r => r.id);
-        const tels = (rows ?? []).map(r => r.telefono).filter(Boolean);
+        const ids = (rows ?? []).map(r => (r as any).id);
+        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -81,16 +86,13 @@ export default function LavarPage() {
           return;
         }
 
-        // 2) Líneas: tomamos todas las columnas para evitar errores por nombres distintos.
-        // Luego hacemos fallbacks en el mapeo.
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('*')
-          .in('nro', ids); // si tu FK se llama distinto (pedido_id/pedido_nro), igual abajo hacemos fallback
+          .in('nro', ids);
 
         if (e2) throw e2;
 
-        // 3) Respaldo de fotos por tabla pedido_foto
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
@@ -98,7 +100,6 @@ export default function LavarPage() {
 
         if (e3) throw e3;
 
-        // 4) Nombres de clientes (por teléfono)
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -106,24 +107,21 @@ export default function LavarPage() {
 
         if (e4) throw e4;
 
-        // Mapas auxiliares
         const nombreByTel = new Map<string, string>();
         (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          // Fallback de clave del pedido
           const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
           if (!pid) return;
 
-          // Fallbacks para nombre, cantidad y valor
           const label =
             String(
               l.articulo ??
                 l.nombre ??
                 l.descripcion ??
                 l.item ??
-                l.articulo_nombre ?? // por si existe así
+                l.articulo_nombre ??
                 l.articulo_id ??
                 ''
             ).trim() || 'SIN NOMBRE';
@@ -137,12 +135,10 @@ export default function LavarPage() {
         });
 
         const fotoByPedido = new Map<number, string>();
-        // Prioridad 1: fotos_urls en pedido
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.fotos_urls);
           if (f) fotoByPedido.set(r.id, f);
         });
-        // Respaldo: pedido_foto
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
@@ -227,6 +223,56 @@ export default function LavarPage() {
 
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
+  }
+
+  // ----------- Subida de foto -----------
+  async function handlePick(kind: 'camera' | 'file') {
+    if (!pickerForPedido) return;
+    if (kind === 'camera') inputCamRef.current?.click();
+    else inputFileRef.current?.click();
+  }
+
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset
+    const pid = pickerForPedido;
+    if (!file || !pid) return;
+
+    try {
+      setUploading(prev => ({ ...prev, [pid]: true }));
+
+      // nombre y ruta
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `pedido-${pid}/${Date.now()}.${ext}`;
+
+      // subir al bucket 'fotos'
+      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+
+      // URL pública
+      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
+      const publicUrl = pub.publicUrl;
+
+      // guardar también en pedido_foto
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ nro: pid, url: publicUrl });
+      if (insErr) throw insErr;
+
+      // refrescar en memoria
+      setPedidos(prev =>
+        prev.map(p => (p.id === pid ? { ...p, foto_url: publicUrl } : p))
+      );
+      setImageError(prev => ({ ...prev, [pid]: false }));
+      snack(`Foto subida al pedido #${pid}`);
+    } catch (err: any) {
+      console.error(err);
+      snack('No se pudo subir la foto.');
+    } finally {
+      setUploading(prev => ({ ...prev, [pid!]: false }));
+      setPickerForPedido(null);
+    }
   }
 
   return (
@@ -351,20 +397,27 @@ export default function LavarPage() {
 
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
-                                <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
-                                <Image
-                                    src={p.foto_url!}
-                                    alt={`Foto pedido ${p.id}`}
-                                    width={0}
-                                    height={0}
-                                    sizes="100vw"
-                                    style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                                    onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
-                                    priority={false}
-                                />
-                                </div>
+                          <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
+                            <Image
+                              src={p.foto_url!}
+                              alt={`Foto pedido ${p.id}`}
+                              width={0}
+                              height={0}
+                              sizes="100vw"
+                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                              priority={false}
+                            />
+                          </div>
                         ) : (
-                          <div className="p-6 text-sm text-white/70">Sin imagen adjunta.</div>
+                          <button
+                            onClick={() => setPickerForPedido(p.id)}
+                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                            title="Agregar imagen"
+                          >
+                            <ImagePlus size={18} />
+                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -430,6 +483,54 @@ export default function LavarPage() {
           {notice}
         </div>
       )}
+
+      {/* Modal simple para elegir origen de la imagen */}
+      {pickerForPedido && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
+          <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <div className="grid gap-2">
+              <button
+                onClick={() => handlePick('camera')}
+                className="flex items-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
+                <Camera size={18} />
+                Sacar foto
+              </button>
+              <button
+                onClick={() => handlePick('file')}
+                className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+              >
+                <ImagePlus size={18} />
+                Buscar en archivos
+              </button>
+              <button
+                onClick={() => setPickerForPedido(null)}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* inputs ocultos */}
+      <input
+        ref={inputCamRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
