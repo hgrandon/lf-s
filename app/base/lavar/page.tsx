@@ -8,192 +8,84 @@ import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
 type Pedido = {
-  id: number;
-  cliente: string;
-  total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
-  detalle?: string | null;
-  foto_url?: string | null;
-  pagado?: boolean | null;
+  nro: number;
+  telefono: string;
+  nombre: string;
+  direccion: string;
+  estado_pago: string;
+  tipo_entrega: string;
+  total: number;
+  fotos_urls?: string[] | null;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
-const STATE_LABEL: Record<Pedido['estado'], string> = {
-  LAVAR: 'Lavar',
-  LAVANDO: 'Lavando',
-  GUARDAR: 'Entregar',
-  GUARDADO: 'Guardado',
-  ENTREGADO: 'Entregado',
-};
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 export default function LavarPage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [openNro, setOpenNro] = useState<number | null>(null);
   const [openDetail, setOpenDetail] = useState<Record<number, boolean>>({});
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find(p => p.nro === openNro) ?? null,
+    [pedidos, openNro]
+  );
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       try {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Trae pedidos (tabla singular)
-        const { data: rows, error: e1 } = await supabase
+        const { data, error } = await supabase
           .from('pedido')
-          .select('id, telefono, total, estado, detalle, pagado')
-          .eq('estado', 'LAVAR')
-          .order('id', { ascending: false });
+          .select('nro, telefono, nombre, direccion, estado_pago, tipo_entrega, total, fotos_urls')
+          .order('nro', { ascending: false });
 
-        if (e1) throw e1;
-        const pedidosIds = (rows ?? []).map(r => r.id);
-        const telefonos = (rows ?? []).map(r => r.telefono).filter(Boolean);
-
-        // Si no hay pedidos, termina
-        if (!rows?.length) {
-          if (!cancelled) {
-            setPedidos([]);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // 2) Lineas
-        const { data: lineas, error: e2 } = await supabase
-          .from('pedido_linea')
-          .select('pedido_id, articulo, cantidad, valor')
-          .in('pedido_id', pedidosIds);
-
-        if (e2) throw e2;
-
-        // 3) Foto (opcional)
-        const { data: fotos, error: e3 } = await supabase
-          .from('pedido_foto')
-          .select('pedido_id, url')
-          .in('pedido_id', pedidosIds);
-
-        if (e3) throw e3;
-
-        // 4) Clientes (para nombre por teléfono)
-        const { data: cli, error: e4 } = await supabase
-          .from('clientes')
-          .select('telefono, nombre')
-          .in('telefono', telefonos);
-
-        if (e4) throw e4;
-
-        // Mapas auxiliares
-        const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
-
-        const itemsByPedido = new Map<number, Item[]>();
-        (lineas ?? []).forEach(l => {
-          const arr = itemsByPedido.get(l.pedido_id) ?? [];
-          arr.push({
-            articulo: String(l.articulo ?? ''),
-            qty: Number(l.cantidad ?? 0),
-            valor: Number(l.valor ?? 0),
-          });
-          itemsByPedido.set(l.pedido_id, arr);
-        });
-
-        const fotoByPedido = new Map<number, string>();
-        (fotos ?? []).forEach(f => {
-          if (!fotoByPedido.has(f.pedido_id)) fotoByPedido.set(f.pedido_id, f.url ?? '');
-        });
-
-        // Construye modelo de UI
-        const mapped: Pedido[] = (rows ?? []).map(r => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
-
-        if (!cancelled) {
-          setPedidos(mapped);
-          setLoading(false);
-        }
+        if (error) throw error;
+        setPedidos(data || []);
       } catch (err: any) {
         console.error(err);
-        if (!cancelled) {
-          setErrMsg(err?.message ?? 'Error al cargar pedidos');
-          setLoading(false);
-        }
+        setErrMsg(err.message || 'Error al cargar pedidos');
+      } finally {
+        setLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
-
-  const subtotal = (it: Item) => it.qty * it.valor;
-  const totalCalc = (p: Pedido) => (p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0);
 
   function snack(msg: string) {
     setNotice(msg);
-    setTimeout(() => setNotice(null), 1800);
+    setTimeout(() => setNotice(null), 2000);
   }
 
-  // Cambiar estado en tabla 'pedido'
-  async function changeEstado(id: number, next: Pedido['estado']) {
-    if (!id) return;
+  async function togglePago(nro: number, actual: string) {
     setSaving(true);
-    const prev = pedidos;
-    const patched = prev.map(p => (p.id === id ? { ...p, estado: next } : p));
-    setPedidos(patched);
+    const nuevo = actual === 'PAGADO' ? 'PENDIENTE' : 'PAGADO';
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('id', id).select('id').single();
+    const { error } = await supabase
+      .from('pedido')
+      .update({ estado_pago: nuevo })
+      .eq('nro', nro);
 
     if (error) {
-      console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev);
-      setSaving(false);
-      return;
+      console.error(error);
+      snack('Error al cambiar estado de pago');
+    } else {
+      setPedidos(prev =>
+        prev.map(p => (p.nro === nro ? { ...p, estado_pago: nuevo } : p))
+      );
+      snack(`Pedido #${nro} → ${nuevo}`);
     }
-
-    if (next !== 'LAVAR') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
-      setOpenId(null);
-      snack(`Pedido #${id} movido a ${STATE_LABEL[next]}`);
-    }
-    setSaving(false);
-  }
-
-  // Toggle pagado en tabla 'pedido'
-  async function togglePago(id: number) {
-    if (!id) return;
-    setSaving(true);
-    const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    const patched = prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p));
-    setPedidos(patched);
-
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('id', id).select('id').single();
-
-    if (error) {
-      console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev);
-      setSaving(false);
-      return;
-    }
-
-    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
 
@@ -224,25 +116,29 @@ export default function LavarPage() {
         )}
 
         {!loading && !errMsg && pedidos.length === 0 && (
-          <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
+          <div className="text-white/80">No hay pedidos registrados.</div>
         )}
 
         {!loading &&
           !errMsg &&
           pedidos.map(p => {
-            const isOpen = openId === p.id;
-            const detOpen = !!openDetail[p.id];
+            const isOpen = openNro === p.nro;
+            const detOpen = !!openDetail[p.nro];
+            const foto = Array.isArray(p.fotos_urls)
+              ? p.fotos_urls[0]
+              : typeof p.fotos_urls === 'string'
+              ? p.fotos_urls.replace(/[\[\]"]/g, '')
+              : null;
 
             return (
               <div
-                key={p.id}
-                className={[
-                  'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
-                  isOpen ? 'border-white/40' : 'border-white/15',
-                ].join(' ')}
+                key={p.nro}
+                className={`rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-md ${
+                  isOpen ? 'border-white/40' : ''
+                }`}
               >
                 <button
-                  onClick={() => setOpenId(isOpen ? null : p.id)}
+                  onClick={() => setOpenNro(isOpen ? null : p.nro)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                 >
                   <div className="flex items-center gap-3">
@@ -250,15 +146,15 @@ export default function LavarPage() {
                       <User size={18} />
                     </span>
                     <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.nro}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        {p.nombre} • {p.telefono}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
                     <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0)}
+                      {CLP.format(p.total ?? 0)}
                     </div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
@@ -268,7 +164,7 @@ export default function LavarPage() {
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
-                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.nro]: !prev[p.nro] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
@@ -280,56 +176,23 @@ export default function LavarPage() {
 
                       {detOpen && (
                         <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                          <div className="overflow-x-auto w-full max-w-4xl">
-                            <table className="w-full text-xs lg:text-sm text-white/95">
-                              <thead className="bg-white/10 text-white/90">
-                                <tr>
-                                  <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                  <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                                  <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                  <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/10">
-                                {p.items?.length ? (
-                                  p.items.map((it, idx) => (
-                                    <tr key={idx}>
-                                      <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
-                                      </td>
-                                      <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
-                                      Sin artículos registrados.
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                            <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
-                              Total:{' '}
-                              {CLP.format(
-                                p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0
-                              )}
-                            </div>
+                          <div className="p-4 text-sm text-white/80">
+                            Dirección: {p.direccion} <br />
+                            Tipo entrega: {p.tipo_entrega} <br />
+                            Estado de pago: {p.estado_pago}
                           </div>
                         </div>
                       )}
 
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !imageError[p.id] ? (
+                        {foto && !imageError[p.nro] ? (
                           <div className="relative w-full aspect-[16/9] lg:h-72">
                             <Image
-                              src={p.foto_url}
-                              alt={`Foto pedido ${p.id}`}
+                              src={foto}
+                              alt={`Foto pedido ${p.nro}`}
                               fill
                               sizes="(max-width: 1024px) 100vw, 1200px"
-                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                              onError={() => setImageError(prev => ({ ...prev, [p.nro]: true }))}
                               className="object-cover"
                               priority={false}
                             />
@@ -349,50 +212,21 @@ export default function LavarPage() {
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
-            <ActionBtn
-              label="Lavando"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
-              active={pedidoAbierto?.estado === 'LAVANDO'}
-            />
-            <ActionBtn
-              label="Guardado"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
-              active={pedidoAbierto?.estado === 'GUARDADO'}
-            />
-            <ActionBtn
-              label="Entregar"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
-              active={pedidoAbierto?.estado === 'GUARDAR'}
-            />
-            <ActionBtn
-              label="Entregado"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
-              active={pedidoAbierto?.estado === 'ENTREGADO'}
-            />
-            <ActionBtn
-              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
-              active={!!pedidoAbierto?.pagado}
-            />
+            {pedidoAbierto ? (
+              <>
+                <ActionBtn
+                  label={pedidoAbierto.estado_pago === 'PAGADO' ? 'Pendiente' : 'Pagado'}
+                  onClick={() => togglePago(pedidoAbierto.nro, pedidoAbierto.estado_pago)}
+                  disabled={saving}
+                  active={pedidoAbierto.estado_pago === 'PAGADO'}
+                />
+              </>
+            ) : (
+              <div className="col-span-5 text-center text-xs text-white/70">
+                Abre un pedido para habilitar las acciones.
+              </div>
+            )}
           </div>
-
-          {pedidoAbierto ? (
-            <div className="mt-2 text-center text-xs text-white/90">
-              Pedido seleccionado: <b>#{pedidoAbierto.id}</b>{' '}
-              {saving && (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 size={14} className="animate-spin" /> Guardando…
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
-          )}
         </div>
       </nav>
 
@@ -420,13 +254,11 @@ function ActionBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={[
-        'rounded-xl py-3 text-sm font-medium border transition',
+      className={`rounded-xl py-3 text-sm font-medium border transition ${
         active
           ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
-        disabled ? 'opacity-50 cursor-not-allowed' : '',
-      ].join(' ')}
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       {label}
     </button>
