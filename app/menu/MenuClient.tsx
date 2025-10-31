@@ -20,7 +20,7 @@ import {
 const tiles = [
   { href: '/pedido',     title: 'Pedido',       icon: <ClipboardList size={22} /> },
   { href: '/clientes',   title: 'Cliente',      icon: <User size={22} /> },
-  { href: '/base',       title: 'Base',         icon: <Database size={22} />,   disabled: true },
+  { href: '/base',       title: 'Base',          icon: <Database size={22} /> },
   { href: '/historico',  title: 'Histórico',    icon: <History size={22} />,    disabled: true },
   { href: '/finanzas',   title: 'Finanzas',     icon: <PiggyBank size={22} />,  disabled: true },
   { href: '/guardar',    title: 'Guardar',      icon: <Save size={22} />,       disabled: true },
