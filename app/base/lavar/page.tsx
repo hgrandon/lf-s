@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, User, Image as ImageIcon, Table } from 'lucide-react';
+import Image from 'next/image';
 
 type Item = {
   articulo: string;
@@ -25,7 +26,6 @@ type Pedido = {
 
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
-// Mock para demo (reemplazar por Supabase luego)
 const DATA_MOCK: Pedido[] = [
   {
     id: 6245,
@@ -34,7 +34,7 @@ const DATA_MOCK: Pedido[] = [
     estado: 'LAVAR',
     detalle: 'COBERTOR KING + FRAZADAS (3) + POLERONES',
     foto_url:
-      'https://images.unsplash.com/photo-1616004655121-818b8a6b159d?q=80&w=1400&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1616004655121-818b8a6b159d?q=80&w=1600&auto=format&fit=crop',
     telefono: '+56 9 9999 9999',
     direccion: 'Av. Siempre Viva 123',
     items: [
@@ -50,7 +50,7 @@ const DATA_MOCK: Pedido[] = [
     estado: 'LAVAR',
     detalle: 'MANTAS + ROPA VARIADA',
     foto_url:
-      'https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=1400&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=1600&auto=format&fit=crop',
     items: [
       { articulo: 'MANTA 2 PLAZAS', qty: 1, valor: 7000, estado: 'LAVAR' },
       { articulo: 'PANTALONES', qty: 4, valor: 2000, estado: 'LAVAR' },
@@ -69,77 +69,74 @@ const DATA_MOCK: Pedido[] = [
 export default function LavarPage() {
   const router = useRouter();
   const [openId, setOpenId] = useState<number | null>(null);
-  // subacordeones independientes por pedido
   const [openImage, setOpenImage] = useState<Record<number, boolean>>({});
   const [openDetail, setOpenDetail] = useState<Record<number, boolean>>({});
+  const [imageError, setImageError] = useState<Record<number, boolean>>({});
 
   const pedidos = useMemo(() => DATA_MOCK.filter((p) => p.estado === 'LAVAR'), []);
-
-  const toggleRow = (id: number) => setOpenId((prev) => (prev === id ? null : id));
-  const toggleImage = (id: number) =>
-    setOpenImage((prev) => ({ ...prev, [id]: !prev[id] }));
-  const toggleDetail = (id: number) =>
-    setOpenDetail((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  const subtotal = (item: Item) => item.qty * item.valor;
+  const subtotal = (it: Item) => it.qty * it.valor;
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      <header className="relative z-10 flex items-center justify-between px-6 py-4">
-        <h1 className="font-bold text-lg">Lavar</h1>
+      {/* Header */}
+      <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
+        <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
         <button
           onClick={() => router.push('/base')}
-          className="text-sm text-white/90 hover:text-white"
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
         >
           ← Volver
         </button>
       </header>
 
-      <section className="relative z-10 px-4 md:px-6 grid gap-3 max-w-3xl">
+      {/* Contenido: FULL WIDTH (extremo a extremo) con paddings fluidos */}
+      <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
         {pedidos.map((p) => {
           const isOpen = openId === p.id;
           const imgOpen = !!openImage[p.id];
           const detOpen = !!openDetail[p.id];
-
-          const totalCalculado =
-            p.items?.reduce((acc, it) => acc + subtotal(it), 0) ?? p.total ?? 0;
+          const totalCalc = p.items?.reduce((acc, it) => acc + subtotal(it), 0) ?? p.total ?? 0;
 
           return (
             <div
               key={p.id}
               className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]"
             >
-              {/* Cabecera del pedido */}
+              {/* Fila */}
               <button
-                onClick={() => toggleRow(p.id)}
-                className="w-full flex items-center justify-between gap-4 px-4 py-3"
+                onClick={() => setOpenId(isOpen ? null : p.id)}
+                className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
               >
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
                     <User size={18} />
                   </span>
                   <div className="text-left">
-                    <div className="font-extrabold tracking-wide">N° {p.id}</div>
-                    <div className="text-xs uppercase text-white/85">{p.cliente}</div>
+                    <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                    <div className="text-[10px] lg:text-xs uppercase text-white/85">{p.cliente}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="font-extrabold text-white/95">
-                    {CLP.format(totalCalculado)}
+
+                <div className="flex items-center gap-3 lg:gap-4">
+                  <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                    {CLP.format(totalCalc)}
                   </div>
                   {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                 </div>
               </button>
 
-              {/* Contenido desplegable del pedido */}
+              {/* Contenido */}
               {isOpen && (
-                <div className="px-4 pb-4">
-                  <div className="rounded-xl bg-white/8 border border-white/15 p-2">
-                    {/* Sub-acordeón: Imagen */}
+                <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
+                  <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+
+                    {/* Acordeón: Imagen */}
                     <button
-                      onClick={() => toggleImage(p.id)}
+                      onClick={() =>
+                        setOpenImage((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                      }
                       className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                     >
                       <div className="flex items-center gap-2">
@@ -150,24 +147,34 @@ export default function LavarPage() {
                     </button>
 
                     {imgOpen && (
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url ? (
-                          <img
-                            src={p.foto_url}
-                            alt={`Foto pedido ${p.id}`}
-                            className="w-full h-56 object-cover"
-                            loading="lazy"
-                          />
+                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10 relative">
+                        {p.foto_url && !imageError[p.id] ? (
+                          <div className="relative w-full aspect-[16/9] lg:h-72">
+                            <Image
+                              src={p.foto_url}
+                              alt={`Foto pedido ${p.id}`}
+                              fill
+                              sizes="(max-width: 1024px) 100vw, 1200px"
+                              onError={() =>
+                                setImageError((prev) => ({ ...prev, [p.id]: true }))
+                              }
+                              priority={false}
+                              placeholder="empty"
+                              className="object-cover"
+                            />
+                          </div>
                         ) : (
                           <div className="p-6 text-sm text-white/70">Sin imagen adjunta.</div>
                         )}
                       </div>
                     )}
 
-                    {/* Sub-acordeón: Detalle */}
+                    {/* Acordeón: Detalle */}
                     <div className="mt-3" />
                     <button
-                      onClick={() => toggleDetail(p.id)}
+                      onClick={() =>
+                        setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                      }
                       className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                     >
                       <div className="flex items-center gap-2">
@@ -179,8 +186,8 @@ export default function LavarPage() {
 
                     {detOpen && (
                       <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10">
-                        <div className="overflow-auto">
-                          <table className="min-w-full text-sm">
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[720px] text-xs lg:text-sm">
                             <thead className="bg-white/10 text-white">
                               <tr>
                                 <th className="text-left px-3 py-2">Artículo</th>
@@ -196,9 +203,7 @@ export default function LavarPage() {
                                   <tr key={idx} className="text-white/95">
                                     <td className="px-3 py-2">{it.articulo}</td>
                                     <td className="px-3 py-2 text-right">{it.qty}</td>
-                                    <td className="px-3 py-2 text-right">
-                                      {CLP.format(it.valor)}
-                                    </td>
+                                    <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                                     <td className="px-3 py-2 text-right">
                                       {CLP.format(subtotal(it))}
                                     </td>
@@ -216,7 +221,7 @@ export default function LavarPage() {
                           </table>
                         </div>
                         <div className="px-3 py-3 bg-white/10 text-right font-extrabold">
-                          Total: {CLP.format(totalCalculado)}
+                          Total: {CLP.format(totalCalc)}
                         </div>
                       </div>
                     )}
@@ -228,9 +233,9 @@ export default function LavarPage() {
         })}
       </section>
 
-      {/* Footer fijo (atajos) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 pt-2 pb-4 backdrop-blur-md">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white/10 border border-white/15 p-3">
+      {/* Footer fijo */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
+        <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
             {[
               { name: 'Base', href: '/base' },
