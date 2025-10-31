@@ -2,8 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { Droplet, WashingMachine, Archive, CheckCircle2, Truck, Plus } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 
 export default function BasePage() {
   const router = useRouter();
@@ -21,7 +19,10 @@ export default function BasePage() {
       {/* Header */}
       <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm">
         <h1 className="font-bold text-lg text-gray-800">Base de Pedidos</h1>
-        <button onClick={() => router.push('/menu')} className="text-sm text-violet-600 hover:underline">
+        <button
+          onClick={() => router.push('/menu')}
+          className="text-sm text-violet-600 hover:underline"
+        >
           ← Volver
         </button>
       </header>
@@ -29,24 +30,28 @@ export default function BasePage() {
       {/* Cards */}
       <div className="grid grid-cols-2 gap-3 p-4">
         {statuses.map((s) => (
-          <Card
+          <div
             key={s.title}
-            className={`flex flex-col justify-center items-center border ${s.color} shadow-sm cursor-pointer hover:shadow-md transition`}
+            onClick={() => router.push(`/base/${s.title.toLowerCase()}`)}
+            className={`flex flex-col justify-center items-center bg-white border ${s.color} rounded-xl shadow-sm cursor-pointer hover:shadow-md transition`}
           >
-            <CardContent className="flex flex-col items-center py-4">
+            <div className="flex flex-col items-center py-4">
               {s.icon}
               <h2 className="font-semibold text-gray-800 mt-2">{s.title}</h2>
               <p className="text-sm text-gray-500">{s.count} Orders</p>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ))}
       </div>
 
       {/* Floating button */}
       <div className="flex justify-end p-5">
-        <Button className="rounded-full w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white shadow-lg">
+        <button
+          className="rounded-full w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white shadow-lg flex items-center justify-center"
+          onClick={() => router.push('/pedido/nuevo')}
+        >
           <Plus size={28} />
-        </Button>
+        </button>
       </div>
 
       {/* Bottom Navigation */}
