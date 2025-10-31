@@ -8,7 +8,10 @@ import {
   CheckCircle2,
   Truck,
   PackageCheck,
-  Plus,
+  User,
+  PiggyBank,
+  Settings,
+  LayoutDashboard,
 } from 'lucide-react';
 
 export default function BasePage() {
@@ -23,9 +26,16 @@ export default function BasePage() {
     { title: 'Entregar',  count: 15, icon: <Truck className="w-6 h-6 text-white/90" />,          href: '/entrega' },
   ];
 
+  const shortcuts = [
+    { name: 'Base', icon: LayoutDashboard, href: '/base' },
+    { name: 'Clientes', icon: User, href: '/clientes' },
+    { name: 'Finanzas', icon: PiggyBank, href: '/finanzas' },
+    { name: 'Config', icon: Settings, href: '/config' },
+  ];
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
-      {/* velo radial suave como en /menu */}
+      {/* Velo radial */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Header */}
@@ -39,9 +49,9 @@ export default function BasePage() {
         </button>
       </header>
 
-      {/* Cards / glass */}
+      {/* Cards */}
       <section className="relative z-10 grid grid-cols-2 gap-4 px-6 py-4 max-w-4xl">
-        {statuses.map(s => (
+        {statuses.map((s) => (
           <button
             key={s.title}
             onClick={() => router.push(s.href)}
@@ -56,27 +66,21 @@ export default function BasePage() {
         ))}
       </section>
 
-      {/* FAB */}
-      <div className="relative z-10 flex justify-end px-6 py-6">
-        <button
-          className="rounded-full w-14 h-14 bg-white text-violet-700 shadow-xl hover:bg-violet-50 grid place-items-center"
-          onClick={() => router.push('/pedido/nuevo')}
-          aria-label="Nuevo pedido"
-        >
-          <Plus size={26} />
-        </button>
-      </div>
-
-      {/* Bottom nav “suave” opcional */}
-      <nav className="relative z-10 px-6 pb-6">
+      {/* Bottom shortcuts bar */}
+      <nav className="relative z-10 mt-auto px-6 py-5">
         <div className="grid grid-cols-4 gap-3">
-          <div className="rounded-2xl bg-white/8 border border-white/10 py-2 text-center text-sm">Dashboard</div>
-          <div className="rounded-2xl bg-white/8 border border-white/10 py-2 text-center text-sm">Clientes</div>
-          <div className="rounded-2xl bg-white/8 border border-white/10 py-2 text-center text-sm">Reportes</div>
-          <div className="rounded-2xl bg-white/8 border border-white/10 py-2 text-center text-sm">Config</div>
+          {shortcuts.map((item) => (
+            <button
+              key={item.name}
+              onClick={() => router.push(item.href)}
+              className="flex flex-col items-center justify-center rounded-2xl bg-white/10 border border-white/15 py-3 text-white/90 hover:bg-white/15 transition"
+            >
+              <item.icon size={20} className="mb-1" />
+              <span className="text-sm font-medium">{item.name}</span>
+            </button>
+          ))}
         </div>
       </nav>
     </main>
   );
 }
-
