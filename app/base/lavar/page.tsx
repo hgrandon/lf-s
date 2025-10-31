@@ -32,14 +32,14 @@ export default function LavarPage() {
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [pedido, setpedido] = useState<Pedido[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
   const [openDetail, setOpenDetail] = useState<Record<number, boolean>>({});
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(() => pedido.find(p => p.id === openId) ?? null, [pedido, openId]);
 
   useEffect(() => {
     let ignore = false;
@@ -48,7 +48,7 @@ export default function LavarPage() {
       setErrMsg(null);
       // Ajusta los nombres si tus columnas varían. Traemos cliente_nombre y cliente y usamos el que exista.
       const { data, error } = await supabase
-        .from('pedidos')
+        .from('pedido')
         .select(`
           id,
           cliente_nombre,
@@ -69,8 +69,8 @@ export default function LavarPage() {
 
       if (error) {
         console.error('Supabase error:', error);
-        setErrMsg(error.message ?? 'Error al cargar pedidos');
-        setPedidos([]);
+        setErrMsg(error.message ?? 'Error al cargar pedido');
+        setpedido([]);
         setLoading(false);
         return;
       }
@@ -90,7 +90,7 @@ export default function LavarPage() {
         })),
       }));
 
-      setPedidos(mapped);
+      setpedido(mapped);
       setLoading(false);
     })();
 
@@ -111,22 +111,22 @@ export default function LavarPage() {
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
-    const prev = pedidos;
+    const prev = pedido;
     const patched = prev.map(p => (p.id === id ? { ...p, estado: next } : p));
-    setPedidos(patched);
+    setpedido(patched);
 
-    const { error } = await supabase.from('pedidos').update({ estado: next }).eq('id', id).select('id').single();
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('id', id).select('id').single();
 
     if (error) {
       console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev); // revertir
+      setpedido(prev); // revertir
       setSaving(false);
       return;
     }
 
     // Esta vista muestra LAVAR: si cambió a otro estado, lo removemos
     if (next !== 'LAVAR') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
+      setpedido(curr => curr.filter(p => p.id !== id));
       setOpenId(null); // des-selecciona → botones se desactivan
       snack(`Pedido #${id} movido a ${STATE_LABEL[next]}`);
     }
@@ -137,16 +137,16 @@ export default function LavarPage() {
   async function togglePago(id: number) {
     if (!id) return;
     setSaving(true);
-    const prev = pedidos;
+    const prev = pedido;
     const actual = prev.find(p => p.id === id)?.pagado ?? false;
     const patched = prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p));
-    setPedidos(patched);
+    setpedido(patched);
 
-    const { error } = await supabase.from('pedidos').update({ pagado: !actual }).eq('id', id).select('id').single();
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('id', id).select('id').single();
 
     if (error) {
       console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev); // revertir
+      setpedido(prev); // revertir
       setSaving(false);
       return;
     }
@@ -170,7 +170,7 @@ export default function LavarPage() {
         {loading && (
           <div className="flex items-center gap-2 text-white/90">
             <Loader2 className="animate-spin" size={18} />
-            Cargando pedidos…
+            Cargando pedido…
           </div>
         )}
 
@@ -181,13 +181,13 @@ export default function LavarPage() {
           </div>
         )}
 
-        {!loading && !errMsg && pedidos.length === 0 && (
-          <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
+        {!loading && !errMsg && pedido.length === 0 && (
+          <div className="text-white/80">No hay pedido en estado LAVAR.</div>
         )}
 
         {!loading &&
           !errMsg &&
-          pedidos.map(p => {
+          pedido.map(p => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
 
