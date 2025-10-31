@@ -7,21 +7,19 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-
 type Pedido = {
-  id: number;              // nro de pedido
-  cliente: string;         // nombre por teléfono o el propio teléfono
-  total: number | null;    // total del pedido si no hay líneas
+  id: number; // nro
+  cliente: string;
+  total: number | null;
   estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
   detalle?: string | null;
   foto_url?: string | null;
-  estado_pago?: 'PAGADO' | 'PENDIENTE' | null; // tomado de pedido.estado_pago
+  pagado?: boolean | null;
   items?: Item[];
 };
 
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
-/** Acepta: null | '' | url simple | '[]' | '["url"]' y devuelve la primera url válida o null */
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
   if (typeof input === 'string') {
@@ -30,14 +28,15 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        return Array.isArray(arr) && typeof arr[0] === 'string' ? arr[0] : null;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
+        return null;
       } catch {
         return null;
       }
     }
     return s;
   }
-  if (Array.isArray(input) && typeof input[0] === 'string') return input[0];
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
   return null;
 }
 
@@ -54,13 +53,6 @@ export default function LavarPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
-  const subtotal = (it: Item) => it.qty * it.valor;
-  const totalDe = (p: Pedido) => (p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0);
-
-  function snack(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 1800);
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -69,14 +61,17 @@ export default function LavarPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Pedidos: usar tabla "pedido" (NO la vista) — filtramos por estado='LAVAR'
+        // 1) Pedidos (alias id:nro). Tomamos fotos_urls si existe.
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('nro, telefono, total, estado, detalle, estado_pago, fotos_urls')
+          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
           .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
 
         if (e1) throw e1;
+
+        const ids = (rows ?? []).map(r => r.id);
+        const tels = (rows ?? []).map(r => r.telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -86,72 +81,84 @@ export default function LavarPage() {
           return;
         }
 
-        const nros = rows.map(r => r.nro);
-        const telefonos = rows.map(r => r.telefono).filter(Boolean) as string[];
-
-        // 2) Líneas del pedido
+        // 2) Líneas: tomamos todas las columnas para evitar errores por nombres distintos.
+        // Luego hacemos fallbacks en el mapeo.
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('nro, articulo, cantidad, valor')
-          .in('nro', nros);
+          .select('*')
+          .in('nro', ids); // si tu FK se llama distinto (pedido_id/pedido_nro), igual abajo hacemos fallback
 
         if (e2) throw e2;
 
-        // 3) Respaldo de fotos (si no viene en fotos_urls)
+        // 3) Respaldo de fotos por tabla pedido_foto
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
-          .in('nro', nros);
+          .in('nro', ids);
 
         if (e3) throw e3;
 
-        // 4) Clientes para nombre por teléfono
+        // 4) Nombres de clientes (por teléfono)
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
-          .in('telefono', telefonos);
+          .in('telefono', tels);
 
         if (e4) throw e4;
 
         // Mapas auxiliares
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
-        const itemsByNro = new Map<number, Item[]>();
-        (lineas ?? []).forEach(l => {
-          const key = Number(l.nro);
-          const arr = itemsByNro.get(key) ?? [];
-          arr.push({
-            articulo: String(l.articulo ?? ''),
-            qty: Number(l.cantidad ?? 0),
-            valor: Number(l.valor ?? 0),
-          });
-          itemsByNro.set(key, arr);
+        const itemsByPedido = new Map<number, Item[]>();
+        (lineas ?? []).forEach((l: any) => {
+          // Fallback de clave del pedido
+          const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
+          if (!pid) return;
+
+          // Fallbacks para nombre, cantidad y valor
+          const label =
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ?? // por si existe así
+                l.articulo_id ??
+                ''
+            ).trim() || 'SIN NOMBRE';
+
+          const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
+          const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
+
+          const arr = itemsByPedido.get(pid) ?? [];
+          arr.push({ articulo: label, qty, valor });
+          itemsByPedido.set(pid, arr);
         });
 
-        const fotoByNro = new Map<number, string>();
-        // Prioridad: fotos_urls del propio pedido
-        rows.forEach(r => {
-          const f = firstFotoFromMixed((r as any).fotos_urls);
-          if (f) fotoByNro.set(r.nro, f);
+        const fotoByPedido = new Map<number, string>();
+        // Prioridad 1: fotos_urls en pedido
+        (rows ?? []).forEach((r: any) => {
+          const f = firstFotoFromMixed(r.fotos_urls);
+          if (f) fotoByPedido.set(r.id, f);
         });
         // Respaldo: pedido_foto
-        (fotos ?? []).forEach(f => {
-          const key = Number(f.nro);
-          if (!fotoByNro.has(key) && typeof f.url === 'string' && f.url) {
-            fotoByNro.set(key, f.url);
+        (fotos ?? []).forEach((f: any) => {
+          const pid = Number(f.nro);
+          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
+            fotoByPedido.set(pid, f.url);
           }
         });
 
-        const mapped: Pedido[] = rows.map(r => ({
-          id: r.nro,
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
+          id: r.id,
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
-          estado: r.estado as Pedido['estado'],
+          estado: r.estado,
           detalle: r.detalle ?? null,
-          foto_url: fotoByNro.get(r.nro) ?? null,
-          estado_pago: (r.estado_pago as 'PAGADO' | 'PENDIENTE' | null) ?? 'PENDIENTE',
-          items: itemsByNro.get(r.nro) ?? [],
+          foto_url: fotoByPedido.get(r.id) ?? null,
+          pagado: r.pagado ?? false,
+          items: itemsByPedido.get(r.id) ?? [],
         }));
 
         if (!cancelled) {
@@ -172,7 +179,13 @@ export default function LavarPage() {
     };
   }, []);
 
-  // Cambiar estado (usa columna nro)
+  const subtotal = (it: Item) => it.qty * it.valor;
+
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1800);
+  }
+
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
@@ -183,7 +196,7 @@ export default function LavarPage() {
 
     if (error) {
       console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev); // revert
+      setPedidos(prev);
       setSaving(false);
       return;
     }
@@ -196,26 +209,23 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // Toggle pago usando columna texto "estado_pago" (PAGADO/PENDIENTE)
   async function togglePago(id: number) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.estado_pago ?? 'PENDIENTE';
-    const next = actual === 'PAGADO' ? 'PENDIENTE' : 'PAGADO';
+    const actual = prev.find(p => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    setPedidos(prev.map(p => (p.id === id ? { ...p, estado_pago: next } : p)));
-
-    const { error } = await supabase.from('pedido').update({ estado_pago: next }).eq('nro', id).select('nro').single();
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
 
     if (error) {
-      console.error('No se pudo actualizar estado_pago:', error);
-      setPedidos(prev); // revert
+      console.error('No se pudo actualizar pago:', error);
+      setPedidos(prev);
       setSaving(false);
       return;
     }
 
-    snack(`Pedido #${id} marcado como ${next}`);
+    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
 
@@ -254,7 +264,7 @@ export default function LavarPage() {
           pedidos.map(p => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = totalDe(p);
+            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
 
             return (
               <div
@@ -264,7 +274,6 @@ export default function LavarPage() {
                   isOpen ? 'border-white/40' : 'border-white/15',
                 ].join(' ')}
               >
-                {/* Cabecera */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
@@ -276,7 +285,7 @@ export default function LavarPage() {
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} • {p.estado_pago === 'PAGADO' ? 'PAGADO' : 'PENDIENTE'}
+                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
                     </div>
                   </div>
@@ -286,11 +295,9 @@ export default function LavarPage() {
                   </div>
                 </button>
 
-                {/* Cuerpo */}
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
-                      {/* Acordeón de detalle */}
                       <button
                         onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
@@ -342,7 +349,6 @@ export default function LavarPage() {
                         </div>
                       )}
 
-                      {/* Imagen siempre debajo */}
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div className="relative w-full aspect-[16/9] lg:h-72">
@@ -368,7 +374,6 @@ export default function LavarPage() {
           })}
       </section>
 
-      {/* Acciones inferiores */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
@@ -397,10 +402,10 @@ export default function LavarPage() {
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
-              label={pedidoAbierto?.estado_pago === 'PAGADO' ? 'Pago' : 'Pendiente'}
+              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
-              active={pedidoAbierto?.estado_pago === 'PAGADO'}
+              active={!!pedidoAbierto?.pagado}
             />
           </div>
 
@@ -445,7 +450,9 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
