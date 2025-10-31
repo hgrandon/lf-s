@@ -9,7 +9,6 @@ type Item = {
   articulo: string;
   qty: number;
   valor: number;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 };
 
 type Pedido = {
@@ -19,13 +18,16 @@ type Pedido = {
   estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
   detalle: string;
   foto_url?: string;
-  telefono?: string;
-  direccion?: string;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
+// MOCK para demo (luego enchufamos Supabase)
 const DATA_MOCK: Pedido[] = [
   {
     id: 6245,
@@ -35,12 +37,10 @@ const DATA_MOCK: Pedido[] = [
     detalle: 'COBERTOR KING + FRAZADAS (3) + POLERONES',
     foto_url:
       'https://images.unsplash.com/photo-1616004655121-818b8a6b159d?q=80&w=1600&auto=format&fit=crop',
-    telefono: '+56 9 9999 9999',
-    direccion: 'Av. Siempre Viva 123',
     items: [
-      { articulo: 'COBERTOR 2 PLAZAS 220 X 200', qty: 2, valor: 8000, estado: 'LAVAR' },
-      { articulo: 'COBERTOR KING 220 X 250', qty: 1, valor: 10000, estado: 'LAVAR' },
-      { articulo: 'RETIRO Y ENTREGA', qty: 1, valor: 1000, estado: 'LAVAR' },
+      { articulo: 'COBERTOR 2 PLAZAS 220 X 200', qty: 2, valor: 8000 },
+      { articulo: 'COBERTOR KING 220 X 250', qty: 1, valor: 10000 },
+      { articulo: 'RETIRO Y ENTREGA', qty: 1, valor: 1000 },
     ],
   },
   {
@@ -52,9 +52,9 @@ const DATA_MOCK: Pedido[] = [
     foto_url:
       'https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=1600&auto=format&fit=crop',
     items: [
-      { articulo: 'MANTA 2 PLAZAS', qty: 1, valor: 7000, estado: 'LAVAR' },
-      { articulo: 'PANTALONES', qty: 4, valor: 2000, estado: 'LAVAR' },
-      { articulo: 'POLERAS', qty: 3, valor: 1500, estado: 'LAVAR' },
+      { articulo: 'MANTA 2 PLAZAS', qty: 1, valor: 7000 },
+      { articulo: 'PANTALONES', qty: 4, valor: 2000 },
+      { articulo: 'POLERAS', qty: 3, valor: 1500 },
     ],
   },
   {
@@ -91,7 +91,7 @@ export default function LavarPage() {
         </button>
       </header>
 
-      {/* Contenido: FULL WIDTH (extremo a extremo) con paddings fluidos */}
+      {/* Contenido edge-to-edge */}
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
         {pedidos.map((p) => {
           const isOpen = openId === p.id;
@@ -184,44 +184,48 @@ export default function LavarPage() {
                       {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
 
-{detOpen && (
-  <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-    <div className="overflow-x-auto w-full max-w-4xl">
-      <table className="w-full text-xs lg:text-sm text-white/95">
-        <thead className="bg-white/10 text-white/90">
-          <tr>
-            <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-            <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-            <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-            <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/10">
-          {p.items?.length ? (
-            p.items.map((it, idx) => (
-              <tr key={idx}>
-                <td className="px-3 py-2 truncate">{it.articulo}</td>
-                <td className="px-3 py-2 text-right">{it.qty}</td>
-                <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                <td className="px-3 py-2 text-right">{CLP.format(subtotal(it))}</td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
-                Sin artículos registrados.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
-        Total: {CLP.format(totalCalc)}
-      </div>
-    </div>
-  </div>
-)}
+                    {detOpen && (
+                      <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                        <div className="overflow-x-auto w-full max-w-4xl">
+                          <table className="w-full text-xs lg:text-sm text-white/95">
+                            <thead className="bg-white/10 text-white/90">
+                              <tr>
+                                <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {p.items?.length ? (
+                                p.items.map((it, idx) => (
+                                  <tr key={idx}>
+                                    <td className="px-3 py-2 truncate">
+                                         {it.articulo.length > 20 ? it.articulo.slice(0, 22) + '...' : it.articulo}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">{it.qty}</td>
+                                    <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                                    <td className="px-3 py-2 text-right">
+                                      {CLP.format(subtotal(it))}
+                                    </td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                    Sin artículos registrados.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
 
+                          <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+                            Total: {CLP.format(totalCalc)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
