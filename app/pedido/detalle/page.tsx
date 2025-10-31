@@ -1,54 +1,51 @@
-// [L1] 'use client'
 'use client';
 
-// [L3] Imports
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Pencil, Search, ArrowLeft } from 'lucide-react';
 import EditPedidoModal from '@/app/components/EditPedidoModal';
+import type { Entrega, Estado, Pago } from '@/app/types/pedido';
 
-// [L9] Supabase Client (usa tus envs reales)
+// Supabase Client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// [L15] Tipos
+// Tipos
 type Pedido = {
   nro: number;
   total: number;
-  fecha_entrega: string;          // ISO yyyy-mm-dd
-  entrega: 'LOCAL' | 'DOMICILIO';
-  pago: 'PENDIENTE' | 'PAGADO';
-  estado?: 'LAVAR' | 'LAVADO' | 'ENTREGADO' | string;
+  fecha_entrega: string;
+  entrega: Entrega;
+  pago: Pago;
+  estado?: Estado;
   telefono: string;
   nombre: string;
   direccion: string;
 };
 
-// [L27] Utils de formato/estilos
+// Utils
 const CLP = new Intl.NumberFormat('es-CL');
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
 
-// [L30] Página DETALLE
+// Página
 export default function DetallePage() {
-  // [L32] Estado base tabla/búsqueda
   const [data, setData] = useState<Pedido[]>([]);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Pedido | null>(null);
 
-  // [L37] Estado del modal/edición
   const [editOpen, setEditOpen] = useState(false);
-  const [mEstado, setMEstado] = useState<Pedido['estado']>('LAVAR');
-  const [mEntrega, setMEntrega] = useState<Pedido['entrega']>('LOCAL');
-  const [mPago, setMPago] = useState<Pedido['pago']>('PENDIENTE');
+  const [mEstado, setMEstado] = useState<Estado>('LAVAR');
+  const [mEntrega, setMEntrega] = useState<Entrega>('LOCAL');
+  const [mPago, setMPago] = useState<Pago>('PENDIENTE');
   const [saving, setSaving] = useState(false);
 
-  // [L45] Cargar datos desde Supabase
+  // Cargar datos desde Supabase
   useEffect(() => {
     (async () => {
       const { data: rows, error } = await supabase
-        .from('pedidos') // <-- cambia si tu tabla se llama distinto
+        .from('pedido') // Asegúrate de usar el nombre correcto de la tabla
         .select(
           'nro,total,fecha_entrega,entrega,pago,estado,telefono,nombre,direccion'
         )
@@ -62,7 +59,7 @@ export default function DetallePage() {
     })();
   }, []);
 
-  // [L61] Filtro por nro/nombre/teléfono
+  // Filtro
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return data;
@@ -74,19 +71,19 @@ export default function DetallePage() {
     );
   }, [q, data]);
 
-  // [L72] Abrir modal desde lápiz (requiere fila seleccionada)
+  // Abrir modal desde lápiz
   const abrirEditar = () => {
     if (!selected) {
       alert('Selecciona primero una fila de la tabla.');
       return;
     }
-    setMEstado((selected.estado as any) || 'LAVAR');
+    setMEstado(selected.estado ?? 'LAVAR');
     setMEntrega(selected.entrega);
     setMPago(selected.pago);
     setEditOpen(true);
   };
 
-  // [L83] Guardar cambios en Supabase y refrescar en memoria
+  // Guardar cambios
   const handleSave = async () => {
     if (!selected) return;
     setSaving(true);
@@ -96,15 +93,16 @@ export default function DetallePage() {
       pago: mPago,
     };
     const { error } = await supabase
-      .from('pedidos')
+      .from('pedido')
       .update(updates)
       .eq('nro', selected.nro);
+
     if (error) {
       alert('No se pudo guardar: ' + error.message);
       setSaving(false);
       return;
     }
-    // [L99] Actualiza estado local sin recargar
+
     setData((prev) =>
       prev.map((r) => (r.nro === selected.nro ? { ...r, ...updates } : r))
     );
@@ -112,11 +110,10 @@ export default function DetallePage() {
     setEditOpen(false);
   };
 
-  // [L107] Render
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 p-4">
       <div className="mx-auto w-full max-w-6xl rounded-2xl bg-white/90 p-4 shadow-2xl">
-        {/* [L111] Header */}
+        {/* Header */}
         <header className="mb-3 flex items-center gap-3">
           <button
             onClick={() => history.back()}
@@ -131,9 +128,12 @@ export default function DetallePage() {
             REPORTE BASE
           </h1>
 
-          {/* [L124] Buscador */}
+          {/* Buscador */}
           <div className="relative mr-auto w-[420px] max-w-full">
-            <Search className="pointer-events-none absolute left-3 top-2.5" size={16} />
+            <Search
+              className="pointer-events-none absolute left-3 top-2.5"
+              size={16}
+            />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -142,20 +142,26 @@ export default function DetallePage() {
             />
           </div>
 
-          {/* [L136] Botón lápiz → abre modal de edición */}
+          {/* Lápiz */}
           <button
             onClick={abrirEditar}
             className={cx(
               'rounded-full p-2 text-white transition',
-              selected ? 'bg-violet-600 hover:bg-violet-700' : 'bg-violet-300 cursor-not-allowed'
+              selected
+                ? 'bg-violet-600 hover:bg-violet-700'
+                : 'bg-violet-300 cursor-not-allowed'
             )}
-            title={selected ? `Modificar pedido #${selected?.nro}` : 'Selecciona una fila para editar'}
+            title={
+              selected
+                ? `Modificar pedido #${selected?.nro}`
+                : 'Selecciona una fila para editar'
+            }
           >
             <Pencil size={18} />
           </button>
         </header>
 
-        {/* [L148] Tabla */}
+        {/* Tabla */}
         <div className="overflow-hidden rounded-xl border border-violet-100">
           <table className="w-full text-sm">
             <thead className="bg-violet-50 text-violet-700">
@@ -206,7 +212,10 @@ export default function DetallePage() {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                  <td
+                    colSpan={8}
+                    className="px-3 py-6 text-center text-slate-500"
+                  >
                     Sin resultados.
                   </td>
                 </tr>
@@ -216,16 +225,16 @@ export default function DetallePage() {
         </div>
       </div>
 
-      {/* [L199] Modal desacoplado */}
+      {/* Modal */}
       <EditPedidoModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onSave={handleSave}
         saving={saving}
         nro={selected?.nro}
-        estado={mEstado as string}
-        entrega={mEntrega as string}
-        pago={mPago as string}
+        estado={mEstado}
+        entrega={mEntrega}
+        pago={mPago}
         setEstado={setMEstado}
         setEntrega={setMEntrega}
         setPago={setMPago}
