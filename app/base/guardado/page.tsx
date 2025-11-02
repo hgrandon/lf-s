@@ -76,6 +76,7 @@ export default function GuardadoPage() {
     [pedidos, openId]
   );
 
+  // Carga inicial
   useEffect(() => {
     let cancelled = false;
 
@@ -84,7 +85,7 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Pedidos en GUARDADO
+        // 1) Pedidos GUARDADO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
@@ -104,7 +105,7 @@ export default function GuardadoPage() {
           return;
         }
 
-        // 2) Líneas del pedido
+        // 2) Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('*')
@@ -118,7 +119,7 @@ export default function GuardadoPage() {
           .in('nro', ids);
         if (e3) throw e3;
 
-        // 4) Nombres de clientes
+        // 4) Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -135,15 +136,16 @@ export default function GuardadoPage() {
           const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
           if (!pid) return;
 
-          const label = String(
-            l.articulo ??
-              l.nombre ??
-              l.descripcion ??
-              l.item ??
-              l.articulo_nombre ??
-              l.articulo_id ??
-              ''
-          ).trim() || 'SIN NOMBRE';
+          const label =
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                ''
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -194,6 +196,37 @@ export default function GuardadoPage() {
     };
   }, []);
 
+  // Auto-seleccionar el primero para habilitar acciones
+  useEffect(() => {
+    if (!openId && pedidos.length > 0) {
+      setOpenId(pedidos[0].id);
+    }
+  }, [pedidos, openId]);
+
+  // Realtime: si cambia a un estado distinto de GUARDADO, lo quitamos
+  useEffect(() => {
+    const ch = supabase
+      .channel('guardado-live')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pedido' },
+        (payload) => {
+          const row: any = payload.new || {};
+          const nro = Number(row.nro ?? row.id);
+          const estado = String(row.estado ?? '').toUpperCase();
+          if (nro && estado && estado !== 'GUARDADO') {
+            setPedidos((curr) => curr.filter((p) => p.id !== nro));
+            if (openId === nro) setOpenId(null);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [openId]);
+
   const subtotal = (it: Item) => it.qty * it.valor;
 
   function snack(msg: string) {
@@ -201,32 +234,36 @@ export default function GuardadoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
+  // Cambio de estado (optimista + rollback)
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
+
     const prev = pedidos;
-    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+
+    // optimista: si sale de GUARDADO, lo removemos al tiro
+    if (next !== 'GUARDADO') {
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
+      if (openId === id) setOpenId(null);
+    } else {
+      setPedidos((curr) => curr.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+    }
 
     const { error } = await supabase
       .from('pedido')
       .update({ estado: next })
-      .eq('nro', id)
-      .select('nro')
-      .single();
+      .eq('nro', id); // si tu PK fuera "id", cambia a .eq('id', id)
 
     if (error) {
+      // rollback
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
+      snack('No se pudo mover el pedido. Intenta de nuevo.');
       setSaving(false);
       return;
     }
 
-    // En Guardado, si cambia a otro estado, lo sacamos de la lista
-    if (next !== 'GUARDADO') {
-      setPedidos((curr) => curr.filter((p) => p.id !== id));
-      setOpenId(null);
-      snack(`Pedido #${id} movido a ${next}`);
-    }
+    snack(`Pedido #${id} movido a ${next}`);
     setSaving(false);
   }
 
@@ -264,7 +301,7 @@ export default function GuardadoPage() {
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // reset para permitir mismo archivo de nuevo
+    e.target.value = ''; // reset (permitir mismo archivo otra vez)
     const pid = pickerForPedido;
     if (!file || !pid) return;
 
@@ -295,7 +332,7 @@ export default function GuardadoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cierra modal automáticamente tras elegir
+      setPickerForPedido(null); // cerrar modal al elegir
     }
   }
 
@@ -413,9 +450,7 @@ export default function GuardadoPage() {
                                           : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">
-                                        {CLP.format(it.valor)}
-                                      </td>
+                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                                       <td className="px-3 py-2 text-right">
                                         {CLP.format(it.qty * it.valor)}
                                       </td>
@@ -489,10 +524,16 @@ export default function GuardadoPage() {
           })}
       </section>
 
-      {/* Barra de acciones: para pedidos GUARDADOS */}
+      {/* Acciones inferiores */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-4 gap-3">
+            <ActionBtn
+              label="Lavando"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              active={pedidoAbierto?.estado === 'LAVANDO'}
+            />
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
@@ -504,18 +545,6 @@ export default function GuardadoPage() {
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
-            />
-            <ActionBtn
-              label="Lavando"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
-              active={pedidoAbierto?.estado === 'LAVANDO'}
-            />
-            <ActionBtn
-              label="Guardado"
-              disabled // ya estamos en Guardado; solo indicador
-              onClick={() => {}}
-              active
             />
             <ActionBtn
               label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
@@ -548,7 +577,7 @@ export default function GuardadoPage() {
         </div>
       )}
 
-      {/* Modal para elegir origen de la imagen */}
+      {/* Modal elegir origen imagen */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
