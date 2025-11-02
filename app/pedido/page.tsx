@@ -17,13 +17,30 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
+/* =========================
+   Tipos
+========================= */
 type Cliente = { telefono: string; nombre: string; direccion: string };
 type Articulo = { id: number; nombre: string; valor: number };
 type Item = { articulo: string; qty: number; valor: number; subtotal: number; estado: 'LAVAR' };
 type NextNumber = { nro: number; fecha: string; entrega: string };
 
+/* =========================
+   Utils
+========================= */
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 const telClean = (v: string) => v.replace(/\D+/g, '').slice(0, 9);
+
+function addBusinessDays(fromISO: string, days = 3) {
+  const d = new Date(fromISO + 'T00:00:00');
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const day = d.getDay(); // 0 Dom, 6 Sáb
+    if (day !== 0 && day !== 6) added++;
+  }
+  return d.toISOString().slice(0, 10);
+}
 
 async function selectFirstTable<T = any>(
   tables: string[],
@@ -32,14 +49,12 @@ async function selectFirstTable<T = any>(
 ): Promise<{ data: T[] | null; table?: string; error?: any }> {
   for (const t of tables) {
     try {
-      let q = supabase.from(t).select(select);
-      if (opts?.eq) q = (q as any).eq(opts.eq[0], opts.eq[1]);
-      if (opts?.orderBy) q = (q as any).order(opts.orderBy as any);
+      let q: any = supabase.from(t).select(select);
+      if (opts?.eq) q = q.eq(opts.eq[0], opts.eq[1]);
+      if (opts?.orderBy) q = q.order(opts.orderBy);
       const { data, error } = await q;
       if (!error) return { data: (data as T[]) ?? null, table: t };
-    } catch {
-      /* try next */
-    }
+    } catch { /* try next */ }
   }
   return { data: null, error: `No se encontró ninguna de las tablas: ${tables.join(', ')}` };
 }
@@ -49,16 +64,18 @@ async function insertFirstTable(tables: string[], row: any): Promise<{ table?: s
     try {
       const { error } = await supabase.from(t).insert(row);
       if (!error) return { table: t };
-    } catch {
-      /* try next */
-    }
+    } catch { /* try next */ }
   }
   return { error: `No se pudo insertar en: ${tables.join(', ')}` };
 }
 
+/* =========================
+   Página
+========================= */
 export default function PedidoPage() {
   const router = useRouter();
 
+  // Estado
   const [tel, setTel] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [needCreate, setNeedCreate] = useState(false);
@@ -75,15 +92,20 @@ export default function PedidoPage() {
   const [loadingCliente, setLoadingCliente] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Carga inicial
   useEffect(() => {
     (async () => {
       const a = await selectFirstTable<Articulo>(['articulo', 'articulos'], 'id,nombre,valor', { orderBy: 'nombre' });
       if (!a.error && a.data) setArticulos(a.data);
+
+      // correlativo + fechas (entrega=+3 días hábiles)
+      const isoToday = new Date().toISOString().slice(0, 10);
       const next = await getNextNumber();
-      setNroInfo(next);
+      setNroInfo({ nro: next.nro, fecha: isoToday, entrega: addBusinessDays(isoToday, 3) });
     })();
   }, []);
 
+  // Buscar cliente al completar teléfono
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const t = telClean(tel);
@@ -93,9 +115,7 @@ export default function PedidoPage() {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (t.length === 9) {
-      debounceRef.current = setTimeout(() => {
-        void lookupCliente(t);
-      }, 300);
+      debounceRef.current = setTimeout(() => { void lookupCliente(t); }, 250);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
@@ -122,10 +142,9 @@ export default function PedidoPage() {
         setModal({ open: true });
       }
     } catch (e: any) {
-      const msg =
-        String(e).includes('schema cache')
-          ? 'Supabase no reconoce la tabla (caché). En Settings → API → “Recompute public schema cache / Restart PostgREST”.'
-          : e?.message || 'Error buscando cliente';
+      const msg = String(e).includes('schema cache')
+        ? 'Supabase no reconoce la tabla (caché). Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        : e?.message || 'Error buscando cliente';
       setErr(msg);
     } finally {
       setLoadingCliente(false);
@@ -149,6 +168,7 @@ export default function PedidoPage() {
     }
   }
 
+  // Items
   const addItem = () => {
     const a = articulos.find((x) => x.id === selArt);
     if (!a) return;
@@ -158,7 +178,8 @@ export default function PedidoPage() {
       const idx = prev.findIndex((it) => it.articulo === a.nombre && it.valor === (a.valor || 0));
       if (idx >= 0) {
         const clone = [...prev];
-        clone[idx] = { ...clone[idx], qty: clone[idx].qty + q, subtotal: (clone[idx].qty + q) * clone[idx].valor };
+        const nextQty = clone[idx].qty + q;
+        clone[idx] = { ...clone[idx], qty: nextQty, subtotal: nextQty * clone[idx].valor };
         return clone;
       }
       return [...prev, { articulo: a.nombre, qty: q, valor: a.valor || 0, subtotal: (a.valor || 0) * q, estado: 'LAVAR' }];
@@ -167,21 +188,22 @@ export default function PedidoPage() {
     setSelArt('');
     setQty(1);
   };
-
   const removeItem = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
+  // Correlativo
   async function getNextNumber(): Promise<NextNumber> {
     try {
       const { data, error } = await supabase.rpc('next_pedido_number');
       if (!error && data && typeof (data as any).nro === 'number') return data as NextNumber;
-    } catch {/* ignore */}
+    } catch { /* ignore */ }
     const sel = await selectFirstTable<any>(['pedido', 'pedidos'], 'id');
     const maxId = Array.isArray(sel.data) ? sel.data.reduce((m, r) => (typeof r.id === 'number' && r.id > m ? r.id : m), 0) : 0;
     const iso = new Date().toISOString().slice(0, 10);
     return { nro: maxId + 1, fecha: iso, entrega: iso };
   }
 
+  // Foto
   async function uploadFotoIfAny(nro: number): Promise<string | null> {
     if (!fotoFile) return null;
     const filename = `pedido_${nro}_${Date.now()}_${fotoFile.name}`.replace(/\s+/g, '_');
@@ -191,22 +213,18 @@ export default function PedidoPage() {
     return pub?.publicUrl || null;
   }
 
+  // Guardar
   async function guardarPedido() {
-    if (!cliente) {
-      setErr('Ingrese un teléfono válido y/o cree el cliente.');
-      return;
-    }
-    if (items.length === 0) {
-      setErr('Agregue al menos un artículo.');
-      return;
-    }
+    if (!cliente) { setErr('Ingrese un teléfono válido y/o cree el cliente.'); return; }
+    if (items.length === 0) { setErr('Agregue al menos un artículo.'); return; }
 
     setSaving(true);
     setErr(null);
-
     try {
+      const nowISO = new Date().toISOString().slice(0, 10);
       const next = await getNextNumber();
-      setNroInfo(next);
+      const entrega = addBusinessDays(nowISO, 3);
+      setNroInfo({ nro: next.nro, fecha: nowISO, entrega });
 
       const foto_url = await uploadFotoIfAny(next.nro);
 
@@ -218,8 +236,8 @@ export default function PedidoPage() {
         total,
         estado: 'LAVAR',
         items,
-        fecha: next.fecha,
-        entrega: next.entrega,
+        fecha: nowISO,
+        entrega,
         foto_url,
         pagado: false,
       });
@@ -227,44 +245,67 @@ export default function PedidoPage() {
 
       router.push('/base');
     } catch (e: any) {
-      const msg =
-        String(e).includes('schema cache')
-          ? 'Supabase no reconoce la tabla (caché). En Settings → API → “Recompute public schema cache / Restart PostgREST”.'
-          : e?.message ?? 'No se pudo guardar el pedido';
+      const msg = String(e).includes('schema cache')
+        ? 'Supabase no reconoce la tabla (caché). Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        : e?.message ?? 'No se pudo guardar el pedido';
       setErr(msg);
     } finally {
       setSaving(false);
     }
   }
 
+  /* =========================
+     UI
+  ======================== */
   return (
-    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-24">
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* ENCABEZADO ESTILO CLÁSICO */}
-      <header className="relative z-10 mx-auto max-w-5xl px-4 pt-6">
-        <div className="flex items-start justify-between">
-          <div className="leading-tight">
-            <div className="text-[34px] sm:text-[42px] font-black tracking-tight">
-              {nroInfo ? `N° ${nroInfo.nro}` : 'N° —'}
-            </div>
-          </div>
-
-          <div className="text-right">
-            <div className="text-xs text-white/80">FECHA INGRESO</div>
-            <div className="text-base font-semibold -mt-0.5">{nroInfo?.fecha ?? '—'}</div>
-            <div className="mt-2 text-xs text-white/80">FECHA ENTREGA</div>
-            <div className="text-base font-semibold -mt-0.5">{nroInfo?.entrega ?? '—'}</div>
+      {/* HEADER estilo captura */}
+      <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
+        <div className="grid grid-cols-12 gap-4 items-start">
+          {/* Izquierda: N° y Nombre */}
+          <div className="col-span-12 md:col-span-8">
+            <div className="text-[46px] sm:text-[56px] leading-none font-black tracking-tight">{
+              nroInfo ? `N°${nroInfo.nro}` : 'N°—'
+            }</div>
             {cliente && (
-              <div className="mt-2 text-sm font-bold">
+              <div className="mt-1 text-2xl sm:text-4xl font-extrabold tracking-tight">
                 {cliente.nombre}
               </div>
             )}
+
+            {/* Línea: teléfono píldora + dirección grande */}
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/90 w-4 h-4" />
+                <input
+                  value={tel}
+                  onChange={(e) => setTel(telClean(e.target.value))}
+                  inputMode="numeric"
+                  placeholder="9 dígitos…"
+                  className="w-[280px] rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
+                />
+                {loadingCliente && <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />}
+              </div>
+
+              {cliente && (
+                <div className="text-2xl font-bold tracking-wide text-white/95">
+                  {cliente.direccion}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Derecha: Fechas */}
+          <div className="col-span-12 md:col-span-4 md:text-right">
+            <div className="text-3xl font-black leading-none">{nroInfo?.fecha ?? '—'}</div>
+            <div className="mt-2 text-3xl font-black leading-none">{nroInfo?.entrega ?? '—'}</div>
           </div>
         </div>
 
-        {/* Línea de controles arriba a la derecha */}
-        <div className="absolute right-4 top-6">
+        {/* Botón volver */}
+        <div className="absolute right-6 top-6">
           <button
             onClick={() => router.push('/menu')}
             className="inline-flex items-center justify-center rounded-full bg-white/10 border border-white/20 w-10 h-10 hover:bg-white/15"
@@ -275,50 +316,17 @@ export default function PedidoPage() {
         </div>
       </header>
 
-      {/* CAMPO TELÉFONO TIPO “PÍLDORA” BAJO EL NÚMERO */}
-      <section className="relative z-10 mx-auto max-w-5xl px-4 mt-3">
-        <div className="flex items-center gap-2 w-full sm:w-[280px]">
-          <div className="relative w-full">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80 w-4 h-4" />
-            <input
-              value={tel}
-              onChange={(e) => setTel(telClean(e.target.value))}
-              inputMode="numeric"
-              placeholder="9 dígitos…"
-              className="w-full rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
-            />
-          </div>
-          {loadingCliente && <Loader2 className="animate-spin text-white/90" />}
-        </div>
-      </section>
+      {/* Modal crear cliente */}
+      {modal.open && needCreate && (
+        <ClienteModal
+          telefono={telClean(tel)}
+          onCancel={() => { setModal({ open: false }); setNeedCreate(false); }}
+          onSave={(c) => crearClienteRapido(c)}
+        />
+      )}
 
-      {/* BLOQUE BLANCO: ARTÍCULOS / TABLA / FOTO / GUARDAR */}
-      <section className="relative z-10 mx-auto max-w-5xl px-4 mt-4">
-        {cliente && (
-          <div className="mb-3 rounded-xl border border-white/20 bg-white/10 text-white/95 px-3 py-2 flex items-center justify-between">
-            <div>
-              <div className="text-xs text-white/70">Cliente</div>
-              <div className="font-extrabold">{cliente.nombre}</div>
-              <div className="text-white/80">{cliente.telefono}</div>
-              <div className="text-white/70">{cliente.direccion}</div>
-            </div>
-            <div className="shrink-0 w-10 h-10 rounded-full bg-white/15 border border-white/25 flex items-center justify-center">
-              <UserRound />
-            </div>
-          </div>
-        )}
-
-        {modal.open && needCreate && (
-          <ClienteModal
-            telefono={telClean(tel)}
-            onCancel={() => {
-              setModal({ open: false });
-              setNeedCreate(false);
-            }}
-            onSave={(c) => crearClienteRapido(c)}
-          />
-        )}
-
+      {/* TARJETA BLANCA */}
+      <section className="relative z-10 mx-auto max-w-6xl px-6 mt-4">
         <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3">
             <div>
@@ -330,9 +338,7 @@ export default function PedidoPage() {
               >
                 <option value="">Seleccionar artículo…</option>
                 {articulos.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nombre} — {CLP.format(a.valor || 0)}
-                  </option>
+                  <option key={a.id} value={a.id}>{a.nombre} — {CLP.format(a.valor || 0)}</option>
                 ))}
               </select>
             </div>
@@ -344,9 +350,7 @@ export default function PedidoPage() {
                 value={qty}
                 onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
                 className="w-28 rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addItem();
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }}
               />
             </div>
             <div className="flex items-end">
@@ -374,9 +378,7 @@ export default function PedidoPage() {
               </thead>
               <tbody>
                 {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center text-slate-500 py-6">Sin artículos todavía.</td>
-                  </tr>
+                  <tr><td colSpan={5} className="text-center text-slate-500 py-6">Sin artículos todavía.</td></tr>
                 ) : (
                   items.map((it, idx) => (
                     <tr key={idx} className="border-b last:border-b-0">
@@ -400,7 +402,8 @@ export default function PedidoPage() {
             </table>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-center">
+          {/* Footer tarjeta */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <div>
               <div className="text-2xl font-extrabold tracking-tight">Total {CLP.format(total)}</div>
               <div className="flex gap-2 mt-3">
@@ -418,7 +421,7 @@ export default function PedidoPage() {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex md:justify-end">
               <button
                 onClick={guardarPedido}
                 disabled={saving || !cliente || items.length === 0}
@@ -442,15 +445,14 @@ export default function PedidoPage() {
   );
 }
 
+/* =========================
+   Modal de creación rápida
+========================= */
 function ClienteModal({
   telefono,
   onCancel,
   onSave,
-}: {
-  telefono: string;
-  onCancel: () => void;
-  onSave: (c: Cliente) => void;
-}) {
+}: { telefono: string; onCancel: () => void; onSave: (c: Cliente) => void; }) {
   const [nombre, setNombre] = useState('');
   const [direccion, setDireccion] = useState('');
 
@@ -492,13 +494,11 @@ function ClienteModal({
             Cancelar
           </button>
           <button
-            onClick={() =>
-              onSave({
-                telefono,
-                nombre: nombre.trim().toUpperCase(),
-                direccion: direccion.trim().toUpperCase(),
-              })
-            }
+            onClick={() => onSave({
+              telefono,
+              nombre: nombre.trim().toUpperCase(),
+              direccion: direccion.trim().toUpperCase(),
+            })}
             disabled={!canSave}
             className="rounded-xl bg-violet-600 text-white px-4 py-2.5 font-semibold hover:bg-violet-700 disabled:opacity-50"
           >
