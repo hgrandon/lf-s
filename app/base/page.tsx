@@ -165,8 +165,8 @@ export default function BasePage() {
       )}
 
       {/* GRID COMPACTO */}
-      <section className="relative z-10 mx-auto max-w-6xl px-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 [grid-auto-rows:5.0rem] sm:[grid-auto-rows:6.25rem]">
+      <section className="relative z-10 mx-auto max-w-5xl px-4">
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 [grid-auto-rows:5.5rem] sm:[grid-auto-rows:6rem]">
           {tiles.map((t) => (
             <Tile
               key={`${t.key}-${t.title}`}
