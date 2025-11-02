@@ -54,29 +54,24 @@ export default function PedidoPage() {
   const [needCreate, setNeedCreate] = useState(false);
   const [modal, setModal] = useState<{ open: boolean }>({ open: false });
 
+  // Carga inicial: artículos y cabecera (nro/fechas)
   useEffect(() => {
     (async () => {
-      // cargar artículos
       try {
         setArticulosMsg(null);
         const { data, error } = await supabase
-          .from('articulo')
+          .from('articulo') // OK: tabla singular
           .select('id,nombre,valor')
           .order('nombre', { ascending: true });
 
         if (error) throw error;
         const list = (data || []) as Articulo[];
         setArticulos(list);
-        if (!list.length) setArticulosMsg('No hay artículos. Revisa tabla public.articulo.');
+        if (!list.length) setArticulosMsg('No hay artículos en public.articulo.');
       } catch (e: any) {
-        setArticulosMsg(
-          e?.message?.includes('RLS')
-            ? 'No se pudieron leer artículos (RLS). Habilita lectura pública o usa sesión con permisos.'
-            : 'No se pudieron cargar artículos.'
-        );
+        setArticulosMsg(e?.message || 'No se pudieron cargar artículos.');
       }
 
-      // nro + fechas
       const iso = new Date().toISOString().slice(0, 10);
       const entrega = addBusinessDays(iso, 3);
       const next = await getNextNumber();
@@ -84,6 +79,7 @@ export default function PedidoPage() {
     })();
   }, []);
 
+  // Buscar cliente al escribir 9 dígitos
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const t = telClean(tel);
@@ -99,12 +95,20 @@ export default function PedidoPage() {
     }
   }, [tel]);
 
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // CAMBIO CLAVE: usamos tabla public.clientes (plural)
+  // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
   async function lookupCliente(tlf: string) {
     try {
       setLoadingCliente(true);
       setErr(null);
-      const { data, error } = await supabase.from('cliente').select('*').eq('telefono', tlf);
+      const { data, error } = await supabase
+        .from('clientes')                 // <- AQUÍ
+        .select('*')
+        .eq('telefono', tlf);
+
       if (error) throw error;
+
       const row = data?.[0];
       if (row) {
         setCliente({
@@ -118,19 +122,17 @@ export default function PedidoPage() {
         setModal({ open: true });
       }
     } catch (e: any) {
-      const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla. En Settings → API pulsa “Recompute public schema cache / Restart PostgREST”.'
-        : e?.message || 'Error buscando cliente';
-      setErr(msg);
+      setErr(e?.message || 'Error buscando cliente.');
     } finally {
       setLoadingCliente(false);
     }
   }
 
+  // Crear cliente rápido en public.clientes
   async function crearClienteRapido(c: Cliente) {
     try {
       setErr(null);
-      const { error } = await supabase.from('cliente').insert({
+      const { error } = await supabase.from('clientes').insert({ // <- AQUÍ
         telefono: c.telefono,
         nombre: c.nombre,
         direccion: c.direccion,
@@ -144,6 +146,7 @@ export default function PedidoPage() {
     }
   }
 
+  // Agregar item auto al seleccionar
   const addItemAuto = (articuloId: number) => {
     const a = articulos.find((x) => x.id === articuloId);
     if (!a) return;
@@ -211,10 +214,7 @@ export default function PedidoPage() {
       if (error) throw error;
       router.push('/base');
     } catch (e: any) {
-      const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla. En Settings → API pulsa “Recompute public schema cache / Restart PostgREST”.'
-        : e?.message ?? 'No se pudo guardar el pedido';
-      setErr(msg);
+      setErr(e?.message ?? 'No se pudo guardar el pedido');
     } finally {
       setSaving(false);
     }
@@ -224,18 +224,16 @@ export default function PedidoPage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* Fechas SIEMPRE arriba-derecha, tamaño moderado */}
+      {/* Fechas arriba-derecha */}
       <div className="absolute right-4 top-4 z-20 text-right leading-tight">
         <div className="text-xl sm:text-2xl font-black">{nroInfo?.fecha ?? '—'}</div>
         <div className="text-xl sm:text-2xl font-black">{nroInfo?.entrega ?? '—'}</div>
       </div>
 
-      {/* Header principal */}
+      {/* Header */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-10">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="text-4xl sm:text-5xl font-black tracking-tight">{nroInfo ? `N°${nroInfo.nro}` : 'N°—'}</div>
-          </div>
+          <div className="text-4xl sm:text-5xl font-black tracking-tight">{nroInfo ? `N°${nroInfo.nro}` : 'N°—'}</div>
           <button
             onClick={() => router.push('/menu')}
             className="inline-flex items-center justify-center rounded-full bg-white/10 border border-white/20 w-10 h-10 hover:bg-white/15"
@@ -245,7 +243,7 @@ export default function PedidoPage() {
           </button>
         </div>
 
-        {/* Teléfono + Nombre/Dirección más pequeños */}
+        {/* Teléfono + Nombre/Dirección */}
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/90 w-4 h-4" />
@@ -279,7 +277,7 @@ export default function PedidoPage() {
         />
       )}
 
-      {/* Tarjeta blanca */}
+      {/* Tarjeta */}
       <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
         <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
           <div>
@@ -388,6 +386,7 @@ export default function PedidoPage() {
   );
 }
 
+// Modal creación rápida
 function ClienteModal({
   telefono,
   onCancel,
