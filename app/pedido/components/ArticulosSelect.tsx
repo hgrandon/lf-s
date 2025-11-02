@@ -2,120 +2,236 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import AddItemModal, { AddItemPayload } from './AddItemModal';
+import type { Item } from './DetallePedido';
 
-export type Articulo = {
-  id: number;
+export type ArticuloRow = {
   nombre: string;
-  precio: number | null; // puede venir null si aún no lo definen
+  precio: number | null;
   activo?: boolean | null;
 };
 
 export default function ArticulosSelect({
   onAddItem,
 }: {
-  onAddItem: (payload: { articulo: string; precio: number; cantidad: number }) => void;
+  onAddItem: (item: Item) => void;
 }) {
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [articulos, setArticulos] = useState<Articulo[]>([]);
-  const [selId, setSelId] = useState<number | ''>('');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalData, setModalData] = useState<{ id: number; nombre: string; precio: number | null } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [rows, setRows] = useState<ArticuloRow[]>([]);
+  const [sel, setSel] = useState<string>(''); // nombre elegido o __NEW__
 
-  // Carga de artículos (sin duplicados por nombre)
+  // Modal (reutilizable) para agregar/editar antes de insertar al detalle
+  const [modal, setModal] = useState<{
+    open: boolean;
+    isNew: boolean;
+    nombre: string;
+    precio: string; // texto para input
+    qty: string;    // texto para input
+  }>({ open: false, isNew: false, nombre: '', precio: '', qty: '1' });
+
+  // Cargar artículos desde _bak_articulo
   useEffect(() => {
     (async () => {
-      setCargando(true);
-      setError(null);
       try {
+        setLoading(true);
+        setErr(null);
         const { data, error } = await supabase
-          .from('articulo') // usa tu tabla actual
-          .select('id,nombre,precio,activo')
+          .from('_bak_articulo')
+          .select('nombre, precio, activo')
+          .eq('activo', true)
           .order('nombre', { ascending: true });
 
         if (error) throw error;
 
-        const rows = (data ?? []) as Articulo[];
-
-        // normalizamos: deduplicamos por nombre (último gana)
-        const map = new Map<string, Articulo>();
-        for (const r of rows) map.set((r.nombre || '').toString(), r);
-        setArticulos(Array.from(map.values()));
+        // Deduplicar por nombre y filtrar nulos
+        const list = (data || [])
+          .filter(r => r && r.nombre)
+          .reduce<Record<string, ArticuloRow>>((acc, r) => {
+            if (!acc[r.nombre]) acc[r.nombre] = r as ArticuloRow;
+            return acc;
+          }, {});
+        setRows(Object.values(list));
       } catch (e: any) {
-        console.error(e);
-        setError(e?.message ?? 'No se pudieron cargar artículos.');
+        setErr(e?.message ?? 'No se pudieron cargar artículos.');
       } finally {
-        setCargando(false);
+        setLoading(false);
       }
     })();
   }, []);
 
-  // al elegir un artículo → abrir modal con precio por defecto y cantidad=1
+  const opciones = useMemo(() => {
+    const base = rows.map(r => ({ value: r.nombre, label: r.nombre }));
+    return [
+      { value: '', label: 'Seleccionar artículo…' },
+      { value: '__NEW__', label: '➕ Agregar artículo…' },
+      ...base,
+    ];
+  }, [rows]);
+
+  // Al cambiar el select
   const handleChange = (v: string) => {
-    if (!v) {
-      setSelId('');
+    setSel(v);
+
+    if (v === '__NEW__') {
+      // Abrir modal vacío para crear nuevo artículo
+      setModal({
+        open: true,
+        isNew: true,
+        nombre: '',
+        precio: '',
+        qty: '1',
+      });
       return;
     }
-    const id = Number(v);
-    setSelId(id);
-    const art = articulos.find((a) => a.id === id);
-    if (art) {
-      setModalData({ id: art.id, nombre: art.nombre, precio: art.precio ?? 0 });
-      setModalOpen(true);
+
+    // Si es un artículo existente, abrir modal con precio precargado y qty=1
+    const found = rows.find(r => r.nombre === v);
+    if (found) {
+      setModal({
+        open: true,
+        isNew: false,
+        nombre: found.nombre,
+        precio: String(found.precio ?? ''),
+        qty: '1',
+      });
     }
   };
 
-  const handleConfirm = (p: AddItemPayload) => {
+  // Guardar desde modal (tanto nuevo como existente)
+  const handleModalSave = async () => {
+    const nombre = modal.nombre.trim().toUpperCase();
+    const precioNum = Math.max(0, Number(modal.precio || 0));
+    const qtyNum = Math.max(1, Number(modal.qty || 1));
+
+    if (!nombre) return;
+    // Añadir al detalle
     onAddItem({
-      articulo: p.articuloNombre,
-      precio: p.precio,
-      cantidad: p.cantidad,
+      articulo: nombre,
+      qty: qtyNum,
+      valor: precioNum,
+      subtotal: precioNum * qtyNum,
+      estado: 'LAVAR',
     });
-    // limpiar selección para poder volver a abrir el modal con el mismo artículo si se desea
-    setSelId('');
+
+    // Si es nuevo -> persistir en catálogo para futuras veces
+    if (modal.isNew) {
+      try {
+        await supabase.from('_bak_articulo').insert({
+          nombre,
+          precio: precioNum,
+          activo: true,
+        });
+        // actualizar combo en memoria
+        setRows((prev) => {
+          // si ya existía, no duplicar
+          if (prev.some(p => p.nombre === nombre)) return prev;
+          return [...prev, { nombre, precio: precioNum, activo: true }];
+        });
+      } catch {
+        // si falla la inserción, solo ignoramos (igual queda en el pedido actual)
+      }
+    }
+
+    // cerrar modal y reset select
+    setModal({ open: false, isNew: false, nombre: '', precio: '', qty: '1' });
+    setSel('');
   };
 
-  const opciones = useMemo(() => {
-    return articulos.map((a) => ({ value: a.id, label: a.nombre }));
-  }, [articulos]);
-
   return (
-    <div>
-      <label className="block text-sm font-semibold text-slate-700 mb-2">
-        Seleccionar artículo
-      </label>
+    <div className="space-y-2">
+      <label className="block text-sm font-semibold text-slate-700">Seleccionar artículo</label>
+
       <select
-        value={selId === '' ? '' : selId}
-        onChange={(e) => handleChange(e.target.value)}
         className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
+        value={sel}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={loading}
       >
-        <option value="">Seleccionar artículo…</option>
-        {opciones.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
+        {opciones.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
 
-      {error && (
-        <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 text-sm">
-          {error}
+      {err && (
+        <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+          {err}
         </div>
       )}
-      {!error && !cargando && articulos.length === 0 && (
-        <div className="mt-2 text-sm text-slate-500">No hay artículos disponibles.</div>
-      )}
 
-      {/* Modal para confirmar precio/cantidad */}
-      <AddItemModal
-        open={modalOpen}
-        articuloId={modalData?.id ?? null}
-        articuloNombre={modalData?.nombre ?? ''}
-        precioInicial={modalData?.precio ?? 0}
-        onClose={() => setModalOpen(false)}
-        onConfirm={handleConfirm}
-      />
+      {/* Modal para confirmación de precio/cantidad o creación de artículo */}
+      {modal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+            {/* Header con degradado consistente */}
+            <div className="bg-gradient-to-r from-fuchsia-600 to-violet-700 px-5 py-4">
+              <h3 className="text-white font-bold text-lg">
+                {modal.isNew ? 'Agregar artículo' : modal.nombre}
+              </h3>
+            </div>
+
+            <div className="p-5 space-y-3 text-slate-900">
+              {modal.isNew && (
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Nombre</label>
+                  <input
+                    value={modal.nombre}
+                    onChange={(e) => setModal(m => ({ ...m, nombre: e.target.value.toUpperCase() }))}
+                    placeholder="NOMBRE DEL ARTÍCULO"
+                    className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500 uppercase"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Precio</label>
+                <input
+                  inputMode="numeric"
+                  value={modal.precio}
+                  onChange={(e) => {
+                    const onlyNum = e.target.value.replace(/[^\d]/g, '');
+                    setModal(m => ({ ...m, precio: onlyNum }));
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500 text-right"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Cantidad</label>
+                <input
+                  inputMode="numeric"
+                  value={modal.qty}
+                  onChange={(e) => {
+                    const onlyNum = e.target.value.replace(/[^\d]/g, '');
+                    setModal(m => ({ ...m, qty: onlyNum }));
+                  }}
+                  placeholder="1"
+                  className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500 text-right"
+                />
+              </div>
+
+              <div className="pt-1 flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleModalSave}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-700 text-white px-4 py-2.5 font-semibold hover:opacity-95"
+                  disabled={!modal.nombre.trim() || modal.precio === '' || modal.qty === ''}
+                >
+                  Agregar Detalle
+                </button>
+                <button
+                  onClick={() => {
+                    setModal({ open: false, isNew: false, nombre: '', precio: '', qty: '1' });
+                    setSel('');
+                  }}
+                  className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-violet-700 font-semibold hover:bg-slate-50"
+                >
+                  Salir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
