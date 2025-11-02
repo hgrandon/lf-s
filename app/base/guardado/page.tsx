@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
 type Pedido = {
-  id: number; // nro
+  id: number; // PK real en tu BD
   cliente: string;
   total: number | null;
   estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
@@ -41,7 +41,8 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string')
+          return arr[0] as string;
         return null;
       } catch {
         return null;
@@ -49,7 +50,8 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string')
+    return input[0] as string;
   return null;
 }
 
@@ -65,7 +67,7 @@ export default function GuardadoPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Picker de foto
+  // picker de foto
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
@@ -76,22 +78,19 @@ export default function GuardadoPage() {
     [pedidos, openId]
   );
 
-  // Carga inicial
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Pedidos GUARDADO
+        // 1) Pedidos en GUARDADO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
+          .select('id, telefono, total, estado, detalle, pagado, fotos_urls')
           .eq('estado', 'GUARDADO')
-          .order('nro', { ascending: false });
-
+          .order('id', { ascending: false });
         if (e1) throw e1;
 
         const ids = (rows ?? []).map((r: any) => r.id);
@@ -112,7 +111,7 @@ export default function GuardadoPage() {
           .in('nro', ids);
         if (e2) throw e2;
 
-        // 3) Fotos sueltas
+        // 3) Fotos en tabla auxiliar
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
@@ -196,36 +195,10 @@ export default function GuardadoPage() {
     };
   }, []);
 
-  // Auto-seleccionar el primero para habilitar acciones
+  // auto-seleccionar primero para habilitar acciones
   useEffect(() => {
-    if (!openId && pedidos.length > 0) {
-      setOpenId(pedidos[0].id);
-    }
+    if (!openId && pedidos.length > 0) setOpenId(pedidos[0].id);
   }, [pedidos, openId]);
-
-  // Realtime: si cambia a un estado distinto de GUARDADO, lo quitamos
-  useEffect(() => {
-    const ch = supabase
-      .channel('guardado-live')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'pedido' },
-        (payload) => {
-          const row: any = payload.new || {};
-          const nro = Number(row.nro ?? row.id);
-          const estado = String(row.estado ?? '').toUpperCase();
-          if (nro && estado && estado !== 'GUARDADO') {
-            setPedidos((curr) => curr.filter((p) => p.id !== nro));
-            if (openId === nro) setOpenId(null);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(ch);
-    };
-  }, [openId]);
 
   const subtotal = (it: Item) => it.qty * it.valor;
 
@@ -234,14 +207,13 @@ export default function GuardadoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambio de estado (optimista + rollback)
+  // Cambiar estado — quita del listado si sale de GUARDADO
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
+    const snapshot = pedidos;
 
-    const prev = pedidos;
-
-    // optimista: si sale de GUARDADO, lo removemos al tiro
+    // optimista
     if (next !== 'GUARDADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       if (openId === id) setOpenId(null);
@@ -249,15 +221,9 @@ export default function GuardadoPage() {
       setPedidos((curr) => curr.map((p) => (p.id === id ? { ...p, estado: next } : p)));
     }
 
-    const { error } = await supabase
-      .from('pedido')
-      .update({ estado: next })
-      .eq('nro', id); // si tu PK fuera "id", cambia a .eq('id', id)
-
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('id', id); // ← usa id
     if (error) {
-      // rollback
-      console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev);
+      setPedidos(snapshot); // rollback
       snack('No se pudo mover el pedido. Intenta de nuevo.');
       setSaving(false);
       return;
@@ -277,17 +243,15 @@ export default function GuardadoPage() {
     const { error } = await supabase
       .from('pedido')
       .update({ pagado: !actual })
-      .eq('nro', id)
-      .select('nro')
+      .eq('id', id) // ← usa id
+      .select('id')
       .single();
 
     if (error) {
-      console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev);
+      setPedidos(prev); // rollback
       setSaving(false);
       return;
     }
-
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
@@ -301,7 +265,7 @@ export default function GuardadoPage() {
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // reset (permitir mismo archivo otra vez)
+    e.target.value = '';
     const pid = pickerForPedido;
     if (!file || !pid) return;
 
@@ -340,7 +304,6 @@ export default function GuardadoPage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* Header */}
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Guardado</h1>
         <button
@@ -376,7 +339,7 @@ export default function GuardadoPage() {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
             const totalCalc = p.items?.length
-              ? p.items.reduce((a, it) => a + subtotal(it), 0)
+              ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
               : p.total ?? 0;
 
             return (
@@ -396,9 +359,7 @@ export default function GuardadoPage() {
                       <User size={18} />
                     </span>
                     <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">
-                        N° {p.id}
-                      </div>
+                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
                         {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
@@ -451,17 +412,12 @@ export default function GuardadoPage() {
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">
-                                        {CLP.format(it.qty * it.valor)}
-                                      </td>
+                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
                                     </tr>
                                   ))
                                 ) : (
                                   <tr>
-                                    <td
-                                      className="px-3 py-4 text-center text-white/70"
-                                      colSpan={4}
-                                    >
+                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
                                       Sin artículos registrados.
                                     </td>
                                   </tr>
@@ -481,7 +437,7 @@ export default function GuardadoPage() {
                           <div
                             className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10"
                             onDoubleClick={() => setPickerForPedido(p.id)}
-                            title="Doble clic para cambiar imagen"
+                            title="Doble clic para cambiar la imagen"
                           >
                             <Image
                               src={p.foto_url!}
@@ -489,15 +445,8 @@ export default function GuardadoPage() {
                               width={0}
                               height={0}
                               sizes="100vw"
-                              style={{
-                                width: '100%',
-                                height: 'auto',
-                                objectFit: 'contain',
-                                maxHeight: '70vh',
-                              }}
-                              onError={() =>
-                                setImageError((prev) => ({ ...prev, [p.id]: true }))
-                              }
+                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                               priority={false}
                             />
                           </div>
@@ -508,11 +457,7 @@ export default function GuardadoPage() {
                             title="Agregar imagen"
                           >
                             <ImagePlus size={18} />
-                            <span>
-                              {uploading[p.id]
-                                ? 'Subiendo…'
-                                : 'Sin imagen adjunta. Toca para agregar.'}
-                            </span>
+                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
                           </button>
                         )}
                       </div>
@@ -524,7 +469,7 @@ export default function GuardadoPage() {
           })}
       </section>
 
-      {/* Acciones inferiores */}
+      {/* Acciones inferiores (sin botón Guardado) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
@@ -564,9 +509,7 @@ export default function GuardadoPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">
-              Abre un pedido para habilitar las acciones.
-            </div>
+            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
           )}
         </div>
       </nav>
@@ -577,13 +520,11 @@ export default function GuardadoPage() {
         </div>
       )}
 
-      {/* Modal elegir origen imagen */}
+      {/* Modal elegir origen */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">
-              Agregar imagen al pedido #{pickerForPedido}
-            </h3>
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
