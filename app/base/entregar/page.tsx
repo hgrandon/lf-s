@@ -467,8 +467,9 @@ function ActionBtn({
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
-      {IconComp ? <IconComp size={16} /> : null}
+      {IconComp ? <IconComp width={16} height={16} /> : null}
       {label}
     </button>
   );
 }
+
