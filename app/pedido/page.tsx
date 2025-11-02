@@ -15,17 +15,11 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-/* =========================
-   Tipos
-========================= */
 type Cliente = { telefono: string; nombre: string; direccion: string };
 type Articulo = { id: number; nombre: string; valor: number };
 type Item = { articulo: string; qty: number; valor: number; subtotal: number; estado: 'LAVAR' };
 type NextNumber = { nro: number; fecha: string; entrega: string };
 
-/* =========================
-   Utils
-========================= */
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 const telClean = (v: string) => v.replace(/\D+/g, '').slice(0, 9);
 
@@ -34,23 +28,20 @@ function addBusinessDays(fromISO: string, days = 3) {
   let added = 0;
   while (added < days) {
     d.setDate(d.getDate() + 1);
-    const day = d.getDay(); // 0 Dom, 6 Sáb
-    if (day !== 0 && day !== 6) added++;
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) added++;
   }
   return d.toISOString().slice(0, 10);
 }
 
-/* =========================
-   Página
-========================= */
 export default function PedidoPage() {
   const router = useRouter();
 
-  // Estado
   const [tel, setTel] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
 
   const [articulos, setArticulos] = useState<Articulo[]>([]);
+  const [articulosMsg, setArticulosMsg] = useState<string | null>(null);
   const [selArt, setSelArt] = useState<number | ''>('');
   const [items, setItems] = useState<Item[]>([]);
   const [fotoFile, setFotoFile] = useState<File | null>(null);
@@ -60,15 +51,32 @@ export default function PedidoPage() {
   const [loadingCliente, setLoadingCliente] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Modal crear cliente
   const [needCreate, setNeedCreate] = useState(false);
   const [modal, setModal] = useState<{ open: boolean }>({ open: false });
 
-  // Carga inicial
   useEffect(() => {
     (async () => {
-      const { data: a, error: ea } = await supabase.from('articulo').select('id,nombre,valor').order('nombre');
-      if (!ea && a) setArticulos(a as Articulo[]);
+      // cargar artículos
+      try {
+        setArticulosMsg(null);
+        const { data, error } = await supabase
+          .from('articulo')
+          .select('id,nombre,valor')
+          .order('nombre', { ascending: true });
+
+        if (error) throw error;
+        const list = (data || []) as Articulo[];
+        setArticulos(list);
+        if (!list.length) setArticulosMsg('No hay artículos. Revisa tabla public.articulo.');
+      } catch (e: any) {
+        setArticulosMsg(
+          e?.message?.includes('RLS')
+            ? 'No se pudieron leer artículos (RLS). Habilita lectura pública o usa sesión con permisos.'
+            : 'No se pudieron cargar artículos.'
+        );
+      }
+
+      // nro + fechas
       const iso = new Date().toISOString().slice(0, 10);
       const entrega = addBusinessDays(iso, 3);
       const next = await getNextNumber();
@@ -76,7 +84,6 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  // Buscar cliente al completar teléfono
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const t = telClean(tel);
@@ -86,9 +93,10 @@ export default function PedidoPage() {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (t.length === 9) {
-      debounceRef.current = setTimeout(() => { void lookupCliente(t); }, 250);
+      debounceRef.current = setTimeout(() => {
+        void lookupCliente(t);
+      }, 250);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
   async function lookupCliente(tlf: string) {
@@ -98,7 +106,6 @@ export default function PedidoPage() {
       const { data, error } = await supabase.from('cliente').select('*').eq('telefono', tlf);
       if (error) throw error;
       const row = data?.[0];
-
       if (row) {
         setCliente({
           telefono: row.telefono,
@@ -112,7 +119,7 @@ export default function PedidoPage() {
       }
     } catch (e: any) {
       const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla. Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        ? 'Supabase no reconoce la tabla. En Settings → API pulsa “Recompute public schema cache / Restart PostgREST”.'
         : e?.message || 'Error buscando cliente';
       setErr(msg);
     } finally {
@@ -137,7 +144,6 @@ export default function PedidoPage() {
     }
   }
 
-  // Agregar artículo AUTOMÁTICO al seleccionar (qty=1)
   const addItemAuto = (articuloId: number) => {
     const a = articulos.find((x) => x.id === articuloId);
     if (!a) return;
@@ -157,19 +163,17 @@ export default function PedidoPage() {
   const removeItem = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
-  // Correlativo (RPC o fallback)
   async function getNextNumber(): Promise<NextNumber> {
     try {
       const { data, error } = await supabase.rpc('next_pedido_number');
       if (!error && data && typeof (data as any).nro === 'number') return data as NextNumber;
-    } catch { /* ignore */ }
+    } catch {}
     const { data } = await supabase.from('pedido').select('id');
     const maxId = Array.isArray(data) ? data.reduce((m, r) => (typeof r.id === 'number' && r.id > m ? r.id : m), 0) : 0;
     const iso = new Date().toISOString().slice(0, 10);
     return { nro: maxId + 1, fecha: iso, entrega: iso };
   }
 
-  // Foto
   async function uploadFotoIfAny(nro: number): Promise<string | null> {
     if (!fotoFile) return null;
     const filename = `pedido_${nro}_${Date.now()}_${fotoFile.name}`.replace(/\s+/g, '_');
@@ -179,7 +183,6 @@ export default function PedidoPage() {
     return pub?.publicUrl || null;
   }
 
-  // Guardar
   async function guardarPedido() {
     if (!cliente) { setErr('Ingrese un teléfono válido y/o cree el cliente.'); return; }
     if (items.length === 0) { setErr('Agregue al menos un artículo.'); return; }
@@ -190,7 +193,6 @@ export default function PedidoPage() {
       const nowISO = new Date().toISOString().slice(0, 10);
       const entrega = addBusinessDays(nowISO, 3);
       const next = await getNextNumber();
-
       const foto_url = await uploadFotoIfAny(next.nro);
 
       const { error } = await supabase.from('pedido').insert({
@@ -207,11 +209,10 @@ export default function PedidoPage() {
         pagado: false,
       });
       if (error) throw error;
-
       router.push('/base');
     } catch (e: any) {
       const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla. Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        ? 'Supabase no reconoce la tabla. En Settings → API pulsa “Recompute public schema cache / Restart PostgREST”.'
         : e?.message ?? 'No se pudo guardar el pedido';
       setErr(msg);
     } finally {
@@ -219,58 +220,22 @@ export default function PedidoPage() {
     }
   }
 
-  /* =========================
-     UI
-  ======================== */
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* HEADER estilo captura */}
-      <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
-        <div className="grid grid-cols-12 gap-4 items-start">
-          {/* Izquierda: N° y Nombre */}
-          <div className="col-span-12 md:col-span-8">
-            <div className="text-[46px] sm:text-[56px] leading-none font-black tracking-tight">
-              {nroInfo ? `N°${nroInfo.nro}` : 'N°—'}
-            </div>
-            {cliente && (
-              <div className="mt-1 text-2xl sm:text-4xl font-extrabold tracking-tight">
-                {cliente.nombre}
-              </div>
-            )}
+      {/* Fechas SIEMPRE arriba-derecha, tamaño moderado */}
+      <div className="absolute right-4 top-4 z-20 text-right leading-tight">
+        <div className="text-xl sm:text-2xl font-black">{nroInfo?.fecha ?? '—'}</div>
+        <div className="text-xl sm:text-2xl font-black">{nroInfo?.entrega ?? '—'}</div>
+      </div>
 
-            {/* Línea: teléfono píldora + dirección grande */}
-            <div className="mt-3 flex flex-wrap items-center gap-4">
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/90 w-4 h-4" />
-                <input
-                  value={tel}
-                  onChange={(e) => setTel(telClean(e.target.value))}
-                  inputMode="numeric"
-                  placeholder="9 dígitos…"
-                  className="w-[280px] rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
-                />
-                {loadingCliente && <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />}
-              </div>
-
-              {cliente && (
-                <div className="text-2xl font-bold tracking-wide text-white/95">
-                  {cliente.direccion}
-                </div>
-              )}
-            </div>
+      {/* Header principal */}
+      <header className="relative z-10 mx-auto max-w-6xl px-6 pt-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-4xl sm:text-5xl font-black tracking-tight">{nroInfo ? `N°${nroInfo.nro}` : 'N°—'}</div>
           </div>
-
-          {/* Derecha: Fechas */}
-          <div className="col-span-12 md:col-span-4 md:text-right">
-            <div className="text-3xl font-black leading-none">{nroInfo?.fecha ?? '—'}</div>
-            <div className="mt-2 text-3xl font-black leading-none">{nroInfo?.entrega ?? '—'}</div>
-          </div>
-        </div>
-
-        {/* Botón volver */}
-        <div className="absolute right-6 top-6">
           <button
             onClick={() => router.push('/menu')}
             className="inline-flex items-center justify-center rounded-full bg-white/10 border border-white/20 w-10 h-10 hover:bg-white/15"
@@ -278,6 +243,30 @@ export default function PedidoPage() {
           >
             <ArrowLeftCircle className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Teléfono + Nombre/Dirección más pequeños */}
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <div className="relative">
+            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/90 w-4 h-4" />
+            <input
+              value={tel}
+              onChange={(e) => setTel(telClean(e.target.value))}
+              inputMode="numeric"
+              placeholder="9 dígitos…"
+              className="w-[280px] rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
+            />
+            {loadingCliente && <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />}
+          </div>
+
+          {cliente && (
+            <div className="text-xl sm:text-2xl font-extrabold tracking-tight">
+              {cliente.nombre}
+              <span className="ml-3 text-lg sm:text-xl font-semibold text-white/90">
+                {cliente.direccion}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -290,8 +279,8 @@ export default function PedidoPage() {
         />
       )}
 
-      {/* TARJETA BLANCA (sin cantidad ni botón agregar) */}
-      <section className="relative z-10 mx-auto max-w-6xl px-6 mt-4">
+      {/* Tarjeta blanca */}
+      <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
         <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Seleccionar artículo</label>
@@ -306,9 +295,16 @@ export default function PedidoPage() {
             >
               <option value="">Seleccionar artículo…</option>
               {articulos.map((a) => (
-                <option key={a.id} value={a.id}>{a.nombre} — {CLP.format(a.valor || 0)}</option>
+                <option key={a.id} value={a.id}>
+                  {a.nombre} — {CLP.format(a.valor || 0)}
+                </option>
               ))}
             </select>
+            {articulosMsg && (
+              <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                {articulosMsg}
+              </div>
+            )}
           </div>
 
           <div className="mt-5 overflow-x-auto">
@@ -324,7 +320,9 @@ export default function PedidoPage() {
               </thead>
               <tbody>
                 {items.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center text-slate-500 py-6">Sin artículos todavía.</td></tr>
+                  <tr>
+                    <td colSpan={5} className="text-center text-slate-500 py-6">Sin artículos todavía.</td>
+                  </tr>
                 ) : (
                   items.map((it, idx) => (
                     <tr key={idx} className="border-b last:border-b-0">
@@ -348,7 +346,6 @@ export default function PedidoPage() {
             </table>
           </div>
 
-          {/* Footer tarjeta */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <div>
               <div className="text-2xl font-extrabold tracking-tight">Total {CLP.format(total)}</div>
@@ -391,9 +388,6 @@ export default function PedidoPage() {
   );
 }
 
-/* =========================
-   Modal de creación rápida
-========================= */
 function ClienteModal({
   telefono,
   onCancel,
