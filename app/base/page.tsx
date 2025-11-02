@@ -1,3 +1,4 @@
+// app/base/page.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -60,15 +61,30 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
+  /** Conteo robusto: intenta RPC y cae a SELECT si no existe */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
     try {
+      // 1) Intentamos RPC (si lo creaste en la BD)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_pedido_counts');
+
+      const next = { ...EMPTY_COUNTS };
+
+      if (!rpcError && Array.isArray(rpcData)) {
+        (rpcData as { estado: string; n: number }[]).forEach((row) => {
+          const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
+          if (key && key in next && key !== 'GUARDAR') next[key] = Number(row.n) || 0;
+        });
+        if (mountedRef.current) setCounts(next);
+        return;
+      }
+
+      // 2) Fallback: SELECT simple si no existe el RPC
       const { data, error } = await supabase.from('pedido').select('estado');
       if (error) throw error;
 
-      const next = { ...EMPTY_COUNTS };
       (data as PedidoRow[]).forEach((row) => {
         const estado = normalizeEstado(row.estado);
         // Contamos todos excepto GUARDAR (Editar es solo visual)
@@ -108,12 +124,17 @@ export default function BasePage() {
 
   const tiles = useMemo(
     () => [
-      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet,       href: '/base/lavar' },
-      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
-      { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive,    href: '/base/guardar' }, // siempre 0
-      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
-      { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck, href: '/base/entregado' },
-      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck,   href: '/entrega' },
+      { title: 'Lavar',     key: 'LAVAR'     as EstadoKey, icon: Droplet,         href: '/base/lavar' },
+      { title: 'Lavando',   key: 'LAVANDO'   as EstadoKey, icon: WashingMachine,  href: '/base/lavando' },
+
+      // Editar: usa key GUARDAR pero SIEMPRE muestra 0 (ya lo forzamos en UI)
+      { title: 'Editar',    key: 'GUARDAR'   as EstadoKey, icon: Archive,         href: '/base/editar' },
+
+      { title: 'Guardado',  key: 'GUARDADO'  as EstadoKey, icon: CheckCircle2,    href: '/base/guardado' },
+      { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck,    href: '/base/entregado' },
+
+      // 🔧 Ruta corregida
+      { title: 'Entregar',  key: 'ENTREGAR'  as EstadoKey, icon: Truck,           href: '/entregar' },
     ],
     []
   );
@@ -139,7 +160,7 @@ export default function BasePage() {
             className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
             aria-busy={loading}
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
             {loading ? 'Actualizando…' : 'Actualizar'}
           </button>
           <button
@@ -168,7 +189,7 @@ export default function BasePage() {
             const value = loading ? null : counts[t.key];
             return (
               <button
-                key={t.key}
+                key={t.key + t.title}
                 onClick={() => router.push(t.href)}
                 className="group w-full rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md
                            shadow-[0_6px_24px_rgba(0,0,0,0.20)] hover:bg-white/14 hover:shadow-[0_10px_28px_rgba(0,0,0,0.25)]
@@ -186,7 +207,7 @@ export default function BasePage() {
                       <span className="inline-block h-7 w-10 sm:w-12 rounded bg-white/20 animate-pulse" />
                     ) : (
                       <span className="block text-3xl sm:text-4xl font-extrabold leading-none tracking-tight drop-shadow-sm">
-                        {t.key === 'GUARDAR' ? 0 : value}
+                        {t.title === 'Editar' ? 0 : (t.key === 'GUARDAR' ? 0 : value)}
                       </span>
                     )}
                   </div>
