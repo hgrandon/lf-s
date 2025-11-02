@@ -11,7 +11,7 @@ type Pedido = {
   id: number; // alias de nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
@@ -67,7 +67,7 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Traemos pedidos en estado GUARDADO; OJO: alias id:nro solo para el cliente
+        // Traer pedidos en estado GUARDADO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
@@ -91,21 +91,18 @@ export default function GuardadoPage() {
           .from('pedido_linea')
           .select('*')
           .in('nro', ids);
-
         if (e2) throw e2;
 
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
           .in('nro', ids);
-
         if (e3) throw e3;
 
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
-
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
@@ -200,7 +197,7 @@ export default function GuardadoPage() {
       return;
     }
 
-    // En GUARDADO, si cambia a otro estado, se debe sacar del listado
+    // En GUARDADO, si cambia a otro estado, se saca del listado
     if (next !== 'GUARDADO') {
       setPedidos(curr => curr.filter(p => p.id !== id));
       setOpenId(null);
@@ -426,7 +423,7 @@ export default function GuardadoPage() {
           })}
       </section>
 
-      {/* Acciones inferiores: SIN botón Guardado (ya estás en esta vista) */}
+      {/* Acciones inferiores */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
@@ -439,8 +436,8 @@ export default function GuardadoPage() {
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
-              active={pedidoAbierto?.estado === 'GUARDAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
             />
             <ActionBtn
               label="Entregado"
