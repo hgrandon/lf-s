@@ -34,37 +34,78 @@ export default function HeaderPedido({
   const [tel, setTel] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [loadingCliente, setLoadingCliente] = useState(false);
-  const [nroInfo, setNroInfo] = useState<NextNumber>({ nro: 1, fecha: isoToday(), entrega: addBusinessDays(isoToday(), 3) });
+  const [nroInfo, setNroInfo] = useState<NextNumber>({
+    nro: 1,
+    fecha: isoToday(),
+    entrega: addBusinessDays(isoToday(), 3),
+  });
 
-  // Calcular correlativo real (máximo id + 1), con fallback a RPC si lo tienes
+  /** ===============================
+   *  Correlativo robusto:
+   *  1) RPC next_pedido_number (si existe)
+   *  2) MAX(nro) + 1   (columna nro)
+   *  3) MAX(id)  + 1   (fallback si no hay nro)
+   * =============================== */
+  async function computeNextNumber(): Promise<NextNumber> {
+    const today = isoToday();
+    const entrega = addBusinessDays(today, 3);
+
+    // 1) RPC (si la tienes creada)
+    try {
+      const { data, error } = await supabase.rpc('next_pedido_number');
+      if (!error && data && typeof (data as any).nro === 'number') {
+        return { nro: (data as any).nro, fecha: today, entrega };
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // 2) MAX(nro)
+    try {
+      const { data: maxNroRow, error: maxNroErr } = await supabase
+        .from('pedido')
+        .select('nro')
+        .order('nro', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!maxNroErr && maxNroRow && typeof (maxNroRow as any).nro === 'number') {
+        return { nro: (maxNroRow as any).nro + 1, fecha: today, entrega };
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // 3) Fallback MAX(id)
+    try {
+      const { data: maxIdRow } = await supabase
+        .from('pedido')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (maxIdRow && typeof (maxIdRow as any).id === 'number') {
+        return { nro: (maxIdRow as any).id + 1, fecha: today, entrega };
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Si no hay filas aún
+    return { nro: 1, fecha: today, entrega };
+  }
+
   useEffect(() => {
     (async () => {
-      try {
-        // 1) Si tienes RPC next_pedido_number úsalo:
-        const { data, error } = await supabase.rpc('next_pedido_number');
-        if (!error && data && typeof (data as any).nro === 'number') {
-          const today = isoToday();
-          const entrega = addBusinessDays(today, 3);
-          const info = { nro: (data as any).nro, fecha: today, entrega };
-          setNroInfo(info);
-          onNroInfo(info);
-          return;
-        }
-      } catch {}
-      // 2) Fallback: max(id) de public.pedido
-      const today = isoToday();
-      const entrega = addBusinessDays(today, 3);
-      const { data: rows } = await supabase.from('pedido').select('id');
-      const maxId = Array.isArray(rows)
-        ? rows.reduce((m, r: any) => (typeof r.id === 'number' && r.id > m ? r.id : m), 0)
-        : 0;
-      const info = { nro: maxId + 1, fecha: today, entrega };
+      const info = await computeNextNumber();
       setNroInfo(info);
       onNroInfo(info);
     })();
-  }, [onNroInfo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Buscar cliente al completar 9 dígitos (tabla: public.clientes)
+  // Buscar cliente en public.clientes cuando hay 9 dígitos
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     onCliente(null);
@@ -74,16 +115,19 @@ export default function HeaderPedido({
     if (t.length === 9) {
       debounceRef.current = setTimeout(() => void lookupCliente(t), 250);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
   async function lookupCliente(tlf: string) {
     try {
       setLoadingCliente(true);
       const { data, error } = await supabase
-        .from('clientes')
+        .from('clientes') // OJO: tabla plural
         .select('*')
         .eq('telefono', tlf);
+
       if (error) throw error;
+
       const row = data?.[0];
       if (row) {
         const c: Cliente = {
@@ -133,7 +177,9 @@ export default function HeaderPedido({
               placeholder="9 dígitos…"
               className="w-[280px] rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
             />
-            {loadingCliente && <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />}
+            {loadingCliente && (
+              <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />
+            )}
           </div>
 
           {cliente && (
