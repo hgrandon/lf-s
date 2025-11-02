@@ -7,9 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import {
   ArrowLeftCircle,
   Save,
-  UserRound,
   Phone,
-  Plus,
   Trash2,
   Camera,
   ImagePlus,
@@ -42,33 +40,6 @@ function addBusinessDays(fromISO: string, days = 3) {
   return d.toISOString().slice(0, 10);
 }
 
-async function selectFirstTable<T = any>(
-  tables: string[],
-  select: string,
-  opts?: { eq?: [string, any]; orderBy?: string }
-): Promise<{ data: T[] | null; table?: string; error?: any }> {
-  for (const t of tables) {
-    try {
-      let q: any = supabase.from(t).select(select);
-      if (opts?.eq) q = q.eq(opts.eq[0], opts.eq[1]);
-      if (opts?.orderBy) q = q.order(opts.orderBy);
-      const { data, error } = await q;
-      if (!error) return { data: (data as T[]) ?? null, table: t };
-    } catch { /* try next */ }
-  }
-  return { data: null, error: `No se encontró ninguna de las tablas: ${tables.join(', ')}` };
-}
-
-async function insertFirstTable(tables: string[], row: any): Promise<{ table?: string; error?: any }> {
-  for (const t of tables) {
-    try {
-      const { error } = await supabase.from(t).insert(row);
-      if (!error) return { table: t };
-    } catch { /* try next */ }
-  }
-  return { error: `No se pudo insertar en: ${tables.join(', ')}` };
-}
-
 /* =========================
    Página
 ========================= */
@@ -78,12 +49,9 @@ export default function PedidoPage() {
   // Estado
   const [tel, setTel] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [needCreate, setNeedCreate] = useState(false);
-  const [modal, setModal] = useState<{ open: boolean }>({ open: false });
 
   const [articulos, setArticulos] = useState<Articulo[]>([]);
   const [selArt, setSelArt] = useState<number | ''>('');
-  const [qty, setQty] = useState(1);
   const [items, setItems] = useState<Item[]>([]);
   const [fotoFile, setFotoFile] = useState<File | null>(null);
 
@@ -92,16 +60,19 @@ export default function PedidoPage() {
   const [loadingCliente, setLoadingCliente] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Modal crear cliente
+  const [needCreate, setNeedCreate] = useState(false);
+  const [modal, setModal] = useState<{ open: boolean }>({ open: false });
+
   // Carga inicial
   useEffect(() => {
     (async () => {
-      const a = await selectFirstTable<Articulo>(['articulo', 'articulos'], 'id,nombre,valor', { orderBy: 'nombre' });
-      if (!a.error && a.data) setArticulos(a.data);
-
-      // correlativo + fechas (entrega=+3 días hábiles)
-      const isoToday = new Date().toISOString().slice(0, 10);
+      const { data: a, error: ea } = await supabase.from('articulo').select('id,nombre,valor').order('nombre');
+      if (!ea && a) setArticulos(a as Articulo[]);
+      const iso = new Date().toISOString().slice(0, 10);
+      const entrega = addBusinessDays(iso, 3);
       const next = await getNextNumber();
-      setNroInfo({ nro: next.nro, fecha: isoToday, entrega: addBusinessDays(isoToday, 3) });
+      setNroInfo({ nro: next.nro, fecha: iso, entrega });
     })();
   }, []);
 
@@ -124,18 +95,16 @@ export default function PedidoPage() {
     try {
       setLoadingCliente(true);
       setErr(null);
-      const sel = await selectFirstTable<Cliente>(['cliente', 'clientes'], '*', { eq: ['telefono', tlf] });
-      if (sel.error) throw new Error(String(sel.error));
-      const row = (sel.data ?? [])[0];
+      const { data, error } = await supabase.from('cliente').select('*').eq('telefono', tlf);
+      if (error) throw error;
+      const row = data?.[0];
 
       if (row) {
         setCliente({
-          telefono: (row as any).telefono,
-          nombre: ((row as any).nombre || '').toString().toUpperCase(),
-          direccion: ((row as any).direccion || '').toString().toUpperCase(),
+          telefono: row.telefono,
+          nombre: (row.nombre || '').toString().toUpperCase(),
+          direccion: (row.direccion || '').toString().toUpperCase(),
         });
-        setNeedCreate(false);
-        setModal({ open: false });
       } else {
         setCliente(null);
         setNeedCreate(true);
@@ -143,7 +112,7 @@ export default function PedidoPage() {
       }
     } catch (e: any) {
       const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla (caché). Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        ? 'Supabase no reconoce la tabla. Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
         : e?.message || 'Error buscando cliente';
       setErr(msg);
     } finally {
@@ -154,12 +123,12 @@ export default function PedidoPage() {
   async function crearClienteRapido(c: Cliente) {
     try {
       setErr(null);
-      const ins = await insertFirstTable(['cliente', 'clientes'], {
+      const { error } = await supabase.from('cliente').insert({
         telefono: c.telefono,
         nombre: c.nombre,
         direccion: c.direccion,
       });
-      if (ins.error) throw new Error(String(ins.error));
+      if (error) throw error;
       setCliente(c);
       setNeedCreate(false);
       setModal({ open: false });
@@ -168,37 +137,34 @@ export default function PedidoPage() {
     }
   }
 
-  // Items
-  const addItem = () => {
-    const a = articulos.find((x) => x.id === selArt);
+  // Agregar artículo AUTOMÁTICO al seleccionar (qty=1)
+  const addItemAuto = (articuloId: number) => {
+    const a = articulos.find((x) => x.id === articuloId);
     if (!a) return;
-    const q = Math.max(1, Number(qty) || 1);
-
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.articulo === a.nombre && it.valor === (a.valor || 0));
       if (idx >= 0) {
         const clone = [...prev];
-        const nextQty = clone[idx].qty + q;
+        const nextQty = clone[idx].qty + 1;
         clone[idx] = { ...clone[idx], qty: nextQty, subtotal: nextQty * clone[idx].valor };
         return clone;
       }
-      return [...prev, { articulo: a.nombre, qty: q, valor: a.valor || 0, subtotal: (a.valor || 0) * q, estado: 'LAVAR' }];
+      return [...prev, { articulo: a.nombre, qty: 1, valor: a.valor || 0, subtotal: (a.valor || 0) * 1, estado: 'LAVAR' }];
     });
-
     setSelArt('');
-    setQty(1);
   };
+
   const removeItem = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
-  // Correlativo
+  // Correlativo (RPC o fallback)
   async function getNextNumber(): Promise<NextNumber> {
     try {
       const { data, error } = await supabase.rpc('next_pedido_number');
       if (!error && data && typeof (data as any).nro === 'number') return data as NextNumber;
     } catch { /* ignore */ }
-    const sel = await selectFirstTable<any>(['pedido', 'pedidos'], 'id');
-    const maxId = Array.isArray(sel.data) ? sel.data.reduce((m, r) => (typeof r.id === 'number' && r.id > m ? r.id : m), 0) : 0;
+    const { data } = await supabase.from('pedido').select('id');
+    const maxId = Array.isArray(data) ? data.reduce((m, r) => (typeof r.id === 'number' && r.id > m ? r.id : m), 0) : 0;
     const iso = new Date().toISOString().slice(0, 10);
     return { nro: maxId + 1, fecha: iso, entrega: iso };
   }
@@ -222,13 +188,12 @@ export default function PedidoPage() {
     setErr(null);
     try {
       const nowISO = new Date().toISOString().slice(0, 10);
-      const next = await getNextNumber();
       const entrega = addBusinessDays(nowISO, 3);
-      setNroInfo({ nro: next.nro, fecha: nowISO, entrega });
+      const next = await getNextNumber();
 
       const foto_url = await uploadFotoIfAny(next.nro);
 
-      const ins = await insertFirstTable(['pedido', 'pedidos'], {
+      const { error } = await supabase.from('pedido').insert({
         id: next.nro,
         cliente: cliente.nombre,
         telefono: cliente.telefono,
@@ -241,12 +206,12 @@ export default function PedidoPage() {
         foto_url,
         pagado: false,
       });
-      if (ins.error) throw new Error(String(ins.error));
+      if (error) throw error;
 
       router.push('/base');
     } catch (e: any) {
       const msg = String(e).includes('schema cache')
-        ? 'Supabase no reconoce la tabla (caché). Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
+        ? 'Supabase no reconoce la tabla. Ve a Settings → API → “Recompute public schema cache / Restart PostgREST”.'
         : e?.message ?? 'No se pudo guardar el pedido';
       setErr(msg);
     } finally {
@@ -266,9 +231,9 @@ export default function PedidoPage() {
         <div className="grid grid-cols-12 gap-4 items-start">
           {/* Izquierda: N° y Nombre */}
           <div className="col-span-12 md:col-span-8">
-            <div className="text-[46px] sm:text-[56px] leading-none font-black tracking-tight">{
-              nroInfo ? `N°${nroInfo.nro}` : 'N°—'
-            }</div>
+            <div className="text-[46px] sm:text-[56px] leading-none font-black tracking-tight">
+              {nroInfo ? `N°${nroInfo.nro}` : 'N°—'}
+            </div>
             {cliente && (
               <div className="mt-1 text-2xl sm:text-4xl font-extrabold tracking-tight">
                 {cliente.nombre}
@@ -325,44 +290,25 @@ export default function PedidoPage() {
         />
       )}
 
-      {/* TARJETA BLANCA */}
+      {/* TARJETA BLANCA (sin cantidad ni botón agregar) */}
       <section className="relative z-10 mx-auto max-w-6xl px-6 mt-4">
         <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Seleccionar artículo</label>
-              <select
-                className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
-                value={selArt === '' ? '' : selArt}
-                onChange={(e) => setSelArt(e.target.value ? Number(e.target.value) : '')}
-              >
-                <option value="">Seleccionar artículo…</option>
-                {articulos.map((a) => (
-                  <option key={a.id} value={a.id}>{a.nombre} — {CLP.format(a.valor || 0)}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Cantidad</label>
-              <input
-                type="number"
-                min={1}
-                value={qty}
-                onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
-                className="w-28 rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
-                onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }}
-              />
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={addItem}
-                disabled={selArt === '' || qty < 1}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-2.5 hover:bg-violet-700 disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-                Agregar
-              </button>
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Seleccionar artículo</label>
+            <select
+              className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
+              value={selArt === '' ? '' : selArt}
+              onChange={(e) => {
+                const id = e.target.value ? Number(e.target.value) : '';
+                setSelArt(id);
+                if (id !== '') addItemAuto(id as number);
+              }}
+            >
+              <option value="">Seleccionar artículo…</option>
+              {articulos.map((a) => (
+                <option key={a.id} value={a.id}>{a.nombre} — {CLP.format(a.valor || 0)}</option>
+              ))}
+            </select>
           </div>
 
           <div className="mt-5 overflow-x-auto">
@@ -427,7 +373,7 @@ export default function PedidoPage() {
                 disabled={saving || !cliente || items.length === 0}
                 className="inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-5 py-3 text-base font-semibold hover:bg-violet-700 disabled:opacity-50"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Guardar Pedido
               </button>
             </div>
