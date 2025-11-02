@@ -92,7 +92,6 @@ export default function LavandoPage() {
           .from('pedido_linea')
           .select('*')
           .in('nro', ids);
-
         if (e2) throw e2;
 
         // Fotos
@@ -100,7 +99,6 @@ export default function LavandoPage() {
           .from('pedido_foto')
           .select('nro, url')
           .in('nro', ids);
-
         if (e3) throw e3;
 
         // Clientes
@@ -108,7 +106,6 @@ export default function LavandoPage() {
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
-
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
@@ -119,16 +116,15 @@ export default function LavandoPage() {
           const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
           if (!pid) return;
 
-          const label =
-            String(
-              l.articulo ??
-                l.nombre ??
-                l.descripcion ??
-                l.item ??
-                l.articulo_nombre ??
-                l.articulo_id ??
-                ''
-            ).trim() || 'SIN NOMBRE';
+          const label = String(
+            l.articulo ??
+            l.nombre ??
+            l.descripcion ??
+            l.item ??
+            l.articulo_nombre ??
+            l.articulo_id ??
+            ''
+          ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -231,7 +227,7 @@ export default function LavandoPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto (igual que Lavar) -------
+  // ------- Subida de foto -------
   function openPickerFor(pid: number) {
     setPickerForPedido(pid);
   }
@@ -438,10 +434,10 @@ export default function LavandoPage() {
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
             <ActionBtn
-              label="Guardar"
+              label="Lavar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
-              active={pedidoAbierto?.estado === 'GUARDAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
             />
             <ActionBtn
               label="Guardado"
@@ -450,7 +446,7 @@ export default function LavandoPage() {
               active={pedidoAbierto?.estado === 'GUARDADO'}
             />
             <ActionBtn
-              label="Entregar"
+              label="Entregado"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
