@@ -2,36 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ChevronDown,
-  ChevronRight,
-  User,
-  Table,
-  Loader2,
-  AlertTriangle,
-  Camera,
-  ImagePlus,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
 type Pedido = {
-  id: number; // PK real en tu BD
+  id: number; // alias de nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency',
-  currency: 'CLP',
-  maximumFractionDigits: 0,
-});
+const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
@@ -41,8 +28,7 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string')
-          return arr[0] as string;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
         return null;
       } catch {
         return null;
@@ -50,8 +36,7 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string')
-    return input[0] as string;
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
   return null;
 }
 
@@ -73,10 +58,7 @@ export default function GuardadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  const pedidoAbierto = useMemo(
-    () => pedidos.find((p) => p.id === openId) ?? null,
-    [pedidos, openId]
-  );
+  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,16 +67,17 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // 1) Pedidos en GUARDADO
+        // Traemos pedidos en estado GUARDADO; OJO: alias id:nro solo para el cliente
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id, telefono, total, estado, detalle, pagado, fotos_urls')
+          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
           .eq('estado', 'GUARDADO')
-          .order('id', { ascending: false });
+          .order('nro', { ascending: false });
+
         if (e1) throw e1;
 
-        const ids = (rows ?? []).map((r: any) => r.id);
-        const tels = (rows ?? []).map((r: any) => r.telefono).filter(Boolean);
+        const ids = (rows ?? []).map(r => (r as any).id);
+        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -104,31 +87,29 @@ export default function GuardadoPage() {
           return;
         }
 
-        // 2) Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('*')
           .in('nro', ids);
+
         if (e2) throw e2;
 
-        // 3) Fotos en tabla auxiliar
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
           .in('nro', ids);
+
         if (e3) throw e3;
 
-        // 4) Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
+
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c: any) =>
-          nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE')
-        );
+        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -167,7 +148,7 @@ export default function GuardadoPage() {
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
+          id: r.id, // alias nro
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
           estado: r.estado,
@@ -195,11 +176,6 @@ export default function GuardadoPage() {
     };
   }, []);
 
-  // auto-seleccionar primero para habilitar acciones
-  useEffect(() => {
-    if (!openId && pedidos.length > 0) setOpenId(pedidos[0].id);
-  }, [pedidos, openId]);
-
   const subtotal = (it: Item) => it.qty * it.valor;
 
   function snack(msg: string) {
@@ -207,29 +183,29 @@ export default function GuardadoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambiar estado — quita del listado si sale de GUARDADO
+  // Cambios de estado: usar siempre .eq('nro', id)
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
-    const snapshot = pedidos;
+    const prev = pedidos;
+    setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
 
-    // optimista
-    if (next !== 'GUARDADO') {
-      setPedidos((curr) => curr.filter((p) => p.id !== id));
-      if (openId === id) setOpenId(null);
-    } else {
-      setPedidos((curr) => curr.map((p) => (p.id === id ? { ...p, estado: next } : p)));
-    }
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('id', id); // ← usa id
     if (error) {
-      setPedidos(snapshot); // rollback
-      snack('No se pudo mover el pedido. Intenta de nuevo.');
+      console.error('No se pudo actualizar estado:', error);
+      setPedidos(prev);
       setSaving(false);
+      snack('No se pudo mover el pedido. Intenta de nuevo.');
       return;
     }
 
-    snack(`Pedido #${id} movido a ${next}`);
+    // En GUARDADO, si cambia a otro estado, se debe sacar del listado
+    if (next !== 'GUARDADO') {
+      setPedidos(curr => curr.filter(p => p.id !== id));
+      setOpenId(null);
+      snack(`Pedido #${id} movido a ${next}`);
+    }
     setSaving(false);
   }
 
@@ -237,21 +213,19 @@ export default function GuardadoPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find(p => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase
-      .from('pedido')
-      .update({ pagado: !actual })
-      .eq('id', id) // ← usa id
-      .select('id')
-      .single();
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
 
     if (error) {
-      setPedidos(prev); // rollback
+      console.error('No se pudo actualizar pago:', error);
+      setPedidos(prev);
       setSaving(false);
+      snack('No se pudo actualizar el pago.');
       return;
     }
+
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
@@ -265,38 +239,37 @@ export default function GuardadoPage() {
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = '';
+    e.target.value = ''; // reset
     const pid = pickerForPedido;
     if (!file || !pid) return;
 
     try {
-      setUploading((prev) => ({ ...prev, [pid]: true }));
+      setUploading(prev => ({ ...prev, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
 
-      const { data: up, error: upErr } = await supabase.storage
-        .from('fotos')
-        .upload(path, file, { cacheControl: '3600', upsert: false });
+      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
       if (upErr) throw upErr;
 
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase
-        .from('pedido_foto')
-        .insert({ nro: pid, url: publicUrl });
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ nro: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
-      setImageError((prev) => ({ ...prev, [pid]: false }));
+      setPedidos(prev => prev.map(p => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      setImageError(prev => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cerrar modal al elegir
+      setUploading(prev => ({ ...prev, [pid!]: false }));
+      setPickerForPedido(null);
     }
   }
 
@@ -306,10 +279,7 @@ export default function GuardadoPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Guardado</h1>
-        <button
-          onClick={() => router.push('/base')}
-          className="text-xs lg:text-sm text-white/90 hover:text-white"
-        >
+        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
         </button>
       </header>
@@ -335,12 +305,10 @@ export default function GuardadoPage() {
 
         {!loading &&
           !errMsg &&
-          pedidos.map((p) => {
+          pedidos.map(p => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length
-              ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
-              : p.total ?? 0;
+            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
 
             return (
               <div
@@ -366,9 +334,7 @@ export default function GuardadoPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(totalCalc)}
-                    </div>
+                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
                 </button>
@@ -377,9 +343,7 @@ export default function GuardadoPage() {
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
-                        onClick={() =>
-                          setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
-                        }
+                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
@@ -406,9 +370,7 @@ export default function GuardadoPage() {
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 18
-                                          ? it.articulo.slice(0, 18) + '.'
-                                          : it.articulo}
+                                        {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -431,14 +393,9 @@ export default function GuardadoPage() {
                         </div>
                       )}
 
-                      {/* Imagen: doble clic para cambiar */}
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
-                          <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10"
-                            onDoubleClick={() => setPickerForPedido(p.id)}
-                            title="Doble clic para cambiar la imagen"
-                          >
+                          <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
                             <Image
                               src={p.foto_url!}
                               alt={`Foto pedido ${p.id}`}
@@ -446,7 +403,7 @@ export default function GuardadoPage() {
                               height={0}
                               sizes="100vw"
                               style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
                               priority={false}
                             />
                           </div>
@@ -469,7 +426,7 @@ export default function GuardadoPage() {
           })}
       </section>
 
-      {/* Acciones inferiores (sin botón Guardado) */}
+      {/* Acciones inferiores: SIN botón Guardado (ya estás en esta vista) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
@@ -482,8 +439,8 @@ export default function GuardadoPage() {
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
-              active={pedidoAbierto?.estado === 'ENTREGAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
+              active={pedidoAbierto?.estado === 'GUARDAR'}
             />
             <ActionBtn
               label="Entregado"
@@ -520,7 +477,7 @@ export default function GuardadoPage() {
         </div>
       )}
 
-      {/* Modal elegir origen */}
+      {/* Modal simple para elegir origen de la imagen */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
