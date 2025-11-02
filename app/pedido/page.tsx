@@ -1,3 +1,4 @@
+// app/pedido/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -10,15 +11,24 @@ export default function PedidoPage() {
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
-  // Recibe un Item desde ArticulosSelect (ya viene con qty y valor definidos en el modal)
-  const handleAddItem = (incoming: Item) => {
+  // Recibe { articulo, precio, cantidad } desde ArticulosSelect (modal)
+  const handleAddItem = ({
+    articulo,
+    precio,
+    cantidad,
+  }: {
+    articulo: string;
+    precio: number;
+    cantidad: number;
+  }) => {
     setItems((prev) => {
       const idx = prev.findIndex(
-        x => x.articulo === incoming.articulo && x.valor === incoming.valor
+        (x) => x.articulo === articulo && x.valor === precio
       );
       if (idx >= 0) {
+        // Si ya existe mismo artículo con mismo precio, acumula cantidad
         const next = [...prev];
-        const newQty = next[idx].qty + incoming.qty;
+        const newQty = next[idx].qty + cantidad;
         next[idx] = {
           ...next[idx],
           qty: newQty,
@@ -26,12 +36,16 @@ export default function PedidoPage() {
         };
         return next;
       }
-      return [...prev, incoming];
+      // Si no existe, lo agrega
+      const nuevo: Item = {
+        articulo,
+        qty: cantidad,
+        valor: precio,
+        subtotal: precio * cantidad,
+        estado: 'LAVAR',
+      };
+      return [...prev, nuevo];
     });
-  };
-
-  const handleRemoveItem = (idx: number) => {
-    setItems(prev => prev.filter((_, i) => i !== idx));
   };
 
   return (
@@ -52,7 +66,6 @@ export default function PedidoPage() {
             cliente={cliente}
             nroInfo={nroInfo}
             items={items}
-            onRemoveItem={handleRemoveItem}
           />
         </div>
       </section>
