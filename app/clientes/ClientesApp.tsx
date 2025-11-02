@@ -2,37 +2,82 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, User, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import {
+  UserPlus,
+  Search,
+  ChevronRight,
+  ChevronDown,
+  User2,
+  Package,
+  Calendar,
+  Coins,
+  AlertCircle,
+  ArrowLeft,
+} from 'lucide-react';
 
+/* =========================
+   Tipos
+========================= */
 type Cliente = {
   telefono: string;
-  nombre: string | null;
+  nombre: string;
   direccion: string | null;
-  tipo?: string | null; // LOCAL/DOMICILIO si lo tienes
 };
 
-function normalize(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+type PedidoResumen = {
+  nro: number;
+  fecha: string | null;
+  entrega: string | null;
+  estado: string | null;
+  total: number | null;
+  estado_pago: string | null;
+};
+
+type PedidosCache = Record<
+  string,
+  { loading: boolean; error: string | null; items: PedidoResumen[] }
+>;
+
+/* =========================
+   Utilidades
+========================= */
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
+
+function normalize(q: string) {
+  return q.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
 }
 
-function onlyDigits(s: string): string {
-  return (s || '').replace(/\D+/g, '');
+/* Debounce simple */
+function useDebounced<T>(value: T, delay = 320) {
+  const [deb, setDeb] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDeb(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return deb;
 }
 
-export default function ClientesPage() {
+/* =========================
+   Componente
+========================= */
+export default function ClientesApp() {
   const router = useRouter();
-  const [q, setQ] = useState('');
-  const [rows, setRows] = useState<Cliente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
 
-  // Evita setState post-unmount
+  const [query, setQuery] = useState('');
+  const debQuery = useDebounced(query);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+
+  const [openTel, setOpenTel] = useState<string | null>(null);
+  const [pedidosByTel, setPedidosByTel] = useState<PedidosCache>({});
+
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -41,46 +86,36 @@ export default function ClientesPage() {
     };
   }, []);
 
-  // Debounce de 300ms
-  const debouncedQ = useDebouncedValue(q, 300);
-
+  /* -------- Carga de clientes (con búsqueda) -------- */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
-      setErr(null);
-
       try {
-        const term = debouncedQ.trim();
-        const filters: string[] = [];
+        setLoading(true);
+        setError(null);
 
-        if (term.length >= 1) {
-          const like = `%${term}%`;
-          filters.push(`nombre.ilike.${like}`);
-          filters.push(`telefono.ilike.${like}`);
-          filters.push(`direccion.ilike.${like}`);
-        }
-
-        // Si no hay término, traemos un tope razonable (p.ej. 200)
         const base = supabase
           .from('clientes')
-          .select('telefono,nombre,direccion', { count: 'exact' });
+          .select('telefono, nombre, direccion')
+          .order('nombre', { ascending: true });
 
-        const query = filters.length
-          ? base.or(filters.join(',')).limit(200)
-          : base.order('nombre', { ascending: true }).limit(200);
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        if (!cancelled && mountedRef.current) {
-          setRows((data || []) as Cliente[]);
+        const q = debQuery.trim();
+        if (q) {
+          // Búsqueda por nombre/dirección/telefono (case-insensitive)
+          // Nota: usando or() con ilike para 3 campos
+          const { data, error } = await base.or(
+            `nombre.ilike.%${q}%,direccion.ilike.%${q}%,telefono.ilike.%${q}%`
+          );
+          if (error) throw error;
+          if (!cancelled && mountedRef.current) setClientes((data ?? []) as Cliente[]);
+        } else {
+          const { data, error } = await base.limit(60);
+          if (error) throw error;
+          if (!cancelled && mountedRef.current) setClientes((data ?? []) as Cliente[]);
         }
       } catch (e: any) {
-        if (!cancelled && mountedRef.current) {
-          setErr(e?.message ?? 'Error al buscar clientes');
-        }
+        console.error(e);
+        if (!cancelled && mountedRef.current) setError(e?.message ?? 'No se pudieron cargar clientes');
       } finally {
         if (!cancelled && mountedRef.current) setLoading(false);
       }
@@ -89,108 +124,220 @@ export default function ClientesPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ]);
+  }, [debQuery]);
 
-  // Filtro y orden local (mejora precisión: acentos/teléfono)
-  const list = useMemo(() => {
-    const term = normalize(q);
-    const digits = onlyDigits(q);
-    if (!term && !digits) {
-      return rows.sort((a, b) => normalize(a.nombre || '').localeCompare(normalize(b.nombre || '')));
+  /* -------- Abrir cliente (acordeón) y lazy-load pedidos -------- */
+  async function toggleOpen(telefono: string) {
+    setOpenTel((prev) => (prev === telefono ? null : telefono));
+
+    // Si ya lo cargamos antes, no vuelvas a consultar
+    if (pedidosByTel[telefono]?.items?.length || pedidosByTel[telefono]?.loading) return;
+
+    setPedidosByTel((prev) => ({
+      ...prev,
+      [telefono]: { loading: true, error: null, items: [] },
+    }));
+
+    try {
+      // Consulta directa a la tabla "pedido" por telefono
+      const { data, error } = await supabase
+        .from('pedido')
+        .select('nro, fecha, entrega, estado, total, estado_pago')
+        .eq('telefono', telefono)
+        .order('nro', { ascending: false });
+
+      if (error) throw error;
+
+      const items = (data ?? []).map((r: any) => ({
+        nro: Number(r.nro),
+        fecha: r.fecha ?? null,
+        entrega: r.entrega ?? null,
+        estado: r.estado ?? null,
+        total: r.total ?? null,
+        estado_pago: r.estado_pago ?? null,
+      })) as PedidoResumen[];
+
+      setPedidosByTel((prev) => ({
+        ...prev,
+        [telefono]: { loading: false, error: null, items },
+      }));
+    } catch (e: any) {
+      console.error(e);
+      setPedidosByTel((prev) => ({
+        ...prev,
+        [telefono]: { loading: false, error: e?.message ?? 'No se pudieron cargar pedidos', items: [] },
+      }));
     }
+  }
 
-    const scored = rows
-      .map((c) => {
-        const n = normalize(c.nombre || '');
-        const d = onlyDigits(c.telefono);
-        const addr = normalize(c.direccion || '');
-
-        let score = 0;
-        if (n.includes(term)) score += 3; // nombre pesa más
-        if (addr.includes(term)) score += 1;
-        if (digits && d.includes(digits)) score += 4; // teléfono pesa mucho
-        if (!term && digits && d.startsWith(digits)) score += 2;
-
-        return { c, score };
-      })
-      .filter((s) => s.score > 0 || (!term && !digits)); // si no hay término, deja todos
-    scored.sort((a, b) => b.score - a.score || normalize(a.c.nombre || '').localeCompare(normalize(b.c.nombre || '')));
-    return scored.map((s) => s.c);
-  }, [rows, q]);
+  const filtered = useMemo(() => {
+    // Filtro adicional en cliente para que se sienta ultra-reactivo
+    const q = normalize(debQuery);
+    if (!q) return clientes;
+    return clientes.filter((c) => {
+      const hay =
+        normalize(c.nombre ?? '').includes(q) ||
+        normalize(c.direccion ?? '').includes(q) ||
+        (c.telefono ?? '').toString().includes(q);
+      return hay;
+    });
+  }, [clientes, debQuery]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-violet-900 via-fuchsia-800 to-indigo-900 text-white">
-      <header className="max-w-3xl mx-auto px-4 py-5 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Clientes</h1>
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
+
+      <header className="relative z-10 mx-auto max-w-5xl flex items-center justify-between px-4 py-4">
+        <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
         <button
-          onClick={() => router.push('/clientes/nuevo')}
-          className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 hover:bg-white/15"
+          onClick={() => router.push('/menu')}
+          className="inline-flex items-center gap-1 text-sm text-white/90 hover:text-white"
         >
-          <Plus size={16} />
-          Agregar cliente
+          <ArrowLeft size={16} /> Volver
         </button>
       </header>
 
-      <section className="max-w-3xl mx-auto px-4 pb-28">
+      <section className="relative z-10 mx-auto max-w-5xl px-4">
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            onClick={() => router.push('/clientes/nuevo')}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15"
+          >
+            <UserPlus size={16} /> Agregar cliente
+          </button>
+        </div>
+
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70" size={16} />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70" />
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar por nombre, teléfono o dirección…"
-            className="w-full rounded-xl pl-9 pr-3 py-3 bg-white/10 border border-white/15 placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            className="w-full rounded-2xl bg-white/10 border border-white/15 pl-9 pr-3 py-2 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
           />
         </div>
 
-        {err && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-4 py-3 text-sm">
-            <AlertTriangle size={16} />
-            <span>{err}</span>
+        {error && (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
+            <AlertCircle size={16} /> {error}
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center gap-2 text-white/90">
-            <Loader2 className="animate-spin" size={18} />
-            Buscando…
+          <div className="grid gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-16 rounded-2xl bg-white/10 border border-white/10 animate-pulse"
+              />
+            ))}
           </div>
-        ) : list.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-white/80">Sin resultados.</div>
         ) : (
-          <div className="grid gap-2">
-            {list.map((c) => (
-              <button
-                key={c.telefono}
-                onClick={() => router.push(`/clientes/${onlyDigits(c.telefono)}`)}
-                className="group w-full text-left rounded-2xl bg-white/10 border border-white/15 p-3 hover:bg-white/14 transition"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/20">
-                      <User size={16} />
-                    </span>
-                    <div>
-                      <div className="font-semibold">{c.nombre || 'SIN NOMBRE'}</div>
-                      <div className="text-xs text-white/80">+56 {onlyDigits(c.telefono)}</div>
-                      <div className="text-[11px] text-white/70">{c.direccion || '—'}</div>
+          <div className="grid gap-3">
+            {filtered.map((c) => {
+              const abierto = openTel === c.telefono;
+              const cache = pedidosByTel[c.telefono];
+
+              return (
+                <div
+                  key={c.telefono}
+                  className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]"
+                >
+                  <button
+                    onClick={() => toggleOpen(c.telefono)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 border border-white/20">
+                        <User2 size={18} />
+                      </span>
+                      <div className="text-left">
+                        <div className="font-extrabold leading-tight">{c.nombre}</div>
+                        <div className="text-[11px] text-white/85">
+                          +56 {c.telefono}{' '}
+                          {c.direccion ? `• ${c.direccion}` : ''}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="text-white/70 group-hover:text-white" size={16} />
+                    {abierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                  </button>
+
+                  {abierto && (
+                    <div className="px-4 pb-4">
+                      {/* Estado de carga / error */}
+                      {cache?.loading && (
+                        <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90">
+                          Cargando pedidos…
+                        </div>
+                      )}
+                      {cache?.error && (
+                        <div className="rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
+                          <AlertCircle size={16} className="inline mr-1" />
+                          {cache.error}
+                        </div>
+                      )}
+
+                      {/* Lista de pedidos */}
+                      {!cache?.loading && !cache?.error && (
+                        <div className="mt-2 grid gap-2">
+                          {cache?.items?.length ? (
+                            cache.items.map((p) => (
+                              <div
+                                key={p.nro}
+                                className="rounded-xl bg-white/5 border border-white/10 p-3"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Package size={16} />
+                                    <span className="font-semibold">Pedido #{p.nro}</span>
+                                  </div>
+                                  <span className="text-sm font-bold">
+                                    {p.total != null ? CLP.format(p.total) : '—'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
+                                  <div className="flex items-center gap-1">
+                                    <Calendar size={12} /> Fec. {p.fecha ?? '—'}
+                                  </div>
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <Calendar size={12} /> Ent. {p.entrega ?? '—'}
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px]">
+                                    Estado: <b className="ml-1">{p.estado ?? '—'}</b>
+                                  </span>
+                                  <span
+                                    className={[
+                                      'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                      (p.estado_pago ?? '').toUpperCase() === 'PAGADO'
+                                        ? 'bg-emerald-500/20 border-emerald-300/30'
+                                        : 'bg-amber-500/20 border-amber-300/30',
+                                    ].join(' ')}
+                                  >
+                                    <Coins size={12} className="mr-1" />
+                                    {p.estado_pago ?? '—'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85">
+                              Sin pedidos para este cliente.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
     </main>
   );
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return v;
 }
