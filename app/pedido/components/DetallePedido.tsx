@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Camera, ImagePlus, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Camera, ImagePlus, Loader2, AlertTriangle } from 'lucide-react';
 import type { Cliente, NextNumber } from './HeaderPedido';
 
 export type Item = { articulo: string; qty: number; valor: number; subtotal: number; estado: 'LAVAR' };
@@ -22,6 +22,13 @@ export default function DetallePedido({
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // modal de confirmación para eliminar en doble click
+  const [confirm, setConfirm] = useState<{ open: boolean; index: number | null; label?: string }>({
+    open: false,
+    index: null,
+    label: '',
+  });
 
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
@@ -68,37 +75,34 @@ export default function DetallePedido({
   return (
     <>
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm select-none">
           <thead>
             <tr className="bg-violet-50 text-violet-900">
-              <th className="text-left px-3 py-2 rounded-l-lg">Artículo</th>
+              <th className="text-left  px-3 py-2 rounded-l-lg">Artículo</th>
               <th className="text-right px-3 py-2">Cantidad</th>
               <th className="text-right px-3 py-2">Valor</th>
-              <th className="text-right px-3 py-2">Subtotal</th>
-              <th className="text-center px-3 py-2 rounded-r-lg">Acción</th>
+              <th className="text-right px-3 py-2 rounded-r-lg">Subtotal</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center text-slate-500 py-6">Sin artículos todavía.</td>
+                <td colSpan={4} className="text-center text-slate-500 py-6">Sin artículos todavía.</td>
               </tr>
             ) : (
               items.map((it, idx) => (
-                <tr key={idx} className="border-b last:border-b-0">
+                <tr
+                  key={idx}
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-violet-50/60"
+                  onDoubleClick={() =>
+                    setConfirm({ open: true, index: idx, label: `${it.articulo}  ×${it.qty}  — ${CLP.format(it.subtotal)}` })
+                  }
+                  title="Doble clic para eliminar"
+                >
                   <td className="px-3 py-2">{it.articulo}</td>
                   <td className="px-3 py-2 text-right">{it.qty}</td>
                   <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                   <td className="px-3 py-2 text-right">{CLP.format(it.subtotal)}</td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={() => onRemoveItem(idx)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-white text-rose-600 border border-rose-200 px-2.5 py-1.5 hover:bg-rose-50"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
                 </tr>
               ))
             )}
@@ -146,6 +150,39 @@ export default function DetallePedido({
         <div className="mt-4 flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 text-sm">
           <AlertTriangle className="w-4 h-4" />
           {err}
+        </div>
+      )}
+
+      {/* Modal de confirmación de eliminación (doble click) */}
+      {confirm.open && confirm.index !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-width[520px] max-w-md rounded-2xl bg-white p-5 shadow-2xl text-slate-900">
+            <div className="flex items-center gap-2 text-rose-700 mb-2">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="text-lg font-bold">Eliminar ítem</h3>
+            </div>
+            <p className="text-sm text-slate-600">
+              ¿Deseas eliminar <b>{confirm.label}</b> del pedido?
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirm({ open: false, index: null })}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm.index !== null) onRemoveItem(confirm.index);
+                  setConfirm({ open: false, index: null });
+                }}
+                className="rounded-xl bg-rose-600 text-white px-4 py-2.5 font-semibold hover:bg-rose-700"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
