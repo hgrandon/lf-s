@@ -1,27 +1,21 @@
-// app/entregar/page.tsx
+// app/base/entregar/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle,
-  MapPinned, CheckCircle2, Wallet, ArrowLeft
-} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
+import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, ImagePlus } from 'lucide-react';
 
 type Item = { articulo: string; qty: number; valor: number };
 type Pedido = {
-  id: number;                    // nro
-  telefono: string;
+  id: number;           // nro
   cliente: string;
-  direccion?: string | null;
   total: number | null;
   estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
-  tipo_entrega?: 'LOCAL' | 'DOMICILIO' | null;
   items?: Item[];
 };
 
@@ -37,7 +31,9 @@ function firstFotoFromMixed(input: unknown): string | null {
         const arr = JSON.parse(s);
         if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
         return null;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     }
     return s;
   }
@@ -47,7 +43,6 @@ function firstFotoFromMixed(input: unknown): string | null {
 
 export default function EntregarPage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -58,6 +53,12 @@ export default function EntregarPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const subtotal = (it: Item) => it.qty * it.valor;
+
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1800);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -69,13 +70,14 @@ export default function EntregarPage() {
         // Pedidos en ENTREGAR
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls, tipo_entrega')
+          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
           .eq('estado', 'ENTREGAR')
           .order('nro', { ascending: false });
+
         if (e1) throw e1;
 
         const ids = (rows ?? []).map(r => (r as any).id);
-        const tels = (rows ?? []).map(r => String((r as any).telefono)).filter(Boolean);
+        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -85,44 +87,39 @@ export default function EntregarPage() {
           return;
         }
 
-        // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('*')
           .in('nro', ids);
         if (e2) throw e2;
 
-        // Fotos específicas
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('nro, url')
           .in('nro', ids);
         if (e3) throw e3;
 
-        // Clientes (nombre + dirección)
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
-          .select('telefono, nombre, direccion')
+          .select('telefono, nombre')
           .in('telefono', tels);
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        const dirByTel = new Map<string, string | null>();
-        (cli ?? []).forEach((c: any) => {
-          const t = String(c.telefono);
-          nombreByTel.set(t, c.nombre ?? 'SIN NOMBRE');
-          dirByTel.set(t, c.direccion ?? null);
-        });
+        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
           const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
           if (!pid) return;
+
           const label = String(
             l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? ''
           ).trim() || 'SIN NOMBRE';
+
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
+
           const arr = itemsByPedido.get(pid) ?? [];
           arr.push({ articulo: label, qty, valor });
           itemsByPedido.set(pid, arr);
@@ -140,27 +137,16 @@ export default function EntregarPage() {
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-          const tel = String(r.telefono ?? '');
-          const items = itemsByPedido.get(r.id) ?? [];
-          const totalCalc = items.length ? items.reduce((a, it) => a + (Number(it.qty) * Number(it.valor)), 0) : (r.total ?? 0);
-          const cliente = (nombreByTel.get(tel) ?? (tel || 'SIN NOMBRE')); // sin mezclar ?? y ||
-          const direccion = dirByTel.get(tel) ?? null;
-
-          return {
-            id: r.id,
-            telefono: tel,
-            cliente,
-            direccion,
-            total: totalCalc,
-            estado: r.estado,
-            detalle: r.detalle ?? null,
-            foto_url: fotoByPedido.get(r.id) ?? null,
-            pagado: r.pagado ?? false,
-            tipo_entrega: (r.tipo_entrega as any) ?? null,
-            items
-          };
-        });
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
+          id: r.id,
+          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+          total: r.total ?? null,
+          estado: r.estado,
+          detalle: r.detalle ?? null,
+          foto_url: fotoByPedido.get(r.id) ?? null,
+          pagado: r.pagado ?? false,
+          items: itemsByPedido.get(r.id) ?? [],
+        }));
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -177,14 +163,7 @@ export default function EntregarPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const subtotal = (it: Item) => (Number(it.qty) || 0) * (Number(it.valor) || 0);
-
-  function snack(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 1800);
-  }
-
-  // Cambios de estado
+  // Cambiar estado del seleccionado
   async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
@@ -197,10 +176,11 @@ export default function EntregarPage() {
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
       setSaving(false);
+      snack('No se pudo mover el pedido. Intenta de nuevo.');
       return;
     }
 
-    // En ENTREGAR, si pasa a otro estado, lo removemos de la lista
+    // En ENTREGAR, si cambia a ENTREGADO u otro, lo sacamos del listado
     if (next !== 'ENTREGAR') {
       setPedidos(curr => curr.filter(p => p.id !== id));
       setOpenId(null);
@@ -222,22 +202,12 @@ export default function EntregarPage() {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
       setSaving(false);
+      snack('No se pudo actualizar el pago.');
       return;
     }
 
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
-  }
-
-  function openMaps() {
-    if (!pedidoAbierto) return;
-    const q = (pedidoAbierto.direccion || '').toString().trim();
-    if (!q) {
-      snack('El cliente no tiene dirección registrada.');
-      return;
-    }
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   return (
@@ -294,10 +264,7 @@ export default function EntregarPage() {
                   <div className="text-left">
                     <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                     <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                      {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'} {p.tipo_entrega ? `• ${p.tipo_entrega}` : ''}
-                    </div>
-                    <div className="text-[10px] lg:text-[11px] text-white/70 truncate">
-                      {p.direccion ?? 'Sin dirección'}
+                      {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                     </div>
                   </div>
                 </div>
@@ -361,12 +328,11 @@ export default function EntregarPage() {
                       </div>
                     )}
 
-                    {/* Foto solo lectura (no se sube en ENTREGAR) */}
-                    {p.foto_url && !imageError[p.id] && (
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                    <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                      {p.foto_url && !imageError[p.id] ? (
                         <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
                           <Image
-                            src={p.foto_url}
+                            src={p.foto_url!}
                             alt={`Foto pedido ${p.id}`}
                             width={0}
                             height={0}
@@ -376,8 +342,13 @@ export default function EntregarPage() {
                             priority={false}
                           />
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="w-full p-6 text-sm text-white/80 flex items-center justify-center gap-2">
+                          <ImagePlus size={18} />
+                          <span>Sin imagen adjunta.</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -386,34 +357,27 @@ export default function EntregarPage() {
         })}
       </section>
 
-      {/* Acciones inferiores para ENTREGAR */}
+      {/* Acciones inferiores */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-4 gap-3">
-            <ActionBtn
-              label="Maps"
-              Icon={MapPinned}
-              disabled={!pedidoAbierto}
-              onClick={openMaps}
-            />
+          <div className="grid grid-cols-3 gap-3">
             <ActionBtn
               label="Entregado"
-              Icon={CheckCircle2}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
+              label="Guardado"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              active={pedidoAbierto?.estado === 'GUARDADO'}
+            />
+            <ActionBtn
               label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
-              Icon={Wallet}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
-            />
-            <ActionBtn
-              label="Volver"
-              Icon={ArrowLeft}
-              onClick={() => router.push('/base')}
             />
           </div>
 
@@ -446,30 +410,25 @@ function ActionBtn({
   onClick,
   disabled,
   active,
-  Icon,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  Icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 }) {
-  const IconComp = Icon;
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={[
-        'rounded-xl py-3 text-sm font-medium border transition inline-flex items-center justify-center gap-2',
+        'rounded-xl py-3 text-sm font-medium border transition',
         active
           ? 'bg-white/20 border-white/30 text-white'
           : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
-      {IconComp ? <IconComp width={16} height={16} /> : null}
       {label}
     </button>
   );
 }
-
