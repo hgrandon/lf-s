@@ -1,73 +1,84 @@
-// app/pedido/components/ArticulosSelect.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import AddItemModal, { AddItemPayload } from './AddItemModal';
 
-export type ArticuloLite = { id: number; nombre: string };
+export type Articulo = {
+  id: number;
+  nombre: string;
+  precio: number | null; // puede venir null si aún no lo definen
+  activo?: boolean | null;
+};
 
 export default function ArticulosSelect({
-  onSelect,
+  onAddItem,
 }: {
-  onSelect: (a: ArticuloLite) => void;
+  onAddItem: (payload: { articulo: string; precio: number; cantidad: number }) => void;
 }) {
-  const [articulos, setArticulos] = useState<ArticuloLite[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [sel, setSel] = useState<number | ''>('');
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [articulos, setArticulos] = useState<Articulo[]>([]);
+  const [selId, setSelId] = useState<number | ''>('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalData, setModalData] = useState<{ id: number; nombre: string; precio: number | null } | null>(null);
 
+  // Carga de artículos (sin duplicados por nombre)
   useEffect(() => {
     (async () => {
+      setCargando(true);
+      setError(null);
       try {
-        setMsg(null);
-
-        // 1) desde public.articulo
-        let lista: { id: number; nombre: string }[] = [];
-        const { data: a1, error: e1 } = await supabase
-          .from('articulo')
-          .select('id, nombre')
+        const { data, error } = await supabase
+          .from('articulo') // usa tu tabla actual
+          .select('id,nombre,precio,activo')
           .order('nombre', { ascending: true });
 
-        if (e1) throw e1;
-        if (Array.isArray(a1) && a1.length) {
-          lista = a1 as any[];
-        } else {
-          // 2) fallback public._bak_articulo
-          const { data: a2, error: e2 } = await supabase
-            .from('_bak_articulo')
-            .select('id, nombre')
-            .order('nombre', { ascending: true });
-          if (e2) throw e2;
-          lista = (a2 || []) as any[];
-        }
+        if (error) throw error;
 
-        const normal = (lista || [])
-          .map((r) => ({
-            id: Number(r.id),
-            nombre: String(r.nombre || '').trim().toUpperCase(),
-          }))
-          .filter((r) => !!r.nombre);
+        const rows = (data ?? []) as Articulo[];
 
-        // sin duplicados por nombre
-        const unicos: ArticuloLite[] = Array.from(
-          new Map(normal.map((x) => [x.nombre, x])).values()
-        );
-
-        setArticulos(unicos);
-        if (!unicos.length) setMsg('No se encontraron artículos.');
+        // normalizamos: deduplicamos por nombre (último gana)
+        const map = new Map<string, Articulo>();
+        for (const r of rows) map.set((r.nombre || '').toString(), r);
+        setArticulos(Array.from(map.values()));
       } catch (e: any) {
-        setMsg(e?.message || 'No se pudieron cargar artículos.');
+        console.error(e);
+        setError(e?.message ?? 'No se pudieron cargar artículos.');
+      } finally {
+        setCargando(false);
       }
     })();
   }, []);
 
+  // al elegir un artículo → abrir modal con precio por defecto y cantidad=1
   const handleChange = (v: string) => {
-    const id = v ? Number(v) : '';
-    setSel(id);
-    if (id === '') return;
-    const a = articulos.find((x) => x.id === id);
-    if (a) onSelect(a); // avisamos al padre para abrir modal
-    setSel('');
+    if (!v) {
+      setSelId('');
+      return;
+    }
+    const id = Number(v);
+    setSelId(id);
+    const art = articulos.find((a) => a.id === id);
+    if (art) {
+      setModalData({ id: art.id, nombre: art.nombre, precio: art.precio ?? 0 });
+      setModalOpen(true);
+    }
   };
+
+  const handleConfirm = (p: AddItemPayload) => {
+    onAddItem({
+      articulo: p.articuloNombre,
+      precio: p.precio,
+      cantidad: p.cantidad,
+    });
+    // limpiar selección para poder volver a abrir el modal con el mismo artículo si se desea
+    setSelId('');
+  };
+
+  const opciones = useMemo(() => {
+    return articulos.map((a) => ({ value: a.id, label: a.nombre }));
+  }, [articulos]);
 
   return (
     <div>
@@ -75,23 +86,36 @@ export default function ArticulosSelect({
         Seleccionar artículo
       </label>
       <select
-        className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
-        value={sel === '' ? '' : sel}
+        value={selId === '' ? '' : selId}
         onChange={(e) => handleChange(e.target.value)}
+        className="w-full rounded-xl border-2 border-slate-300 px-3 py-2.5 outline-none focus:border-violet-500"
       >
         <option value="">Seleccionar artículo…</option>
-        {articulos.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.nombre}
+        {opciones.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
           </option>
         ))}
       </select>
 
-      {msg && (
-        <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-          {msg}
+      {error && (
+        <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700 text-sm">
+          {error}
         </div>
       )}
+      {!error && !cargando && articulos.length === 0 && (
+        <div className="mt-2 text-sm text-slate-500">No hay artículos disponibles.</div>
+      )}
+
+      {/* Modal para confirmar precio/cantidad */}
+      <AddItemModal
+        open={modalOpen}
+        articuloId={modalData?.id ?? null}
+        articuloNombre={modalData?.nombre ?? ''}
+        precioInicial={modalData?.precio ?? 0}
+        onClose={() => setModalOpen(false)}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }
