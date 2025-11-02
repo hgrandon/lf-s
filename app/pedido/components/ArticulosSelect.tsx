@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 export type Articulo = { id: number; nombre: string; valor: number };
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
 export default function ArticulosSelect({
   onAddArticulo,
@@ -19,29 +18,37 @@ export default function ArticulosSelect({
     (async () => {
       try {
         setMsg(null);
-        // En tu BD la columna de precio es "precio", no "valor"
+        // Tomamos id, nombre y precio (tu campo real)
         const { data, error } = await supabase
           .from('articulo')
-          .select('id,nombre,precio')
+          .select('id, nombre, precio')
           .order('nombre', { ascending: true });
 
         if (error) throw error;
 
-        const list = (data || []).map((r: any) => ({
-          id: r.id,
-          nombre: r.nombre,
-          valor: Number(r.precio || 0), // mapeamos precio -> valor
-        })) as Articulo[];
+        // Filtrar solo los que no tienen precio (precio nulo o 0)
+        const filtrados = (data || [])
+          .filter((r: any) => !r.precio || Number(r.precio) === 0)
+          .map((r: any) => ({
+            id: r.id,
+            nombre: (r.nombre || '').trim().toUpperCase(),
+            valor: Number(r.precio || 0),
+          }));
 
-        setArticulos(list);
-        if (!list.length) setMsg('No hay artículos en public.articulo.');
+        // Eliminar duplicados por nombre
+        const unicos: Articulo[] = Array.from(
+          new Map(filtrados.map((a) => [a.nombre, a])).values()
+        );
+
+        setArticulos(unicos);
+        if (!unicos.length) setMsg('No hay artículos sin valor asignado.');
       } catch (e: any) {
         setMsg(e?.message || 'No se pudieron cargar artículos.');
       }
     })();
   }, []);
 
-  // Al elegir, agrega 1 unidad automáticamente
+  // Al elegir, agrega directamente 1 unidad
   const onChange = (v: string) => {
     const id = v ? Number(v) : '';
     setSel(id);
@@ -62,7 +69,7 @@ export default function ArticulosSelect({
         <option value="">Seleccionar artículo…</option>
         {articulos.map((a) => (
           <option key={a.id} value={a.id}>
-            {a.nombre} — {CLP.format(a.valor)}
+            {a.nombre}
           </option>
         ))}
       </select>
