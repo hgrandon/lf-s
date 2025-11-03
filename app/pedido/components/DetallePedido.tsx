@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Camera,
@@ -29,7 +29,15 @@ const CLP = new Intl.NumberFormat('es-CL', {
 });
 
 const MAX_FILE_MB = 8;
-const ALLOWED_IMG = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+const ALLOWED_IMG = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/jpg']);
+
+/* Utils */
+const sanitizeFileName = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .slice(0, 80);
 
 export default function DetallePedido({
   cliente,
@@ -48,57 +56,63 @@ export default function DetallePedido({
   const [err, setErr] = useState<string | null>(null);
   const isMounted = useRef(true);
 
-  const total = useMemo(
-    () => items.reduce((acc, it) => acc + it.subtotal, 0),
-    [items]
-  );
+  /* Montaje/desmontaje seguro */
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
-  // Evita setState tras desmontar por redirección
-  // (Vercel SSR/SPA puede disparar warnings si el redirect es muy rápido)
+  /* Setter seguro */
   const safeSet = useCallback(<T,>(setter: (v: T) => void, value: T) => {
     if (isMounted.current) setter(value);
   }, []);
-  // marca desmontado
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => () => { isMounted.current = false; }, []);
 
-  const validateAndSetFile = useCallback((file: File | null) => {
-    if (!file) {
-      setFotoFile(null);
-      return;
-    }
-    if (!ALLOWED_IMG.includes(file.type)) {
-      setErr('Formato de imagen no permitido (usa JPG, PNG o WEBP).');
-      return;
-    }
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      setErr(`La imagen supera ${MAX_FILE_MB} MB.`);
-      return;
-    }
-    setErr(null);
-    setFotoFile(file);
-  }, []);
+  const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
-  const uploadFotoIfAny = useCallback(async (nro: number): Promise<string | null> => {
-    if (!fotoFile) return null;
+  /* Imagen: validar y setear */
+  const validateAndSetFile = useCallback(
+    (file: File | null) => {
+      if (!file) {
+        setFotoFile(null);
+        return;
+      }
+      if (!ALLOWED_IMG.has(file.type)) {
+        setErr('Formato de imagen no permitido (usa JPG, PNG o WEBP).');
+        return;
+      }
+      if (file.size > MAX_FILE_MB * 1024 * 1024) {
+        setErr(`La imagen supera ${MAX_FILE_MB} MB.`);
+        return;
+      }
+      setErr(null);
+      setFotoFile(file);
+    },
+    []
+  );
 
-    const cleanName = fotoFile.name
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9._-]/g, '');
+  /* Subir imagen (si hay) */
+  const uploadFotoIfAny = useCallback(
+    async (nro: number): Promise<string | null> => {
+      if (!fotoFile) return null;
 
-    const filename = `pedido_${nro}_${Date.now()}_${cleanName}`.replace(/\s+/g, '_');
+      const cleanName = sanitizeFileName(fotoFile.name);
+      const filename = `pedido/${nro}/pedido_${nro}_${Date.now()}_${cleanName}`;
 
-    const { data, error } = await supabase.storage
-      .from('fotos')
-      .upload(filename, fotoFile, { upsert: true });
+      const { data, error } = await supabase.storage
+        .from('fotos')
+        .upload(filename, fotoFile, { upsert: true });
 
-    if (error || !data) return null;
+      if (error || !data) return null;
 
-    const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data.path);
-    return pub?.publicUrl || null;
-  }, [fotoFile]);
+      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data.path);
+      return pub?.publicUrl || null;
+    },
+    [fotoFile]
+  );
 
+  /* Guardar pedido */
   const guardarPedido = useCallback(async () => {
     if (saving) return; // anti doble clic
 
@@ -119,23 +133,26 @@ export default function DetallePedido({
     safeSet(setErr, null);
 
     try {
-      // 1) Insertar pedido (usa columna 'nro', NO 'id')
-      const { error: errPedido } = await supabase.from('pedido').insert({
+      // 1) Inserta pedido (usa columna 'nro')
+      const payload: any = {
         nro: nroInfo.nro,
         telefono: cliente.telefono,
         nombre: cliente.nombre,
         direccion: cliente.direccion,
         total,
-        estado: 'LAVAR', // default
-        items,            // JSON
+        estado: 'LAVAR', // por defecto
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         pagado: false,
-      });
+      };
 
+      // Si ya creaste la columna jsonb `items` en la tabla, descomenta:
+      // payload.items = items;
+
+      const { error: errPedido } = await supabase.from('pedido').insert(payload);
       if (errPedido) throw errPedido;
 
-      // 2) Subir imagen (si existe) y registrar en pedido_foto (no bloqueante)
+      // 2) Sube imagen y registra en pedido_foto (no bloquea el flujo si falla)
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
       if (fotoUrl) {
         await supabase.from('pedido_foto').insert({
@@ -144,10 +161,14 @@ export default function DetallePedido({
         });
       }
 
-      // 3) Redirigir
+      // 3) Redirige
       window.location.href = '/base';
     } catch (e: any) {
-      safeSet(setErr, e?.message ?? 'No se pudo guardar el pedido');
+      const message =
+        typeof e?.message === 'string'
+          ? e.message
+          : e?.error_description || 'No se pudo guardar el pedido';
+      safeSet(setErr, message);
     } finally {
       safeSet(setSaving, false);
     }
@@ -268,6 +289,7 @@ export default function DetallePedido({
             onClick={guardarPedido}
             disabled={saving || !cliente || items.length === 0}
             className="inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-5 py-3 text-base font-semibold hover:bg-violet-700 disabled:opacity-50"
+            aria-busy={saving}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Guardar Pedido
