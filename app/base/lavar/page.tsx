@@ -2,24 +2,39 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  User,
+  Table,
+  Loader2,
+  AlertTriangle,
+  Camera,
+  ImagePlus,
+} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+
 type Pedido = {
   id: number; // nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
-  detalle?: string | null;
+  estado: PedidoEstado;
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
+/** Acepta string JSON, array o string simple y devuelve la primera URL si existe */
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
   if (typeof input === 'string') {
@@ -28,7 +43,9 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
+          return arr[0] as string;
+        }
         return null;
       } catch {
         return null;
@@ -36,7 +53,9 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
+    return input[0] as string;
+  }
   return null;
 }
 
@@ -52,13 +71,16 @@ export default function LavarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // estado para picker de foto
+  // picker de foto
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -67,95 +89,54 @@ export default function LavarPage() {
         setLoading(true);
         setErrMsg(null);
 
-        const { data: rows, error: e1 } = await supabase
-          .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
+        // 1) Trae todo desde la VISTA (detalle_lineas + fotos_urls vienen listos)
+        const { data: rows, error } = await supabase
+          .from('vw_pedido_resumen')
+          .select('nro, telefono, total, estado, pagado, detalle_lineas, fotos_urls')
           .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
 
-        if (e1) throw e1;
+        if (error) throw error;
 
-        const ids = (rows ?? []).map(r => (r as any).id);
-        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
+        const tels = (rows ?? []).map((r: any) => r.telefono).filter(Boolean);
 
-        if (!rows?.length) {
-          if (!cancelled) {
-            setPedidos([]);
-            setLoading(false);
-          }
-          return;
+        // 2) Mapea nombres de clientes
+        let nombreByTel = new Map<string, string>();
+        if (tels.length) {
+          const { data: cli, error: eCli } = await supabase
+            .from('clientes')
+            .select('telefono, nombre')
+            .in('telefono', tels);
+          if (eCli) throw eCli;
+          (cli ?? []).forEach((c: any) =>
+            nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE')
+          );
         }
 
-        const { data: lineas, error: e2 } = await supabase
-          .from('pedido_linea')
-          .select('*')
-          .in('nro', ids);
+        // 3) Construye pedidos
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          const items: Item[] = Array.isArray(r.detalle_lineas)
+            ? r.detalle_lineas.map((d: any) => ({
+                articulo: String(d?.nombre ?? d?.articulo ?? 'SIN NOMBRE'),
+                qty: Number(d?.qty ?? d?.cantidad ?? 0),
+                valor: Number(d?.precio ?? d?.valor ?? 0),
+              }))
+            : [];
 
-        if (e2) throw e2;
+          const foto = firstFotoFromMixed(r.fotos_urls);
 
-        const { data: fotos, error: e3 } = await supabase
-          .from('pedido_foto')
-          .select('nro, url')
-          .in('nro', ids);
-
-        if (e3) throw e3;
-
-        const { data: cli, error: e4 } = await supabase
-          .from('clientes')
-          .select('telefono, nombre')
-          .in('telefono', tels);
-
-        if (e4) throw e4;
-
-        const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
-
-        const itemsByPedido = new Map<number, Item[]>();
-        (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
-          if (!pid) return;
-
-          const label =
-            String(
-              l.articulo ??
-                l.nombre ??
-                l.descripcion ??
-                l.item ??
-                l.articulo_nombre ??
-                l.articulo_id ??
-                ''
-            ).trim() || 'SIN NOMBRE';
-
-          const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
-          const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
-
-          const arr = itemsByPedido.get(pid) ?? [];
-          arr.push({ articulo: label, qty, valor });
-          itemsByPedido.set(pid, arr);
+          return {
+            id: Number(r.nro),
+            cliente:
+              nombreByTel.get(String(r.telefono)) ??
+              String(r.telefono ?? 'SIN NOMBRE'),
+            total: r.total ?? null,
+            estado: r.estado as PedidoEstado,
+            foto_url: foto ?? null,
+            pagado: !!r.pagado,
+            items,
+          };
         });
-
-        const fotoByPedido = new Map<number, string>();
-        (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.fotos_urls);
-          if (f) fotoByPedido.set(r.id, f);
-        });
-        (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.nro);
-          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
-            fotoByPedido.set(pid, f.url);
-          }
-        });
-
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -182,13 +163,18 @@ export default function LavarPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
+    const { error } = await supabase
+      .from('pedido')
+      .update({ estado: next })
+      .eq('nro', id)
+      .select('nro')
+      .single();
 
     if (error) {
       console.error('No se pudo actualizar estado:', error);
@@ -198,7 +184,7 @@ export default function LavarPage() {
     }
 
     if (next !== 'LAVAR') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
       snack(`Pedido #${id} movido a ${next}`);
     }
@@ -209,10 +195,15 @@ export default function LavarPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
+    const { error } = await supabase
+      .from('pedido')
+      .update({ pagado: !actual })
+      .eq('nro', id)
+      .select('nro')
+      .single();
 
     if (error) {
       console.error('No se pudo actualizar pago:', error);
@@ -225,7 +216,7 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // ----------- Subida de foto -----------
+  // ----------- Subida de foto (mantiene tu flujo actual) -----------
   async function handlePick(kind: 'camera' | 'file') {
     if (!pickerForPedido) return;
     if (kind === 'camera') inputCamRef.current?.click();
@@ -239,38 +230,36 @@ export default function LavarPage() {
     if (!file || !pid) return;
 
     try {
-      setUploading(prev => ({ ...prev, [pid]: true }));
+      setUploading((prev) => ({ ...prev, [pid]: true }));
 
-      // nombre y ruta
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
 
-      // subir al bucket 'fotos'
-      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+      const { data: up, error: upErr } = await supabase.storage
+        .from('fotos')
+        .upload(path, file, { cacheControl: '3600', upsert: false });
       if (upErr) throw upErr;
 
-      // URL pública
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      // guardar también en pedido_foto
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ nro: pid, url: publicUrl });
+      // guarda en pedido_foto (tu backend ya agrega luego a la vista)
+      const { error: insErr } = await supabase
+        .from('pedido_foto')
+        .insert({ nro: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      // refrescar en memoria
-      setPedidos(prev =>
-        prev.map(p => (p.id === pid ? { ...p, foto_url: publicUrl } : p))
+      // refresca en memoria
+      setPedidos((prev) =>
+        prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p))
       );
-      setImageError(prev => ({ ...prev, [pid]: false }));
+      setImageError((prev) => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading(prev => ({ ...prev, [pid!]: false }));
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
       setPickerForPedido(null);
     }
   }
@@ -281,7 +270,10 @@ export default function LavarPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
-        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
+        <button
+          onClick={() => router.push('/base')}
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
+        >
           ← Volver
         </button>
       </header>
@@ -307,10 +299,12 @@ export default function LavarPage() {
 
         {!loading &&
           !errMsg &&
-          pedidos.map(p => {
+          pedidos.map((p) => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
+            const totalCalc = p.items?.length
+              ? p.items.reduce((a, it) => a + subtotal(it), 0)
+              : p.total ?? 0;
 
             return (
               <div
@@ -329,14 +323,18 @@ export default function LavarPage() {
                       <User size={18} />
                     </span>
                     <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                      <div className="font-extrabold tracking-wide text-sm lg:text-base">
+                        N° {p.id}
+                      </div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
                         {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                      {CLP.format(totalCalc)}
+                    </div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
                 </button>
@@ -345,7 +343,12 @@ export default function LavarPage() {
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
-                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        onClick={() =>
+                          setOpenDetail((prev) => ({
+                            ...prev,
+                            [p.id]: !prev[p.id],
+                          }))
+                        }
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
@@ -372,16 +375,25 @@ export default function LavarPage() {
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
+                                        {it.articulo.length > 18
+                                          ? it.articulo.slice(0, 18) + '.'
+                                          : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                      <td className="px-3 py-2 text-right">
+                                        {CLP.format(it.valor)}
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        {CLP.format(it.qty * it.valor)}
+                                      </td>
                                     </tr>
                                   ))
                                 ) : (
                                   <tr>
-                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                    <td
+                                      className="px-3 py-4 text-center text-white/70"
+                                      colSpan={4}
+                                    >
                                       Sin artículos registrados.
                                     </td>
                                   </tr>
@@ -404,8 +416,15 @@ export default function LavarPage() {
                               width={0}
                               height={0}
                               sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                maxHeight: '70vh',
+                              }}
+                              onError={() =>
+                                setImageError((prev) => ({ ...prev, [p.id]: true }))
+                              }
                               priority={false}
                             />
                           </div>
@@ -416,7 +435,11 @@ export default function LavarPage() {
                             title="Agregar imagen"
                           >
                             <ImagePlus size={18} />
-                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                            <span>
+                              {uploading[p.id]
+                                ? 'Subiendo…'
+                                : 'Sin imagen adjunta. Toca para agregar.'}
+                            </span>
                           </button>
                         )}
                       </div>
@@ -434,25 +457,33 @@ export default function LavarPage() {
             <ActionBtn
               label="Lavando"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              onClick={() =>
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')
+              }
               active={pedidoAbierto?.estado === 'LAVANDO'}
             />
             <ActionBtn
               label="Guardado"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              onClick={() =>
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')
+              }
               active={pedidoAbierto?.estado === 'GUARDADO'}
             />
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
+              onClick={() =>
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')
+              }
               active={pedidoAbierto?.estado === 'GUARDAR'}
             />
             <ActionBtn
               label="Entregado"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              onClick={() =>
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')
+              }
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
@@ -473,7 +504,9 @@ export default function LavarPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -488,7 +521,9 @@ export default function LavarPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Agregar imagen al pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
