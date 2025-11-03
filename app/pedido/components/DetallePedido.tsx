@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Camera, ImagePlus, Loader2, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+import FotoModal from './FotoModal';
 
 export type Item = {
   articulo: string;
@@ -29,7 +30,7 @@ export default function DetallePedido({
   onRemoveItem: (idx: number) => void;
 }) {
   const [fotoFile, setFotoFile] = useState<File | null>(null);
-  const [showFotoFan, setShowFotoFan] = useState(false); // abanico de foto
+  const [showFotoModal, setShowFotoModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -52,24 +53,32 @@ export default function DetallePedido({
     setSaving(true);
     setErr(null);
     try {
+      // 1) Subir la foto (si existe)
       const foto_url = await uploadFotoIfAny(nroInfo.nro);
 
-      // Ojo: en tu esquema la columna es "nombre" (no "cliente")
-      const { error } = await supabase.from('pedido').insert({
+      // 2) Insertar pedido (sin foto_url para evitar error de columna)
+      const { error: errPedido } = await supabase.from('pedido').insert({
         id: nroInfo.nro,
         telefono: cliente.telefono,
         nombre: cliente.nombre,
         direccion: cliente.direccion,
         total,
-        estado: 'LAVAR',          // valor por defecto al crear
-        items,                    // JSON
+        estado: 'LAVAR',       // por defecto
+        items,                 // JSON
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
-        foto_url,
         pagado: false,
       });
+      if (errPedido) throw errPedido;
 
-      if (error) throw error;
+      // 3) Si hay URL, guardarla en la tabla pedido_foto (pedido_id + url)
+      if (foto_url) {
+        await supabase
+          .from('pedido_foto')
+          .insert({ pedido_id: nroInfo.nro, url: foto_url })
+          .catch(() => {}); // si falla, no bloquear guardado
+      }
+
       window.location.href = '/base';
     } catch (e: any) {
       setErr(e?.message ?? 'No se pudo guardar el pedido');
@@ -80,7 +89,7 @@ export default function DetallePedido({
 
   return (
     <>
-      {/* Tabla de items (doble click para eliminar) */}
+      {/* Tabla con doble clic para eliminar */}
       <div className="mt-5 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -118,52 +127,21 @@ export default function DetallePedido({
         )}
       </div>
 
-      {/* Total + abanico para foto + guardar */}
+      {/* Total + botón que abre el modal de foto + guardar */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div>
           <div className="text-2xl font-extrabold tracking-tight">Total {CLP.format(total)}</div>
 
-          {/* Abanico (desplegable) para sacar/cargar foto */}
           <button
-            onClick={() => setShowFotoFan((s) => !s)}
+            onClick={() => setShowFotoModal(true)}
             className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 bg-white hover:bg-slate-50"
           >
-            <ChevronDown className={`w-4 h-4 transition ${showFotoFan ? 'rotate-180' : ''}`} />
             Tomar foto / Elegir
           </button>
 
-          {showFotoFan && (
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Opción 1: sacar foto (mobile) */}
-              <label className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800 cursor-pointer hover:bg-violet-100">
-                <Camera className="w-4 h-4" />
-                Sacar foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
-                />
-              </label>
-
-              {/* Opción 2: cargar desde archivos */}
-              <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 cursor-pointer hover:bg-slate-50">
-                <ImagePlus className="w-4 h-4" />
-                Cargar imagen
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
-                />
-              </label>
-
-              {fotoFile && (
-                <div className="sm:col-span-2 text-xs text-slate-600">
-                  Seleccionado: <b>{fotoFile.name}</b>
-                </div>
-              )}
+          {fotoFile && (
+            <div className="mt-2 text-xs text-slate-600">
+              Seleccionado: <b>{fotoFile.name}</b>
             </div>
           )}
         </div>
@@ -186,6 +164,13 @@ export default function DetallePedido({
           {err}
         </div>
       )}
+
+      {/* Modal de foto */}
+      <FotoModal
+        open={showFotoModal}
+        onClose={() => setShowFotoModal(false)}
+        onPick={(file) => setFotoFile(file)}
+      />
     </>
   );
 }
