@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Camera, ImagePlus, Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, Plus, Camera, Image as ImageIcon, X } from 'lucide-react';
 import type { Cliente, NextNumber } from './HeaderPedido';
 
 export type Item = { articulo: string; qty: number; valor: number; subtotal: number; estado: 'LAVAR' };
@@ -12,23 +12,19 @@ export default function DetallePedido({
   cliente,
   nroInfo,
   items,
-  onRemoveItem,
 }: {
   cliente: Cliente | null;
   nroInfo: NextNumber | null;
   items: Item[];
-  onRemoveItem: (idx: number) => void;
 }) {
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // modal de confirmación para eliminar en doble click
-  const [confirm, setConfirm] = useState<{ open: boolean; index: number | null; label?: string }>({
-    open: false,
-    index: null,
-    label: '',
-  });
+  // Speed-dial (abanico)
+  const [openDial, setOpenDial] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const pickerInputRef = useRef<HTMLInputElement>(null);
 
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
@@ -50,19 +46,22 @@ export default function DetallePedido({
     setErr(null);
     try {
       const foto_url = await uploadFotoIfAny(nroInfo.nro);
+
+      // Ajustado a columnas reales: usamos `nombre` en lugar de `cliente`
       const { error } = await supabase.from('pedido').insert({
         id: nroInfo.nro,
-        cliente: cliente.nombre,
+        nombre: cliente.nombre,           // <— importante
         telefono: cliente.telefono,
         direccion: cliente.direccion,
         total,
         estado: 'LAVAR',
-        items,
+        items,                            // JSON
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         foto_url,
         pagado: false,
       });
+
       if (error) throw error;
       window.location.href = '/base';
     } catch (e: any) {
@@ -75,10 +74,10 @@ export default function DetallePedido({
   return (
     <>
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full text-sm select-none">
+        <table className="w-full text-sm">
           <thead>
             <tr className="bg-violet-50 text-violet-900">
-              <th className="text-left  px-3 py-2 rounded-l-lg">Artículo</th>
+              <th className="text-left px-3 py-2 rounded-l-lg">Artículo</th>
               <th className="text-right px-3 py-2">Cantidad</th>
               <th className="text-right px-3 py-2">Valor</th>
               <th className="text-right px-3 py-2 rounded-r-lg">Subtotal</th>
@@ -91,14 +90,7 @@ export default function DetallePedido({
               </tr>
             ) : (
               items.map((it, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b last:border-b-0 cursor-pointer hover:bg-violet-50/60"
-                  onDoubleClick={() =>
-                    setConfirm({ open: true, index: idx, label: `${it.articulo}  ×${it.qty}  — ${CLP.format(it.subtotal)}` })
-                  }
-                  title="Doble clic para eliminar"
-                >
+                <tr key={idx} className="border-b last:border-b-0">
                   <td className="px-3 py-2">{it.articulo}</td>
                   <td className="px-3 py-2 text-right">{it.qty}</td>
                   <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -110,28 +102,68 @@ export default function DetallePedido({
         </table>
       </div>
 
-      {/* Total + foto + guardar */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+      {/* Total + foto (abanico) + guardar */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 items-center">
         <div>
           <div className="text-2xl font-extrabold tracking-tight">Total {CLP.format(total)}</div>
-          <div className="flex gap-2 mt-3">
-            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 bg-white cursor-pointer hover:bg-slate-50">
-              <Camera className="w-4 h-4 text-violet-700" />
-              Tomar foto / Elegir
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
-              />
-            </label>
-            {fotoFile && (
-              <div className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800">
-                <ImagePlus className="w-4 h-4" />
-                {fotoFile.name}
-              </div>
-            )}
+
+          {/* Speed Dial / Abanico */}
+          <div className="relative mt-4 h-20 w-40">
+            {/* Botones del abanico (aparecen alrededor) */}
+            <button
+              aria-label="Tomar foto"
+              onClick={() => cameraInputRef.current?.click()}
+              className={`absolute left-2 top-2 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white text-violet-700 border border-violet-200 shadow transition
+                ${openDial ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'}`}
+              title="Tomar foto"
+            >
+              <Camera className="w-5 h-5" />
+            </button>
+
+            <button
+              aria-label="Elegir imagen"
+              onClick={() => pickerInputRef.current?.click()}
+              className={`absolute right-2 top-9 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white text-violet-700 border border-violet-200 shadow transition
+                ${openDial ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-3 pointer-events-none'}`}
+              title="Elegir de la galería"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+
+            {/* Botón principal (toggle) */}
+            <button
+              onClick={() => setOpenDial(v => !v)}
+              aria-label="Opciones de foto"
+              className="absolute left-1/2 -translate-x-1/2 bottom-0 inline-flex items-center justify-center w-14 h-14 rounded-full
+                         bg-gradient-to-r from-violet-700 to-fuchsia-600 text-white shadow-xl"
+              title="Opciones de foto"
+            >
+              {openDial ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+            </button>
+
+            {/* Inputs ocultos */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
+            />
+            <input
+              ref={pickerInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
+            />
           </div>
+
+          {fotoFile && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800">
+              {fotoFile.name}
+            </div>
+          )}
         </div>
 
         <div className="flex md:justify-end">
@@ -150,39 +182,6 @@ export default function DetallePedido({
         <div className="mt-4 flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 text-sm">
           <AlertTriangle className="w-4 h-4" />
           {err}
-        </div>
-      )}
-
-      {/* Modal de confirmación de eliminación (doble click) */}
-      {confirm.open && confirm.index !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-width[520px] max-w-md rounded-2xl bg-white p-5 shadow-2xl text-slate-900">
-            <div className="flex items-center gap-2 text-rose-700 mb-2">
-              <AlertTriangle className="w-5 h-5" />
-              <h3 className="text-lg font-bold">Eliminar ítem</h3>
-            </div>
-            <p className="text-sm text-slate-600">
-              ¿Deseas eliminar <b>{confirm.label}</b> del pedido?
-            </p>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => setConfirm({ open: false, index: null })}
-                className="rounded-xl border border-slate-300 px-4 py-2.5 text-slate-700 hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm.index !== null) onRemoveItem(confirm.index);
-                  setConfirm({ open: false, index: null });
-                }}
-                className="rounded-xl bg-rose-600 text-white px-4 py-2.5 font-semibold hover:bg-rose-700"
-              >
-                Eliminar
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </>
