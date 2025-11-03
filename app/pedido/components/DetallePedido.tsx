@@ -1,30 +1,37 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, AlertTriangle, Plus, Camera, Image as ImageIcon, X } from 'lucide-react';
-import type { Cliente, NextNumber } from './HeaderPedido';
+import { Camera, ImagePlus, Loader2, AlertTriangle, ChevronDown } from 'lucide-react';
 
-export type Item = { articulo: string; qty: number; valor: number; subtotal: number; estado: 'LAVAR' };
+export type Item = {
+  articulo: string;
+  qty: number;
+  valor: number;
+  subtotal: number;
+  estado: 'LAVAR';
+};
+
+export type Cliente = { telefono: string; nombre: string; direccion: string };
+export type NextNumber = { nro: number; fecha: string; entrega: string };
+
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 
 export default function DetallePedido({
   cliente,
   nroInfo,
   items,
+  onRemoveItem,
 }: {
   cliente: Cliente | null;
   nroInfo: NextNumber | null;
   items: Item[];
+  onRemoveItem: (idx: number) => void;
 }) {
   const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [showFotoFan, setShowFotoFan] = useState(false); // abanico de foto
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  // Speed-dial (abanico)
-  const [openDial, setOpenDial] = useState(false);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const pickerInputRef = useRef<HTMLInputElement>(null);
 
   const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
 
@@ -47,15 +54,15 @@ export default function DetallePedido({
     try {
       const foto_url = await uploadFotoIfAny(nroInfo.nro);
 
-      // Ajustado a columnas reales: usamos `nombre` en lugar de `cliente`
+      // Ojo: en tu esquema la columna es "nombre" (no "cliente")
       const { error } = await supabase.from('pedido').insert({
         id: nroInfo.nro,
-        nombre: cliente.nombre,           // <— importante
         telefono: cliente.telefono,
+        nombre: cliente.nombre,
         direccion: cliente.direccion,
         total,
-        estado: 'LAVAR',
-        items,                            // JSON
+        estado: 'LAVAR',          // valor por defecto al crear
+        items,                    // JSON
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         foto_url,
@@ -73,6 +80,7 @@ export default function DetallePedido({
 
   return (
     <>
+      {/* Tabla de items (doble click para eliminar) */}
       <div className="mt-5 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -90,7 +98,12 @@ export default function DetallePedido({
               </tr>
             ) : (
               items.map((it, idx) => (
-                <tr key={idx} className="border-b last:border-b-0">
+                <tr
+                  key={idx}
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-violet-50/60"
+                  onDoubleClick={() => onRemoveItem(idx)}
+                  title="Doble clic para eliminar esta línea"
+                >
                   <td className="px-3 py-2">{it.articulo}</td>
                   <td className="px-3 py-2 text-right">{it.qty}</td>
                   <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -100,68 +113,57 @@ export default function DetallePedido({
             )}
           </tbody>
         </table>
+        {items.length > 0 && (
+          <div className="mt-2 text-xs text-slate-500">Tip: haz <b>doble clic</b> en una fila para eliminarla.</div>
+        )}
       </div>
 
-      {/* Total + foto (abanico) + guardar */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 items-center">
+      {/* Total + abanico para foto + guardar */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div>
           <div className="text-2xl font-extrabold tracking-tight">Total {CLP.format(total)}</div>
 
-          {/* Speed Dial / Abanico */}
-          <div className="relative mt-4 h-20 w-40">
-            {/* Botones del abanico (aparecen alrededor) */}
-            <button
-              aria-label="Tomar foto"
-              onClick={() => cameraInputRef.current?.click()}
-              className={`absolute left-2 top-2 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white text-violet-700 border border-violet-200 shadow transition
-                ${openDial ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'}`}
-              title="Tomar foto"
-            >
-              <Camera className="w-5 h-5" />
-            </button>
+          {/* Abanico (desplegable) para sacar/cargar foto */}
+          <button
+            onClick={() => setShowFotoFan((s) => !s)}
+            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 bg-white hover:bg-slate-50"
+          >
+            <ChevronDown className={`w-4 h-4 transition ${showFotoFan ? 'rotate-180' : ''}`} />
+            Tomar foto / Elegir
+          </button>
 
-            <button
-              aria-label="Elegir imagen"
-              onClick={() => pickerInputRef.current?.click()}
-              className={`absolute right-2 top-9 inline-flex items-center justify-center w-11 h-11 rounded-full bg-white text-violet-700 border border-violet-200 shadow transition
-                ${openDial ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-3 pointer-events-none'}`}
-              title="Elegir de la galería"
-            >
-              <ImageIcon className="w-5 h-5" />
-            </button>
+          {showFotoFan && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Opción 1: sacar foto (mobile) */}
+              <label className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800 cursor-pointer hover:bg-violet-100">
+                <Camera className="w-4 h-4" />
+                Sacar foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
+                />
+              </label>
 
-            {/* Botón principal (toggle) */}
-            <button
-              onClick={() => setOpenDial(v => !v)}
-              aria-label="Opciones de foto"
-              className="absolute left-1/2 -translate-x-1/2 bottom-0 inline-flex items-center justify-center w-14 h-14 rounded-full
-                         bg-gradient-to-r from-violet-700 to-fuchsia-600 text-white shadow-xl"
-              title="Opciones de foto"
-            >
-              {openDial ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-            </button>
+              {/* Opción 2: cargar desde archivos */}
+              <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+                <ImagePlus className="w-4 h-4" />
+                Cargar imagen
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
+                />
+              </label>
 
-            {/* Inputs ocultos */}
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
-            />
-            <input
-              ref={pickerInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => setFotoFile(e.target.files?.[0] || null)}
-            />
-          </div>
-
-          {fotoFile && (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800">
-              {fotoFile.name}
+              {fotoFile && (
+                <div className="sm:col-span-2 text-xs text-slate-600">
+                  Seleccionado: <b>{fotoFile.name}</b>
+                </div>
+              )}
             </div>
           )}
         </div>

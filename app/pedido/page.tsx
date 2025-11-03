@@ -1,9 +1,8 @@
-// app/pedido/page.tsx
 'use client';
 
 import { useState } from 'react';
 import HeaderPedido, { Cliente, NextNumber } from './components/HeaderPedido';
-import ArticulosSelect, { AddItemPayload } from './components/ArticulosSelect';
+import ArticulosSelect from './components/ArticulosSelect';
 import DetallePedido, { Item } from './components/DetallePedido';
 
 export default function PedidoPage() {
@@ -11,34 +10,25 @@ export default function PedidoPage() {
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
-  // Recibe un item desde el combo (precio/cantidad pueden ser 0)
-  const handleAddItem = ({ articulo, precio, cantidad }: AddItemPayload) => {
-    const valor = Number(precio || 0);
-    const qty = Number(cantidad || 0);
-
-    // Si llega cantidad 0, no agregamos nada
-    if (qty === 0) return;
+  // Recibe del combo un payload { articulo, precio, cantidad }
+  const handleAddItem = (payload: { articulo: string; precio: number; cantidad: number }) => {
+    const incoming: Item = {
+      articulo: payload.articulo,
+      qty: Math.max(0, Number(payload.cantidad || 0)),
+      valor: Number(payload.precio || 0),
+      subtotal: Math.max(0, Number(payload.cantidad || 0)) * Number(payload.precio || 0),
+      estado: 'LAVAR',
+    };
 
     setItems((prev) => {
-      const idx = prev.findIndex((x) => x.articulo === articulo && x.valor === valor);
-      if (idx >= 0) {
+      const i = prev.findIndex((x) => x.articulo === incoming.articulo && x.valor === incoming.valor);
+      if (i >= 0) {
         const next = [...prev];
-        const newQty = next[idx].qty + qty;
-        next[idx] = {
-          ...next[idx],
-          qty: newQty,
-          subtotal: newQty * next[idx].valor,
-        };
+        const newQty = next[i].qty + incoming.qty;
+        next[i] = { ...next[i], qty: newQty, subtotal: newQty * next[i].valor };
         return next;
       }
-      const nuevo: Item = {
-        articulo,
-        qty,
-        valor,
-        subtotal: valor * qty,
-        estado: 'LAVAR',
-      };
-      return [...prev, nuevo];
+      return [...prev, incoming];
     });
   };
 
