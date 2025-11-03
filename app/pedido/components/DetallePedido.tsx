@@ -92,7 +92,7 @@ export default function DetallePedido({
     []
   );
 
-  /* Subir imagen (si hay) */
+  /* Subir imagen (si hay) → devuelve URL pública o null */
   const uploadFotoIfAny = useCallback(
     async (nro: number): Promise<string | null> => {
       if (!fotoFile) return null;
@@ -112,7 +112,7 @@ export default function DetallePedido({
     [fotoFile]
   );
 
-  /* Guardar pedido */
+  /* Guardar pedido (pedido + líneas + foto) */
   const guardarPedido = useCallback(async () => {
     if (saving) return; // anti doble clic
 
@@ -133,35 +133,47 @@ export default function DetallePedido({
     safeSet(setErr, null);
 
     try {
-      // 1) Inserta pedido (usa columna 'nro')
+      // 1) Inserta pedido base
       const payload: any = {
         nro: nroInfo.nro,
         telefono: cliente.telefono,
         nombre: cliente.nombre,
         direccion: cliente.direccion,
         total,
-        estado: 'LAVAR', // por defecto
+        estado: 'LAVAR',
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         pagado: false,
+        // Si tu tabla tiene un jsonb 'items' y quieres guardar una copia:
+        // items: items,
       };
-
-      // Si ya creaste la columna jsonb `items` en la tabla, descomenta:
-      // payload.items = items;
 
       const { error: errPedido } = await supabase.from('pedido').insert(payload);
       if (errPedido) throw errPedido;
 
-      // 2) Sube imagen y registra en pedido_foto (no bloquea el flujo si falla)
+      // 2) Inserta líneas en public.pedido_linea
+      //    Si tu columna articulo_id es NOT NULL, mapea aquí el id de cada ítem.
+      const lineas = items.map((it) => ({
+        nro: nroInfo.nro,
+        nombre: it.articulo,
+        qty: it.qty,
+        precio: it.valor,
+        estado: 'LAVAR' as const,
+      }));
+
+      const { error: errLineas } = await supabase.from('pedido_linea').insert(lineas);
+      if (errLineas) throw errLineas;
+
+      // 3) Sube imagen y registra en public.pedido_foto (usa 'nro')
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
       if (fotoUrl) {
         await supabase.from('pedido_foto').insert({
-          pedido_id: nroInfo.nro,
+          nro: nroInfo.nro, // 👈 clave correcta
           url: fotoUrl,
         });
       }
 
-      // 3) Redirige
+      // 4) Redirige
       window.location.href = '/base';
     } catch (e: any) {
       const message =
