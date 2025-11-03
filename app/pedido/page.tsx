@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import HeaderPedido, { Cliente, NextNumber } from './components/HeaderPedido';
-import ArticulosSelect from './components/ArticulosSelect';
+import ArticulosSelect, { AddItemPayload } from './components/ArticulosSelect';
 import DetallePedido, { Item } from './components/DetallePedido';
 
 export default function PedidoPage() {
@@ -11,24 +11,19 @@ export default function PedidoPage() {
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
-  // Recibe { articulo, precio, cantidad } desde ArticulosSelect (modal)
-  const handleAddItem = ({
-    articulo,
-    precio,
-    cantidad,
-  }: {
-    articulo: string;
-    precio: number;
-    cantidad: number;
-  }) => {
+  // Recibe un item desde el combo (precio/cantidad pueden ser 0)
+  const handleAddItem = ({ articulo, precio, cantidad }: AddItemPayload) => {
+    const valor = Number(precio || 0);
+    const qty = Number(cantidad || 0);
+
+    // Si llega cantidad 0, no agregamos nada
+    if (qty === 0) return;
+
     setItems((prev) => {
-      const idx = prev.findIndex(
-        (x) => x.articulo === articulo && x.valor === precio
-      );
+      const idx = prev.findIndex((x) => x.articulo === articulo && x.valor === valor);
       if (idx >= 0) {
-        // Si ya existe mismo artículo con mismo precio, acumula cantidad
         const next = [...prev];
-        const newQty = next[idx].qty + cantidad;
+        const newQty = next[idx].qty + qty;
         next[idx] = {
           ...next[idx],
           qty: newQty,
@@ -36,16 +31,19 @@ export default function PedidoPage() {
         };
         return next;
       }
-      // Si no existe, lo agrega
       const nuevo: Item = {
         articulo,
-        qty: cantidad,
-        valor: precio,
-        subtotal: precio * cantidad,
+        qty,
+        valor,
+        subtotal: valor * qty,
         estado: 'LAVAR',
       };
       return [...prev, nuevo];
     });
+  };
+
+  const handleRemoveItem = (idx: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
   return (
@@ -66,6 +64,7 @@ export default function PedidoPage() {
             cliente={cliente}
             nroInfo={nroInfo}
             items={items}
+            onRemoveItem={handleRemoveItem}
           />
         </div>
       </section>
