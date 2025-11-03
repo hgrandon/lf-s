@@ -146,7 +146,7 @@ export default function DetallePedido({
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
       if (fotoUrl) {
         await supabase.from('pedido_foto').insert({
-          pedido_id: nroInfo.nro,
+          nro: nroInfo.nro,
           url: fotoUrl,
         });
       }
