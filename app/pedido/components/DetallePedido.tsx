@@ -144,12 +144,12 @@ export default function DetallePedido({
       if (errPedido) throw errPedido;
 
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
-      if (fotoUrl) {
-        await supabase.from('pedido_foto').insert({
-          nro: nroInfo.nro,
-          url: fotoUrl,
-        });
-      }
+        if (fotoUrl) {
+          await supabase.from('pedido_foto').insert({
+            pedido_id: nroInfo.nro,   // <-- así no lo verá Lavar si la vista junta por nro
+            url: fotoUrl,
+          });
+        }
 
       window.location.href = '/base';
     } catch (e: any) {
