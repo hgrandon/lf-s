@@ -12,24 +12,23 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Tipos
+// Tipos “de trabajo” (lo que pintamos en la tabla)
 type Pedido = {
   nro: number;
-  total: number;
-  fecha_entrega: string;
-  entrega: Entrega;
-  pago: Pago;
-  estado?: Estado;
-  telefono: string;
-  nombre: string;
-  direccion: string;
+  total: number | null;
+  entrega: string;           // fecha de entrega (date → string)
+  entregaTipo: Entrega;      // viene de tipo_entrega
+  pago: Pago;                // mapeado desde pagado (bool) → 'PAGADO'|'PENDIENTE'
+  estado?: Estado | null;
+  telefono: string | null;
+  nombre: string | null;
+  direccion: string | null;
 };
 
 // Utils
 const CLP = new Intl.NumberFormat('es-CL');
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
 
-// Página
 export default function DetallePage() {
   const [data, setData] = useState<Pedido[]>([]);
   const [q, setQ] = useState('');
@@ -45,17 +44,31 @@ export default function DetallePage() {
   useEffect(() => {
     (async () => {
       const { data: rows, error } = await supabase
-        .from('pedido') // Asegúrate de usar el nombre correcto de la tabla
+        .from('pedido')
         .select(
-          'nro,total,fecha_entrega,entrega,pago,estado,telefono,nombre,direccion'
+          'nro,total,entrega,tipo_entrega,pagado,estado,telefono,nombre,direccion'
         )
         .order('nro', { ascending: false })
         .limit(200);
+
       if (error) {
         console.error('Error cargando pedidos:', error.message);
         return;
       }
-      setData((rows ?? []) as Pedido[]);
+
+      const norm: Pedido[] = (rows ?? []).map((r: any) => ({
+        nro: r.nro,
+        total: r.total ?? 0,
+        entrega: r.entrega ?? '',
+        entregaTipo: (r.tipo_entrega ?? 'LOCAL') as Entrega,
+        pago: (r.pagado ? 'PAGADO' : 'PENDIENTE') as Pago,
+        estado: r.estado ?? null,
+        telefono: r.telefono ?? null,
+        nombre: r.nombre ?? null,
+        direccion: r.direccion ?? null,
+      }));
+
+      setData(norm);
     })();
   }, []);
 
@@ -66,8 +79,8 @@ export default function DetallePage() {
     return data.filter(
       (r) =>
         String(r.nro).includes(t) ||
-        r.nombre?.toLowerCase().includes(t) ||
-        r.telefono?.includes(t)
+        (r.nombre ?? '').toLowerCase().includes(t) ||
+        (r.telefono ?? '').includes(t)
     );
   }, [q, data]);
 
@@ -77,8 +90,8 @@ export default function DetallePage() {
       alert('Selecciona primero una fila de la tabla.');
       return;
     }
-    setMEstado(selected.estado ?? 'LAVAR');
-    setMEntrega(selected.entrega);
+    setMEstado((selected.estado ?? 'LAVAR') as Estado);
+    setMEntrega(selected.entregaTipo);
     setMPago(selected.pago);
     setEditOpen(true);
   };
@@ -87,11 +100,13 @@ export default function DetallePage() {
   const handleSave = async () => {
     if (!selected) return;
     setSaving(true);
+
     const updates = {
       estado: mEstado,
-      entrega: mEntrega,
-      pago: mPago,
+      tipo_entrega: mEntrega,
+      pagado: mPago === 'PAGADO',
     };
+
     const { error } = await supabase
       .from('pedido')
       .update(updates)
@@ -104,8 +119,18 @@ export default function DetallePage() {
     }
 
     setData((prev) =>
-      prev.map((r) => (r.nro === selected.nro ? { ...r, ...updates } : r))
+      prev.map((r) =>
+        r.nro === selected.nro
+          ? {
+              ...r,
+              estado: updates.estado,
+              entregaTipo: updates.tipo_entrega,
+              pago: updates.pagado ? 'PAGADO' : 'PENDIENTE',
+            }
+          : r
+      )
     );
+
     setSaving(false);
     setEditOpen(false);
   };
@@ -168,7 +193,7 @@ export default function DetallePage() {
               <tr>
                 <th className="px-3 py-2 text-left">N°</th>
                 <th className="px-3 py-2 text-left">Total</th>
-                <th className="px-3 py-2 text-left">F. Ent.</th>
+                <th className="px-3 py-2 text-left">F. Entrega</th>
                 <th className="px-3 py-2 text-left">Entrega</th>
                 <th className="px-3 py-2 text-left">Pago</th>
                 <th className="px-3 py-2 text-left">Teléfono</th>
@@ -190,8 +215,8 @@ export default function DetallePage() {
                   >
                     <td className="px-3 py-2">{r.nro}</td>
                     <td className="px-3 py-2">{CLP.format(r.total ?? 0)}</td>
-                    <td className="px-3 py-2">{r.fecha_entrega}</td>
                     <td className="px-3 py-2">{r.entrega}</td>
+                    <td className="px-3 py-2">{r.entregaTipo}</td>
                     <td className="px-3 py-2">
                       <span
                         className={cx(

@@ -2,14 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  Camera,
-  ImagePlus,
-  Loader2,
-  AlertTriangle,
-  ChevronDown,
-  XCircle,
-} from 'lucide-react';
+import { Camera, Loader2, AlertTriangle } from 'lucide-react';
+import FotoModal from './FotoModal';
 
 export type Item = {
   articulo: string;
@@ -31,7 +25,6 @@ const CLP = new Intl.NumberFormat('es-CL', {
 const MAX_FILE_MB = 8;
 const ALLOWED_IMG = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/jpg']);
 
-/* Utils */
 const sanitizeFileName = (name: string) =>
   name
     .normalize('NFD')
@@ -51,53 +44,53 @@ export default function DetallePedido({
   onRemoveItem: (idx: number) => void;
 }) {
   const [fotoFile, setFotoFile] = useState<File | null>(null);
-  const [showFotoFan, setShowFotoFan] = useState(false);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [showFotoModal, setShowFotoModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isMounted = useRef(true);
 
-  /* Montaje/desmontaje seguro */
   useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
+      if (fotoPreview) URL.revokeObjectURL(fotoPreview);
     };
-  }, []);
+  }, [fotoPreview]);
 
-  /* Setter seguro */
   const safeSet = useCallback(<T,>(setter: (v: T) => void, value: T) => {
     if (isMounted.current) setter(value);
   }, []);
 
-  const total = useMemo(() => items.reduce((acc, it) => acc + it.subtotal, 0), [items]);
-
-  /* Imagen: validar y setear */
-  const validateAndSetFile = useCallback(
-    (file: File | null) => {
-      if (!file) {
-        setFotoFile(null);
-        return;
-      }
-      if (!ALLOWED_IMG.has(file.type)) {
-        setErr('Formato de imagen no permitido (usa JPG, PNG o WEBP).');
-        return;
-      }
-      if (file.size > MAX_FILE_MB * 1024 * 1024) {
-        setErr(`La imagen supera ${MAX_FILE_MB} MB.`);
-        return;
-      }
-      setErr(null);
-      setFotoFile(file);
-    },
-    []
+  const total = useMemo(
+    () => items.reduce((acc, it) => acc + it.subtotal, 0),
+    [items]
   );
 
-  /* Subir imagen (si hay) → devuelve URL pública o null */
+  const validateAndSetFile = useCallback((file: File | null) => {
+    if (!file) {
+      setFotoFile(null);
+      setFotoPreview(null);
+      return;
+    }
+    if (!ALLOWED_IMG.has(file.type)) {
+      setErr('Formato de imagen no permitido (usa JPG, PNG o WEBP).');
+      return;
+    }
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      setErr(`La imagen supera ${MAX_FILE_MB} MB.`);
+      return;
+    }
+    setErr(null);
+    setFotoFile(file);
+    setFotoPreview(URL.createObjectURL(file));
+  }, []);
+
   const uploadFotoIfAny = useCallback(
     async (nro: number): Promise<string | null> => {
       if (!fotoFile) return null;
 
-      const cleanName = sanitizeFileName(fotoFile.name);
+      const cleanName = sanitizeFileName(fotoFile.name || 'foto.jpg');
       const filename = `pedido/${nro}/pedido_${nro}_${Date.now()}_${cleanName}`;
 
       const { data, error } = await supabase.storage
@@ -112,9 +105,8 @@ export default function DetallePedido({
     [fotoFile]
   );
 
-  /* Guardar pedido (pedido + líneas + foto) */
   const guardarPedido = useCallback(async () => {
-    if (saving) return; // anti doble clic
+    if (saving) return;
 
     if (!cliente) {
       setErr('Ingrese un teléfono válido o cree el cliente.');
@@ -133,7 +125,6 @@ export default function DetallePedido({
     safeSet(setErr, null);
 
     try {
-      // 1) Inserta pedido base
       const payload: any = {
         nro: nroInfo.nro,
         telefono: cliente.telefono,
@@ -144,36 +135,22 @@ export default function DetallePedido({
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         pagado: false,
-        // Si tu tabla tiene un jsonb 'items' y quieres guardar una copia:
-        // items: items,
       };
+
+      // Si también quieres persistir los ítems en jsonb:
+      // payload.items = items;
 
       const { error: errPedido } = await supabase.from('pedido').insert(payload);
       if (errPedido) throw errPedido;
 
-      // 2) Inserta líneas en public.pedido_linea
-      //    Si tu columna articulo_id es NOT NULL, mapea aquí el id de cada ítem.
-      const lineas = items.map((it) => ({
-        nro: nroInfo.nro,
-        nombre: it.articulo,
-        qty: it.qty,
-        precio: it.valor,
-        estado: 'LAVAR' as const,
-      }));
-
-      const { error: errLineas } = await supabase.from('pedido_linea').insert(lineas);
-      if (errLineas) throw errLineas;
-
-      // 3) Sube imagen y registra en public.pedido_foto (usa 'nro')
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
       if (fotoUrl) {
         await supabase.from('pedido_foto').insert({
-          nro: nroInfo.nro, // 👈 clave correcta
+          pedido_id: nroInfo.nro,
           url: fotoUrl,
         });
       }
 
-      // 4) Redirige
       window.location.href = '/base';
     } catch (e: any) {
       const message =
@@ -188,7 +165,7 @@ export default function DetallePedido({
 
   return (
     <>
-      {/* Tabla de items (doble click para eliminar) */}
+      {/* Tabla de items */}
       <div className="mt-5 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -231,68 +208,40 @@ export default function DetallePedido({
         )}
       </div>
 
-      {/* Total + abanico para foto + guardar */}
+      {/* Total + bloque de imagen estilo “Lavar” + guardar */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <div>
           <div className="text-2xl font-extrabold tracking-tight">
             Total {CLP.format(total)}
           </div>
 
-          {/* Abanico de foto */}
-          <button
-            type="button"
-            onClick={() => setShowFotoFan((s) => !s)}
-            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 bg-white hover:bg-slate-50"
-            aria-expanded={showFotoFan}
-            aria-controls="foto-fan"
+          {/* Bloque estilo Lavar: toca para agregar/cambiar imagen */}
+          <div
+            className="mt-4 rounded-2xl border border-white/20 bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 p-4 text-white/90 hover:bg-white/10 cursor-pointer transition"
+            onClick={() => setShowFotoModal(true)}
+            title="Toca para agregar o cambiar la imagen"
           >
-            <ChevronDown className={`w-4 h-4 transition ${showFotoFan ? 'rotate-180' : ''}`} />
-            Tomar foto / Elegir
-          </button>
-
-          {showFotoFan && (
-            <div id="foto-fan" className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* 1) Sacar foto (mobile) */}
-              <label className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800 cursor-pointer hover:bg-violet-100">
-                <Camera className="w-4 h-4" />
-                Sacar foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => validateAndSetFile(e.target.files?.[0] || null)}
+            {fotoPreview ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={fotoPreview}
+                  alt="Foto seleccionada"
+                  className="h-20 w-20 rounded-xl object-cover border border-white/30"
                 />
-              </label>
-
-              {/* 2) Cargar archivo */}
-              <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 cursor-pointer hover:bg-slate-50">
-                <ImagePlus className="w-4 h-4" />
-                Cargar imagen
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => validateAndSetFile(e.target.files?.[0] || null)}
-                />
-              </label>
-
-              {fotoFile && (
-                <div className="sm:col-span-2 flex items-center gap-2 text-xs text-slate-600">
-                  Seleccionado: <b>{fotoFile.name}</b>
-                  <button
-                    type="button"
-                    onClick={() => setFotoFile(null)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 hover:bg-slate-50"
-                    title="Quitar imagen"
-                  >
-                    <XCircle className="w-4 h-4 text-rose-600" />
-                    Quitar
-                  </button>
+                <div>
+                  <div className="font-semibold">Imagen seleccionada</div>
+                  <div className="text-xs opacity-80">
+                    Toca de nuevo para reemplazar la imagen.
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm">
+                <Camera className="w-4 h-4" />
+                Sin imagen adjunta. Toca para agregar.
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex md:justify-end">
@@ -315,6 +264,16 @@ export default function DetallePedido({
           {err}
         </div>
       )}
+
+      {/* Modal de foto (reutiliza tu FotoModal.tsx) */}
+      <FotoModal
+        open={showFotoModal}
+        onClose={() => setShowFotoModal(false)}
+        onPick={(file) => {
+          validateAndSetFile(file);
+          setShowFotoModal(false);
+        }}
+      />
     </>
   );
 }
