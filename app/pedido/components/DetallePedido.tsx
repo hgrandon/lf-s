@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Camera,
@@ -46,13 +46,23 @@ export default function DetallePedido({
   const [showFotoFan, setShowFotoFan] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const isMounted = useRef(true);
 
   const total = useMemo(
     () => items.reduce((acc, it) => acc + it.subtotal, 0),
     [items]
   );
 
-  function validateAndSetFile(file: File | null) {
+  // Evita setState tras desmontar por redirección
+  // (Vercel SSR/SPA puede disparar warnings si el redirect es muy rápido)
+  const safeSet = useCallback(<T,>(setter: (v: T) => void, value: T) => {
+    if (isMounted.current) setter(value);
+  }, []);
+  // marca desmontado
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => () => { isMounted.current = false; }, []);
+
+  const validateAndSetFile = useCallback((file: File | null) => {
     if (!file) {
       setFotoFile(null);
       return;
@@ -67,11 +77,16 @@ export default function DetallePedido({
     }
     setErr(null);
     setFotoFile(file);
-  }
+  }, []);
 
-  async function uploadFotoIfAny(nro: number): Promise<string | null> {
+  const uploadFotoIfAny = useCallback(async (nro: number): Promise<string | null> => {
     if (!fotoFile) return null;
-    const cleanName = fotoFile.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    const cleanName = fotoFile.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]/g, '');
+
     const filename = `pedido_${nro}_${Date.now()}_${cleanName}`.replace(/\s+/g, '_');
 
     const { data, error } = await supabase.storage
@@ -82,9 +97,11 @@ export default function DetallePedido({
 
     const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data.path);
     return pub?.publicUrl || null;
-  }
+  }, [fotoFile]);
 
-  async function guardarPedido() {
+  const guardarPedido = useCallback(async () => {
+    if (saving) return; // anti doble clic
+
     if (!cliente) {
       setErr('Ingrese un teléfono válido o cree el cliente.');
       return;
@@ -98,19 +115,19 @@ export default function DetallePedido({
       return;
     }
 
-    setSaving(true);
-    setErr(null);
+    safeSet(setSaving, true);
+    safeSet(setErr, null);
 
     try {
-      // 1) Insertar el pedido (sin foto_url)
+      // 1) Insertar pedido (usa columna 'nro', NO 'id')
       const { error: errPedido } = await supabase.from('pedido').insert({
-        id: nroInfo.nro,
+        nro: nroInfo.nro,
         telefono: cliente.telefono,
         nombre: cliente.nombre,
         direccion: cliente.direccion,
         total,
-        estado: 'LAVAR', // por defecto
-        items, // JSON
+        estado: 'LAVAR', // default
+        items,            // JSON
         fecha: nroInfo.fecha,
         entrega: nroInfo.entrega,
         pagado: false,
@@ -118,27 +135,23 @@ export default function DetallePedido({
 
       if (errPedido) throw errPedido;
 
-      // 2) Subir imagen (si hay) y registrar en pedido_foto
+      // 2) Subir imagen (si existe) y registrar en pedido_foto (no bloqueante)
       const fotoUrl = await uploadFotoIfAny(nroInfo.nro);
       if (fotoUrl) {
-        const { error: errFoto } = await supabase
-          .from('pedido_foto')
-          .insert({ pedido_id: nroInfo.nro, url: fotoUrl });
-
-        // Si falla el registro de la foto, no bloqueamos el flujo.
-        if (errFoto) {
-          // Puedes loguearlo si quieres: console.warn(errFoto);
-        }
+        await supabase.from('pedido_foto').insert({
+          pedido_id: nroInfo.nro,
+          url: fotoUrl,
+        });
       }
 
-      // 3) Volver a base
+      // 3) Redirigir
       window.location.href = '/base';
     } catch (e: any) {
-      setErr(e?.message ?? 'No se pudo guardar el pedido');
+      safeSet(setErr, e?.message ?? 'No se pudo guardar el pedido');
     } finally {
-      setSaving(false);
+      safeSet(setSaving, false);
     }
-  }
+  }, [saving, cliente, nroInfo, items, total, uploadFotoIfAny, safeSet]);
 
   return (
     <>
@@ -156,10 +169,7 @@ export default function DetallePedido({
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td
-                  colSpan={4}
-                  className="text-center text-slate-500 py-6"
-                >
+                <td colSpan={4} className="text-center text-slate-500 py-6">
                   Sin artículos todavía.
                 </td>
               </tr>
@@ -173,17 +183,14 @@ export default function DetallePedido({
                 >
                   <td className="px-3 py-2">{it.articulo}</td>
                   <td className="px-3 py-2 text-right">{it.qty}</td>
-                  <td className="px-3 py-2 text-right">
-                    {CLP.format(it.valor)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {CLP.format(it.subtotal)}
-                  </td>
+                  <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                  <td className="px-3 py-2 text-right">{CLP.format(it.subtotal)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
+
         {items.length > 0 && (
           <div className="mt-2 text-xs text-slate-500">
             Tip: haz <b>doble clic</b> en una fila para eliminarla.
@@ -198,22 +205,21 @@ export default function DetallePedido({
             Total {CLP.format(total)}
           </div>
 
-          {/* Abanico (desplegable) para sacar/cargar foto */}
+          {/* Abanico de foto */}
           <button
+            type="button"
             onClick={() => setShowFotoFan((s) => !s)}
             className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 bg-white hover:bg-slate-50"
             aria-expanded={showFotoFan}
             aria-controls="foto-fan"
           >
-            <ChevronDown
-              className={`w-4 h-4 transition ${showFotoFan ? 'rotate-180' : ''}`}
-            />
+            <ChevronDown className={`w-4 h-4 transition ${showFotoFan ? 'rotate-180' : ''}`} />
             Tomar foto / Elegir
           </button>
 
           {showFotoFan && (
             <div id="foto-fan" className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Opción 1: sacar foto (mobile) */}
+              {/* 1) Sacar foto (mobile) */}
               <label className="inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-violet-800 cursor-pointer hover:bg-violet-100">
                 <Camera className="w-4 h-4" />
                 Sacar foto
@@ -226,7 +232,7 @@ export default function DetallePedido({
                 />
               </label>
 
-              {/* Opción 2: cargar desde archivos */}
+              {/* 2) Cargar archivo */}
               <label className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 cursor-pointer hover:bg-slate-50">
                 <ImagePlus className="w-4 h-4" />
                 Cargar imagen
@@ -258,6 +264,7 @@ export default function DetallePedido({
 
         <div className="flex md:justify-end">
           <button
+            type="button"
             onClick={guardarPedido}
             disabled={saving || !cliente || items.length === 0}
             className="inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-5 py-3 text-base font-semibold hover:bg-violet-700 disabled:opacity-50"
