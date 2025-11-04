@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
@@ -17,15 +17,18 @@ import { supabase } from '@/lib/supabaseClient';
 
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 
+type Linea = { articulo?: string; nombre?: string; qty?: number; cantidad?: number; valor?: number; precio?: number; estado?: string };
+
 type Pedido = {
-  id: number;               // nro
-  cliente: string;          // telefono o nombre si lo incluyes en la vista
+  id: number;
+  cliente: string;
   total: number | null;
   estado: PedidoEstado;
+  foto_url?: string | null;
   pagado?: boolean | null;
   items_count?: number | null;
   items_text?: string | null;
-  foto_url?: string | null; // primera foto calculada
+  detalle_lineas?: Linea[] | null; // <- si la vista expone array, lo usamos
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -33,37 +36,6 @@ const CLP = new Intl.NumberFormat('es-CL', {
   currency: 'CLP',
   maximumFractionDigits: 0,
 });
-
-const STORAGE_BUCKET = 'imagenes';
-
-/** Extrae la primera URL desde: string, JSON string o array */
-function firstUrl(input: unknown): string | null {
-  if (!input) return null;
-
-  // Si viene como string
-  if (typeof input === 'string') {
-    const s = input.trim();
-    if (!s) return null;
-    // JSON de array
-    if (s.startsWith('[')) {
-      try {
-        const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length && typeof arr[0] === 'string') return arr[0];
-        return null;
-      } catch {
-        return null;
-      }
-    }
-    return s;
-  }
-
-  // Si viene como array de strings
-  if (Array.isArray(input) && input.length && typeof input[0] === 'string') {
-    return input[0] as string;
-  }
-
-  return null;
-}
 
 export default function LavarPage() {
   const router = useRouter();
@@ -88,130 +60,114 @@ export default function LavarPage() {
     [pedidos, openId]
   );
 
-  const snack = useCallback((msg: string) => {
-    setNotice(msg);
-    const t = setTimeout(() => setNotice(null), 1800);
-    return () => clearTimeout(t);
-  }, []);
-
-  const mapRows = useCallback((rows: any[]): Pedido[] => {
-    return (rows ?? []).map((r) => ({
-      id: Number(r.nro),
-      cliente: String(r.telefono ?? 'SIN NOMBRE'),
-      total: r.total ?? null,
-      estado: r.estado as PedidoEstado,
-      pagado: !!r.pagado,
-      items_count: r.items_count ?? null,
-      items_text: r.items_text ?? null,
-      foto_url: firstUrl(r.fotos_urls),
-    }));
-  }, []);
-
-  const fetchLavar = useCallback(async () => {
-    setLoading(true);
-    setErrMsg(null);
-    try {
-      const { data, error } = await supabase
-        .from('vw_pedido_resumen')
-        .select(
-          'nro, telefono, total, estado, pagado, items_count, items_text, fotos_urls'
-        )
-        .eq('estado', 'LAVAR')
-        .order('nro', { ascending: false });
-
-      if (error) throw error;
-      setPedidos(mapRows(data ?? []));
-    } catch (err: any) {
-      console.error(err);
-      setErrMsg(err?.message ?? 'Error al cargar pedidos');
-    } finally {
-      setLoading(false);
-    }
-  }, [mapRows]);
-
   useEffect(() => {
-    fetchLavar();
-  }, [fetchLavar]);
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setErrMsg(null);
 
-  // Realtime liviano: si cambian pedido o pedido_foto, refrescamos lista
-  useEffect(() => {
-    const ch1 = supabase
-      .channel('rt-pedido-lavar')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido' }, fetchLavar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido_foto' }, fetchLavar)
-      .subscribe();
+        // Traemos también "detalle_lineas" si existe en la vista (no rompe si no está)
+        const { data, error } = await supabase
+          .from('vw_pedido_resumen')
+          .select('nro, telefono, total, estado, pagado, items_count, items_text, foto_url, detalle_lineas')
+          .eq('estado', 'LAVAR')
+          .order('nro', { ascending: false });
+
+        if (error) throw error;
+
+        const mapped: Pedido[] = (data ?? []).map((r: any) => ({
+          id: Number(r.nro),
+          cliente: String(r.telefono ?? 'SIN NOMBRE'),
+          total: r.total ?? null,
+          estado: r.estado as PedidoEstado,
+          foto_url: r.foto_url ?? null,
+          pagado: !!r.pagado,
+          items_count: r.items_count ?? null,
+          items_text: r.items_text ?? null,
+          detalle_lineas: Array.isArray(r.detalle_lineas) ? r.detalle_lineas : null,
+        }));
+
+        if (!cancelled) {
+          setPedidos(mapped);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        console.error(err);
+        if (!cancelled) {
+          setErrMsg(err?.message ?? 'Error al cargar pedidos');
+          setLoading(false);
+        }
+      }
+    })();
 
     return () => {
-      supabase.removeChannel(ch1);
+      cancelled = true;
     };
-  }, [fetchLavar]);
+  }, []);
 
-  // ---------- Acciones ----------
-  const changeEstado = useCallback(
-    async (id: number, next: PedidoEstado) => {
-      if (!id) return;
-      setSaving(true);
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1600);
+  }
 
-      const prev = pedidos;
-      setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+  async function changeEstado(id: number, next: PedidoEstado) {
+    if (!id) return;
+    setSaving(true);
+    const prev = pedidos;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-      const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
-
-      if (error) {
-        console.error('No se pudo actualizar estado:', error);
-        setPedidos(prev); // rollback
-        setSaving(false);
-        snack('No se pudo actualizar el estado.');
-        return;
-      }
-
-      if (next !== 'LAVAR') {
-        setPedidos((curr) => curr.filter((p) => p.id !== id));
-        setOpenId(null);
-      }
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
+    if (error) {
+      console.error('No se pudo actualizar estado:', error);
+      setPedidos(prev);
       setSaving(false);
-      snack(`Pedido #${id} → ${next}`);
-    },
-    [pedidos, snack]
-  );
+      return;
+    }
 
-  const togglePago = useCallback(
-    async (id: number) => {
-      if (!id) return;
-      setSaving(true);
+    if (next !== 'LAVAR') {
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
+      setOpenId(null);
+      snack(`Pedido #${id} movido a ${next}`);
+    }
+    setSaving(false);
+  }
 
-      const prev = pedidos;
-      const actual = prev.find((p) => p.id === id)?.pagado ?? false;
-      setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
+  async function togglePago(id: number) {
+    if (!id) return;
+    setSaving(true);
+    const prev = pedidos;
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-      const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
-      if (error) {
-        console.error('No se pudo actualizar pago:', error);
-        setPedidos(prev); // rollback
-        setSaving(false);
-        snack('No se pudo actualizar el pago.');
-        return;
-      }
-
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
+    if (error) {
+      console.error('No se pudo actualizar pago:', error);
+      setPedidos(prev);
       setSaving(false);
-      snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
-    },
-    [pedidos, snack]
-  );
+      return;
+    }
+    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
+    setSaving(false);
+  }
 
   // ---------- Subida/registro de foto ----------
-  const abrirPicker = (nro: number) => setPickerForPedido(nro);
-  const cerrarPicker = () => setPickerForPedido(null);
+  function abrirPicker(nro: number) {
+    setPickerForPedido(nro);
+  }
+  function cerrarPicker() {
+    setPickerForPedido(null);
+  }
 
-  const handlePick = (kind: 'camera' | 'file') => {
+  async function handlePick(kind: 'camera' | 'file') {
     if (!pickerForPedido) return;
     if (kind === 'camera') inputCamRef.current?.click();
     else inputFileRef.current?.click();
-  };
+  }
 
-  const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // reset para permitir el mismo archivo luego
+    e.target.value = '';
     const pid = pickerForPedido;
     if (!file || !pid) {
       cerrarPicker();
@@ -219,25 +175,24 @@ export default function LavarPage() {
     }
 
     try {
-      setUploading((u) => ({ ...u, [pid]: true }));
+      setUploading((prev) => ({ ...prev, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido/${pid}/${Date.now()}.${ext}`;
 
-      const up = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
+      const up = await supabase.storage.from('imagenes').upload(path, file, {
         cacheControl: '3600',
         upsert: true,
       });
       if (up.error) throw up.error;
 
-      const { data: pubData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-      const publicUrl = pubData?.publicUrl;
+      const pub = supabase.storage.from('imagenes').getPublicUrl(path);
+      const publicUrl = pub.data?.publicUrl;
       if (!publicUrl) throw new Error('No se obtuvo URL pública');
 
       const ins = await supabase.from('pedido_foto').insert({ pedido_id: pid, foto_url: publicUrl });
       if (ins.error) throw ins.error;
 
-      // refresco local inmediato
       setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
       setImageError((prev) => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
@@ -245,10 +200,20 @@ export default function LavarPage() {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading((u) => ({ ...u, [pid!]: false }));
-      cerrarPicker(); // se cierra automáticamente
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
+      cerrarPicker();
     }
-  };
+  }
+
+  function qtyOf(l?: Linea) {
+    return Number(l?.qty ?? l?.cantidad ?? 0);
+  }
+  function valOf(l?: Linea) {
+    return Number(l?.valor ?? l?.precio ?? 0);
+  }
+  function artOf(l?: Linea) {
+    return String(l?.articulo ?? l?.nombre ?? '—');
+  }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -256,10 +221,7 @@ export default function LavarPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
-        <button
-          onClick={() => router.push('/base')}
-          className="text-xs lg:text-sm text-white/90 hover:text-white"
-        >
+        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
         </button>
       </header>
@@ -275,13 +237,7 @@ export default function LavarPage() {
         {!loading && errMsg && (
           <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
             <AlertTriangle size={16} />
-            <span className="mr-auto">{errMsg}</span>
-            <button
-              className="rounded-lg bg-white/15 px-3 py-1 text-xs hover:bg-white/25"
-              onClick={fetchLavar}
-            >
-              Reintentar
-            </button>
+            <span>{errMsg}</span>
           </div>
         )}
 
@@ -303,6 +259,7 @@ export default function LavarPage() {
                   isOpen ? 'border-white/40' : 'border-white/15',
                 ].join(' ')}
               >
+                {/* Cabecera del card */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
@@ -312,9 +269,7 @@ export default function LavarPage() {
                       <User size={18} />
                     </span>
                     <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">
-                        N° {p.id}
-                      </div>
+                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
                         {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
@@ -330,10 +285,54 @@ export default function LavarPage() {
 
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                    <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                    <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3 space-y-3">
+                      {/* 1) IMAGEN DEL PEDIDO (primero, como en tu referencia) */}
+                      <button
+                        onClick={p.foto_url ? undefined : () => abrirPicker(p.id)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        title={p.foto_url ? 'Doble clic en la imagen para cambiarla' : 'Agregar imagen'}
+                      >
+                        <div className="flex items-center gap-2">
+                          <ImagePlus size={16} />
+                          <span className="font-semibold">Imagen del Pedido</span>
+                        </div>
+                        <ChevronRight size={16} />
+                      </button>
+
+                      <div className="rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                        {p.foto_url && !imageError[p.id] ? (
+                          <div
+                            className="bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                            onDoubleClick={() => abrirPicker(p.id)}
+                          >
+                            <Image
+                              src={p.foto_url}
+                              alt={`Foto pedido ${p.id}`}
+                              width={0}
+                              height={0}
+                              sizes="100vw"
+                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => abrirPicker(p.id)}
+                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                          >
+                            <Camera size={18} />
+                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 2) DETALLE DEL PEDIDO */}
                       <button
                         onClick={() =>
-                          setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                          setOpenDetail((prev) => ({
+                            ...prev,
+                            [p.id]: !prev[p.id],
+                          }))
                         }
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
@@ -347,53 +346,48 @@ export default function LavarPage() {
                       </button>
 
                       {detOpen && (
-                        <div className="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 text-sm leading-6">
-                          {p.items_text || (
-                            <span className="opacity-70">Sin detalle disponible.</span>
-                          )}
+                        <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                          <div className="overflow-x-auto w-full max-w-4xl">
+                            {/* Si hay líneas, mostramos tabla; si no, mostramos el texto legible */}
+                            {Array.isArray(p.detalle_lineas) && p.detalle_lineas.length > 0 ? (
+                              <>
+                                <table className="w-full text-xs lg:text-sm text-white/95">
+                                  <thead className="bg-white/10 text-white/90">
+                                    <tr>
+                                      <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                      <th className="text-right px-3 py-2 w-[15%]">Cantidad</th>
+                                      <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                      <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-white/10">
+                                    {p.detalle_lineas.map((l, i) => {
+                                      const q = qtyOf(l);
+                                      const v = valOf(l);
+                                      return (
+                                        <tr key={i}>
+                                          <td className="px-3 py-2 truncate">{artOf(l)}</td>
+                                          <td className="px-3 py-2 text-right">{q}</td>
+                                          <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
+                                          <td className="px-3 py-2 text-right">{CLP.format(q * v)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+                                  Total: {CLP.format(p.total ?? 0)}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="p-3 text-sm leading-6">
+                                {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
+                                <div className="mt-3 text-right font-extrabold">Total: {CLP.format(p.total ?? 0)}</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
-
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !imageError[p.id] ? (
-                          <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-pointer"
-                            onDoubleClick={() => abrirPicker(p.id)}
-                            title="Doble clic para cambiar la imagen"
-                          >
-                            <Image
-                              src={p.foto_url}
-                              alt={`Foto pedido ${p.id}`}
-                              width={0}
-                              height={0}
-                              sizes="100vw"
-                              style={{
-                                width: '100%',
-                                height: 'auto',
-                                objectFit: 'contain',
-                                maxHeight: '70vh',
-                              }}
-                              onError={() =>
-                                setImageError((prev) => ({ ...prev, [p.id]: true }))
-                              }
-                              priority={false}
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => abrirPicker(p.id)}
-                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
-                            title="Agregar imagen"
-                          >
-                            <ImagePlus size={18} />
-                            <span>
-                              {uploading[p.id]
-                                ? 'Subiendo…'
-                                : 'Sin imagen adjunta. Toca para agregar.'}
-                            </span>
-                          </button>
-                        )}
-                      </div>
                     </div>
                   </div>
                 )}
@@ -447,9 +441,7 @@ export default function LavarPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">
-              Abre un pedido para habilitar las acciones.
-            </div>
+            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
           )}
         </div>
       </nav>
@@ -460,13 +452,11 @@ export default function LavarPage() {
         </div>
       )}
 
-      {/* Modal simple para elegir origen de la imagen */}
+      {/* Modal: elegir origen de la imagen */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">
-              Agregar imagen al pedido #{pickerForPedido}
-            </h3>
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -482,10 +472,7 @@ export default function LavarPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button
-                onClick={cerrarPicker}
-                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
-              >
+              <button onClick={cerrarPicker} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
                 Cancelar
               </button>
             </div>
@@ -502,13 +489,7 @@ export default function LavarPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input
-        ref={inputFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onFileSelected}
-      />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
@@ -530,9 +511,7 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
