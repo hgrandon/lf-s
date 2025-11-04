@@ -56,17 +56,22 @@ export default function LavarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // picker de foto
+  // Foto (picker)
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
+
+  // Fallback de detalle si la vista no lo trae
+  const [detallesMap, setDetallesMap] = useState<Record<number, Linea[]>>({});
+  const [detLoading, setDetLoading] = useState<Record<number, boolean>>({});
 
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
     [pedidos, openId]
   );
 
+  // Carga inicial (vista)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -98,21 +103,56 @@ export default function LavarPage() {
 
         if (!cancelled) {
           setPedidos(mapped);
-          setLoading(false);
         }
       } catch (err: any) {
         console.error(err);
         if (!cancelled) {
           setErrMsg(err?.message ?? 'Error al cargar pedidos');
-          setLoading(false);
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Cuando abres un pedido: si no hay detalle en la vista, traerlo desde pedido_linea
+  useEffect(() => {
+    if (!openId) return;
+    const yaTengo = detallesMap[openId];
+    const enVista = pedidos.find((p) => p.id === openId)?.detalle_lineas;
+    if ((enVista && enVista.length) || yaTengo?.length) return;
+    ensureDetalle(openId).catch(() => {});
+  }, [openId, pedidos]);
+
+  async function ensureDetalle(pedidoId: number) {
+    try {
+      setDetLoading((s) => ({ ...s, [pedidoId]: true }));
+      const { data, error } = await supabase
+        .from('pedido_linea')
+        .select('cantidad, valor, estado, articulo:articulo_id(nombre)')
+        .eq('pedido_id', pedidoId)
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+
+      const rows: Linea[] =
+        (data ?? []).map((r: any) => ({
+          cantidad: Number(r.cantidad ?? 0),
+          valor: Number(r.valor ?? 0),
+          estado: r.estado ?? 'LAVAR',
+          nombre: r?.articulo?.nombre ?? '—',
+        })) ?? [];
+
+      setDetallesMap((m) => ({ ...m, [pedidoId]: rows }));
+    } catch (e) {
+      console.error('No se pudo cargar detalle fallback', e);
+    } finally {
+      setDetLoading((s) => ({ ...s, [pedidoId]: false }));
+    }
+  }
 
   function snack(msg: string) {
     setNotice(msg);
@@ -253,6 +293,9 @@ export default function LavarPage() {
           !errMsg &&
           pedidos.map((p) => {
             const isOpen = openId === p.id;
+            const lineasVista = Array.isArray(p.detalle_lineas) ? p.detalle_lineas : null;
+            const lineasFallback = detallesMap[p.id];
+            const lineas = lineasVista?.length ? lineasVista : lineasFallback ?? null;
 
             return (
               <div
@@ -289,7 +332,7 @@ export default function LavarPage() {
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3 space-y-3">
-                      {/* IMAGEN: sin header/abanico; se muestra de inmediato */}
+                      {/* IMAGEN (sin cabecera/abanico) */}
                       <div className="rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div
@@ -318,7 +361,7 @@ export default function LavarPage() {
                         )}
                       </div>
 
-                      {/* DETALLE: tabla siempre visible como tu referencia */}
+                      {/* DETALLE (grilla SIEMPRE visible) */}
                       <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
                         <div className="overflow-x-auto w-full max-w-4xl">
                           <div className="px-3 py-2 flex items-center gap-2 text-white/90 bg-white/10">
@@ -328,43 +371,57 @@ export default function LavarPage() {
                             </span>
                           </div>
 
-                          {Array.isArray(p.detalle_lineas) && p.detalle_lineas.length > 0 ? (
+                          {detLoading[p.id] ? (
+                            <div className="p-4 text-sm flex items-center gap-2">
+                              <Loader2 className="animate-spin" size={16} /> Cargando detalle…
+                            </div>
+                          ) : lineas && lineas.length ? (
                             <>
-                              <table className="w-full text-xs lg:text-sm text-white/95">
-                                <thead className="bg-white/10 text-white/90">
-                                  <tr>
-                                    <th className="text-left px-3 py-2 w-[38%]">Artículo</th>
-                                    <th className="text-right px-3 py-2 w-[12%]">Cantidad</th>
-                                    <th className="text-right px-3 py-2 w-[18%]">Valor</th>
+                              <table className="w-full text-[13px] lg:text-sm text-white/95">
+                                <thead className="bg-violet-200/90 text-violet-900">
+                                  <tr className="font-semibold">
+                                    <th className="text-left px-3 py-2 w-[44%]">Artículo</th>
+                                    <th className="text-center px-3 py-2 w-[12%]">Cantidad</th>
+                                    <th className="text-right px-3 py-2 w-[14%]">Valor</th>
                                     <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
-                                    <th className="text-right px-3 py-2 w-[14%]">Estado</th>
+                                    <th className="text-left px-3 py-2 w-[12%]">Estado</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-white/10">
-                                  {p.detalle_lineas.map((l, i) => {
+                                <tbody className="divide-y divide-white/10 bg-white/5">
+                                  {lineas.map((l, i) => {
                                     const q = qtyOf(l);
                                     const v = valOf(l);
+                                    const sub = q * v;
+                                    const art = artOf(l);
+                                    const est = estOf(l);
                                     return (
                                       <tr key={i}>
-                                        <td className="px-3 py-2 truncate">{artOf(l)}</td>
-                                        <td className="px-3 py-2 text-right">{q}</td>
+                                        <td className="px-3 py-2">{art}</td>
+                                        <td className="px-3 py-2 text-center">{q}</td>
                                         <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(q * v)}</td>
-                                        <td className="px-3 py-2 text-right">{estOf(l)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(sub)}</td>
+                                        <td className="px-3 py-2">{est}</td>
                                       </tr>
                                     );
                                   })}
                                 </tbody>
                               </table>
-                              <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
-                                Total: {CLP.format(p.total ?? 0)}
+
+                              <div className="px-4 py-3 bg-violet-200/70 text-violet-900">
+                                <span className="font-medium">Total:</span>{' '}
+                                <span className="font-extrabold text-violet-800 text-[20px] align-middle">
+                                  {CLP.format(p.total ?? 0)}
+                                </span>
                               </div>
                             </>
                           ) : (
                             <div className="p-3 text-sm leading-6">
                               {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
-                              <div className="mt-3 text-right font-extrabold">
-                                Total: {CLP.format(p.total ?? 0)}
+                              <div className="mt-3 bg-violet-200/70 text-violet-900 px-4 py-3">
+                                <span className="font-medium">Total:</span>{' '}
+                                <span className="font-extrabold text-violet-800 text-[20px] align-middle">
+                                  {CLP.format(p.total ?? 0)}
+                                </span>
                               </div>
                             </div>
                           )}
