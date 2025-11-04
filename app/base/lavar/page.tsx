@@ -1,3 +1,4 @@
+// app/lavar/page.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,6 +16,20 @@ import {
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
+/* =========================
+   Config adaptable de storage / tablas
+========================= */
+const STORAGE_BUCKET = 'fotos'; // si usas 'imagenes', cámbialo aquí
+const PEDIDO_FOTO_TABLE = 'pedido_foto'; // adapta si difiere
+// Columnas aceptadas para inserción de foto (intentamos ambas variantes)
+const FOTO_COL_VARIANTS = [
+  { pedidoCol: 'nro', urlCol: 'url' },
+  { pedidoCol: 'pedido_id', urlCol: 'foto_url' },
+] as const;
+
+/* =========================
+   Tipos
+========================= */
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 
 type Linea = {
@@ -29,7 +44,8 @@ type Linea = {
 
 type Pedido = {
   id: number;
-  cliente: string;
+  telefono: string | null;
+  cliente: string; // nombre o teléfono
   total: number | null;
   estado: PedidoEstado;
   foto_url?: string | null;
@@ -45,6 +61,24 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
+/* =========================
+   Utiles
+========================= */
+const qtyOf = (l?: Linea) => Number(l?.qty ?? l?.cantidad ?? 0);
+const valOf = (l?: Linea) => Number(l?.valor ?? l?.precio ?? 0);
+const artOf = (l?: Linea) => String(l?.articulo ?? l?.nombre ?? '—');
+const estOf = (l?: Linea) => (l?.estado ? String(l.estado) : 'LAVAR');
+
+function computeTotalFrom(lineas?: Linea[] | null, fallback?: number | null) {
+  if (lineas && lineas.length) {
+    return lineas.reduce((a, l) => a + qtyOf(l) * valOf(l), 0);
+  }
+  return fallback ?? 0;
+}
+
+/* =========================
+   Página
+========================= */
 export default function LavarPage() {
   const router = useRouter();
 
@@ -66,12 +100,17 @@ export default function LavarPage() {
   const [detallesMap, setDetallesMap] = useState<Record<number, Linea[]>>({});
   const [detLoading, setDetLoading] = useState<Record<number, boolean>>({});
 
+  // Mapa de teléfono -> nombre
+  const [nombresByTel, setNombresByTel] = useState<Record<string, string>>({});
+
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
     [pedidos, openId]
   );
 
-  // Carga inicial (vista)
+  /* =========================
+     Carga inicial desde vista
+  ========================= */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -91,6 +130,7 @@ export default function LavarPage() {
 
         const mapped: Pedido[] = (data ?? []).map((r: any) => ({
           id: Number(r.nro),
+          telefono: r.telefono ?? null,
           cliente: String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
           estado: r.estado as PedidoEstado,
@@ -103,6 +143,23 @@ export default function LavarPage() {
 
         if (!cancelled) {
           setPedidos(mapped);
+        }
+
+        // Resolver nombres de clientes por teléfono
+        const telefonos = [...new Set((data ?? []).map((r: any) => String(r.telefono ?? '')).filter(Boolean))];
+        if (telefonos.length) {
+          const { data: cli, error: eCli } = await supabase
+            .from('clientes')
+            .select('telefono, nombre')
+            .in('telefono', telefonos);
+
+          if (!eCli && cli?.length) {
+            const map: Record<string, string> = {};
+            cli.forEach((c: any) => {
+              map[String(c.telefono)] = String(c.nombre ?? '');
+            });
+            if (!cancelled) setNombresByTel(map);
+          }
         }
       } catch (err: any) {
         console.error(err);
@@ -132,18 +189,18 @@ export default function LavarPage() {
       setDetLoading((s) => ({ ...s, [pedidoId]: true }));
       const { data, error } = await supabase
         .from('pedido_linea')
-        .select('cantidad, valor, estado, articulo:articulo_id(nombre)')
-        .eq('pedido_id', pedidoId)
+        .select('cantidad, valor, estado, articulo:articulo_id(nombre), nombre, articulo, qty, precio')
+        .or(`pedido_id.eq.${pedidoId},nro.eq.${pedidoId}`)
         .order('id', { ascending: true });
 
       if (error) throw error;
 
       const rows: Linea[] =
         (data ?? []).map((r: any) => ({
-          cantidad: Number(r.cantidad ?? 0),
-          valor: Number(r.valor ?? 0),
+          cantidad: Number(r.cantidad ?? r.qty ?? 0),
+          valor: Number(r.valor ?? r.precio ?? 0),
           estado: r.estado ?? 'LAVAR',
-          nombre: r?.articulo?.nombre ?? '—',
+          nombre: r?.articulo?.nombre ?? r?.nombre ?? r?.articulo ?? '—',
         })) ?? [];
 
       setDetallesMap((m) => ({ ...m, [pedidoId]: rows }));
@@ -159,6 +216,9 @@ export default function LavarPage() {
     setTimeout(() => setNotice(null), 1600);
   }
 
+  /* =========================
+     Acciones de estado / pago
+  ========================= */
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
@@ -199,7 +259,9 @@ export default function LavarPage() {
     setSaving(false);
   }
 
-  // ---------- Subida/registro de foto ----------
+  /* =========================
+     Imagen: abrir picker / subir / registrar
+  ========================= */
   function abrirPicker(nro: number) {
     setPickerForPedido(nro);
   }
@@ -218,7 +280,7 @@ export default function LavarPage() {
     e.target.value = '';
     const pid = pickerForPedido;
     if (!file || !pid) {
-      cerrarPicker();
+      cerrarPicker(); // cerrar siempre, aunque no elija
       return;
     }
 
@@ -226,20 +288,35 @@ export default function LavarPage() {
       setUploading((prev) => ({ ...prev, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `pedido/${pid}/${Date.now()}.${ext}`;
+      const path = `pedido-${pid}/${Date.now()}.${ext}`;
 
-      const up = await supabase.storage.from('imagenes').upload(path, file, {
+      const up = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
         cacheControl: '3600',
-        upsert: true,
+        upsert: false,
       });
       if (up.error) throw up.error;
 
-      const pub = supabase.storage.from('imagenes').getPublicUrl(path);
+      const pub = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
       const publicUrl = pub.data?.publicUrl;
       if (!publicUrl) throw new Error('No se obtuvo URL pública');
 
-      const ins = await supabase.from('pedido_foto').insert({ pedido_id: pid, foto_url: publicUrl });
-      if (ins.error) throw ins.error;
+      // Intentar insertar en pedido_foto en distintas variantes de columnas
+      let inserted = false;
+      for (const v of FOTO_COL_VARIANTS) {
+        const payload: any = { [v.pedidoCol]: pid, [v.urlCol]: publicUrl };
+        const ins = await supabase.from(PEDIDO_FOTO_TABLE).insert(payload);
+        if (!ins.error) {
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        // último intento: columnas genericas
+        const ins = await supabase
+          .from(PEDIDO_FOTO_TABLE)
+          .insert({ pedido_id: pid, foto_url: publicUrl });
+        if (ins.error) throw ins.error;
+      }
 
       setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
       setImageError((prev) => ({ ...prev, [pid]: false }));
@@ -249,16 +326,13 @@ export default function LavarPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      cerrarPicker();
+      cerrarPicker(); // cerrar automáticamente al terminar
     }
   }
 
-  // helpers de tabla
-  const qtyOf = (l?: Linea) => Number(l?.qty ?? l?.cantidad ?? 0);
-  const valOf = (l?: Linea) => Number(l?.valor ?? l?.precio ?? 0);
-  const artOf = (l?: Linea) => String(l?.articulo ?? l?.nombre ?? '—');
-  const estOf = (l?: Linea) => (l?.estado ? String(l.estado) : 'LAVAR');
-
+  /* =========================
+     Render
+  ========================= */
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
@@ -297,6 +371,9 @@ export default function LavarPage() {
             const lineasFallback = detallesMap[p.id];
             const lineas = lineasVista?.length ? lineasVista : lineasFallback ?? null;
 
+            const nombre = p.telefono && nombresByTel[p.telefono] ? nombresByTel[p.telefono] : p.cliente;
+            const totalCalc = computeTotalFrom(lineas, p.total);
+
             return (
               <div
                 key={p.id}
@@ -317,13 +394,13 @@ export default function LavarPage() {
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        {nombre} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
                     <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(p.total ?? 0)}
+                      {CLP.format(totalCalc)}
                     </div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
@@ -332,7 +409,7 @@ export default function LavarPage() {
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3 space-y-3">
-                      {/* IMAGEN (sin cabecera/abanico) */}
+                      {/* IMAGEN (doble clic cambia) */}
                       <div className="rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div
@@ -410,7 +487,7 @@ export default function LavarPage() {
                               <div className="px-4 py-3 bg-violet-200/70 text-violet-900">
                                 <span className="font-medium">Total:</span>{' '}
                                 <span className="font-extrabold text-violet-800 text-[20px] align-middle">
-                                  {CLP.format(p.total ?? 0)}
+                                  {CLP.format(totalCalc)}
                                 </span>
                               </div>
                             </>
@@ -420,7 +497,7 @@ export default function LavarPage() {
                               <div className="mt-3 bg-violet-200/70 text-violet-900 px-4 py-3">
                                 <span className="font-medium">Total:</span>{' '}
                                 <span className="font-extrabold text-violet-800 text-[20px] align-middle">
-                                  {CLP.format(p.total ?? 0)}
+                                  {CLP.format(totalCalc)}
                                 </span>
                               </div>
                             </div>
@@ -435,6 +512,7 @@ export default function LavarPage() {
           })}
       </section>
 
+      {/* Botonera inferior */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">

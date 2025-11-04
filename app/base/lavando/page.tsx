@@ -116,15 +116,16 @@ export default function LavandoPage() {
           const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
           if (!pid) return;
 
-          const label = String(
-            l.articulo ??
-            l.nombre ??
-            l.descripcion ??
-            l.item ??
-            l.articulo_nombre ??
-            l.articulo_id ??
-            ''
-          ).trim() || 'SIN NOMBRE';
+          const label =
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                ''
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -239,10 +240,18 @@ export default function LavandoPage() {
   }
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0] || null;
     e.target.value = '';
     const pid = pickerForPedido;
-    if (!file || !pid) return;
+    if (!pid) {
+      setPickerForPedido(null);
+      return;
+    }
+    if (!file) {
+      // cerramos igual si canceló
+      setPickerForPedido(null);
+      return;
+    }
 
     try {
       setUploading(prev => ({ ...prev, [pid]: true }));
@@ -270,7 +279,7 @@ export default function LavandoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading(prev => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null);
+      setPickerForPedido(null); // cerrar siempre el modal al terminar
     }
   }
 
@@ -310,7 +319,7 @@ export default function LavandoPage() {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
             const totalCalc = p.items?.length
-              ? p.items.reduce((a, it) => a + (it.qty * it.valor), 0)
+              ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
               : p.total ?? 0;
 
             return (
@@ -398,7 +407,11 @@ export default function LavandoPage() {
 
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
-                          <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
+                          <div
+                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                            onDoubleClick={() => openPickerFor(p.id)}
+                            title="Doble clic para cambiar la imagen"
+                          >
                             <Image
                               src={p.foto_url!}
                               alt={`Foto pedido ${p.id}`}
@@ -548,9 +561,7 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
