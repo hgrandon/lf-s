@@ -6,18 +6,26 @@ import {
   ChevronDown,
   ChevronRight,
   User,
-  Table,
   Loader2,
   AlertTriangle,
   Camera,
   ImagePlus,
+  Table,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 
-type Linea = { articulo?: string; nombre?: string; qty?: number; cantidad?: number; valor?: number; precio?: number; estado?: string };
+type Linea = {
+  articulo?: string;
+  nombre?: string;
+  qty?: number;
+  cantidad?: number;
+  valor?: number;
+  precio?: number;
+  estado?: string | null;
+};
 
 type Pedido = {
   id: number;
@@ -28,7 +36,7 @@ type Pedido = {
   pagado?: boolean | null;
   items_count?: number | null;
   items_text?: string | null;
-  detalle_lineas?: Linea[] | null; // <- si la vista expone array, lo usamos
+  detalle_lineas?: Linea[] | null;
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -44,7 +52,6 @@ export default function LavarPage() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [openDetail, setOpenDetail] = useState<Record<number, boolean>>({});
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -67,10 +74,11 @@ export default function LavarPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Traemos también "detalle_lineas" si existe en la vista (no rompe si no está)
         const { data, error } = await supabase
           .from('vw_pedido_resumen')
-          .select('nro, telefono, total, estado, pagado, items_count, items_text, foto_url, detalle_lineas')
+          .select(
+            'nro, telefono, total, estado, pagado, items_count, items_text, foto_url, detalle_lineas'
+          )
           .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
 
@@ -205,15 +213,11 @@ export default function LavarPage() {
     }
   }
 
-  function qtyOf(l?: Linea) {
-    return Number(l?.qty ?? l?.cantidad ?? 0);
-  }
-  function valOf(l?: Linea) {
-    return Number(l?.valor ?? l?.precio ?? 0);
-  }
-  function artOf(l?: Linea) {
-    return String(l?.articulo ?? l?.nombre ?? '—');
-  }
+  // helpers de tabla
+  const qtyOf = (l?: Linea) => Number(l?.qty ?? l?.cantidad ?? 0);
+  const valOf = (l?: Linea) => Number(l?.valor ?? l?.precio ?? 0);
+  const artOf = (l?: Linea) => String(l?.articulo ?? l?.nombre ?? '—');
+  const estOf = (l?: Linea) => (l?.estado ? String(l.estado) : 'LAVAR');
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -249,7 +253,6 @@ export default function LavarPage() {
           !errMsg &&
           pedidos.map((p) => {
             const isOpen = openId === p.id;
-            const detOpen = !!openDetail[p.id];
 
             return (
               <div
@@ -259,7 +262,7 @@ export default function LavarPage() {
                   isOpen ? 'border-white/40' : 'border-white/15',
                 ].join(' ')}
               >
-                {/* Cabecera del card */}
+                {/* Cabecera */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
@@ -286,24 +289,13 @@ export default function LavarPage() {
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3 space-y-3">
-                      {/* 1) IMAGEN DEL PEDIDO (primero, como en tu referencia) */}
-                      <button
-                        onClick={p.foto_url ? undefined : () => abrirPicker(p.id)}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                        title={p.foto_url ? 'Doble clic en la imagen para cambiarla' : 'Agregar imagen'}
-                      >
-                        <div className="flex items-center gap-2">
-                          <ImagePlus size={16} />
-                          <span className="font-semibold">Imagen del Pedido</span>
-                        </div>
-                        <ChevronRight size={16} />
-                      </button>
-
+                      {/* IMAGEN: sin header/abanico; se muestra de inmediato */}
                       <div className="rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div
                             className="bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
                             onDoubleClick={() => abrirPicker(p.id)}
+                            title="Doble clic para cambiar la imagen"
                           >
                             <Image
                               src={p.foto_url}
@@ -326,68 +318,58 @@ export default function LavarPage() {
                         )}
                       </div>
 
-                      {/* 2) DETALLE DEL PEDIDO */}
-                      <button
-                        onClick={() =>
-                          setOpenDetail((prev) => ({
-                            ...prev,
-                            [p.id]: !prev[p.id],
-                          }))
-                        }
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Table size={16} />
-                          <span className="font-semibold">
-                            Detalle Pedido {p.items_count != null ? `(${p.items_count})` : ''}
-                          </span>
-                        </div>
-                        {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </button>
-
-                      {detOpen && (
-                        <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                          <div className="overflow-x-auto w-full max-w-4xl">
-                            {/* Si hay líneas, mostramos tabla; si no, mostramos el texto legible */}
-                            {Array.isArray(p.detalle_lineas) && p.detalle_lineas.length > 0 ? (
-                              <>
-                                <table className="w-full text-xs lg:text-sm text-white/95">
-                                  <thead className="bg-white/10 text-white/90">
-                                    <tr>
-                                      <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                      <th className="text-right px-3 py-2 w-[15%]">Cantidad</th>
-                                      <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                      <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-white/10">
-                                    {p.detalle_lineas.map((l, i) => {
-                                      const q = qtyOf(l);
-                                      const v = valOf(l);
-                                      return (
-                                        <tr key={i}>
-                                          <td className="px-3 py-2 truncate">{artOf(l)}</td>
-                                          <td className="px-3 py-2 text-right">{q}</td>
-                                          <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
-                                          <td className="px-3 py-2 text-right">{CLP.format(q * v)}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                                <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
-                                  Total: {CLP.format(p.total ?? 0)}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="p-3 text-sm leading-6">
-                                {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
-                                <div className="mt-3 text-right font-extrabold">Total: {CLP.format(p.total ?? 0)}</div>
-                              </div>
-                            )}
+                      {/* DETALLE: tabla siempre visible como tu referencia */}
+                      <div className="rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                        <div className="overflow-x-auto w-full max-w-4xl">
+                          <div className="px-3 py-2 flex items-center gap-2 text-white/90 bg-white/10">
+                            <Table size={16} />
+                            <span className="font-semibold">
+                              Detalle Pedido {p.items_count != null ? `(${p.items_count})` : ''}
+                            </span>
                           </div>
+
+                          {Array.isArray(p.detalle_lineas) && p.detalle_lineas.length > 0 ? (
+                            <>
+                              <table className="w-full text-xs lg:text-sm text-white/95">
+                                <thead className="bg-white/10 text-white/90">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 w-[38%]">Artículo</th>
+                                    <th className="text-right px-3 py-2 w-[12%]">Cantidad</th>
+                                    <th className="text-right px-3 py-2 w-[18%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
+                                    <th className="text-right px-3 py-2 w-[14%]">Estado</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/10">
+                                  {p.detalle_lineas.map((l, i) => {
+                                    const q = qtyOf(l);
+                                    const v = valOf(l);
+                                    return (
+                                      <tr key={i}>
+                                        <td className="px-3 py-2 truncate">{artOf(l)}</td>
+                                        <td className="px-3 py-2 text-right">{q}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(q * v)}</td>
+                                        <td className="px-3 py-2 text-right">{estOf(l)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+                                Total: {CLP.format(p.total ?? 0)}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="p-3 text-sm leading-6">
+                              {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
+                              <div className="mt-3 text-right font-extrabold">
+                                Total: {CLP.format(p.total ?? 0)}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -456,7 +438,9 @@ export default function LavarPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Agregar imagen al pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
