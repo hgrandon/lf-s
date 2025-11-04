@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
@@ -18,14 +18,14 @@ import { supabase } from '@/lib/supabaseClient';
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 
 type Pedido = {
-  id: number;            // nro
-  cliente: string;       // telefono o nombre si lo incluyes en la vista
+  id: number;               // nro
+  cliente: string;          // telefono o nombre si lo incluyes en la vista
   total: number | null;
   estado: PedidoEstado;
-  foto_url?: string | null;
   pagado?: boolean | null;
   items_count?: number | null;
-  items_text?: string | null; // resumen legible
+  items_text?: string | null;
+  foto_url?: string | null; // primera foto calculada
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -33,6 +33,37 @@ const CLP = new Intl.NumberFormat('es-CL', {
   currency: 'CLP',
   maximumFractionDigits: 0,
 });
+
+const STORAGE_BUCKET = 'imagenes';
+
+/** Extrae la primera URL desde: string, JSON string o array */
+function firstUrl(input: unknown): string | null {
+  if (!input) return null;
+
+  // Si viene como string
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (!s) return null;
+    // JSON de array
+    if (s.startsWith('[')) {
+      try {
+        const arr = JSON.parse(s);
+        if (Array.isArray(arr) && arr.length && typeof arr[0] === 'string') return arr[0];
+        return null;
+      } catch {
+        return null;
+      }
+    }
+    return s;
+  }
+
+  // Si viene como array de strings
+  if (Array.isArray(input) && input.length && typeof input[0] === 'string') {
+    return input[0] as string;
+  }
+
+  return null;
+}
 
 export default function LavarPage() {
   const router = useRouter();
@@ -57,113 +88,130 @@ export default function LavarPage() {
     [pedidos, openId]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        setErrMsg(null);
-
-        // Vista alineada a tu estructura actual
-        const { data, error } = await supabase
-          .from('vw_pedido_resumen')
-          .select('nro, telefono, total, estado, pagado, items_count, items_text, foto_url')
-          .eq('estado', 'LAVAR')
-          .order('nro', { ascending: false });
-
-        if (error) throw error;
-
-        const mapped: Pedido[] = (data ?? []).map((r: any) => ({
-          id: Number(r.nro),
-          cliente: String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado as PedidoEstado,
-          foto_url: r.foto_url ?? null,
-          pagado: !!r.pagado,
-          items_count: r.items_count ?? null,
-          items_text: r.items_text ?? null,
-        }));
-
-        if (!cancelled) {
-          setPedidos(mapped);
-          setLoading(false);
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (!cancelled) {
-          setErrMsg(err?.message ?? 'Error al cargar pedidos');
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+  const snack = useCallback((msg: string) => {
+    setNotice(msg);
+    const t = setTimeout(() => setNotice(null), 1800);
+    return () => clearTimeout(t);
   }, []);
 
-  function snack(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 1600);
-  }
+  const mapRows = useCallback((rows: any[]): Pedido[] => {
+    return (rows ?? []).map((r) => ({
+      id: Number(r.nro),
+      cliente: String(r.telefono ?? 'SIN NOMBRE'),
+      total: r.total ?? null,
+      estado: r.estado as PedidoEstado,
+      pagado: !!r.pagado,
+      items_count: r.items_count ?? null,
+      items_text: r.items_text ?? null,
+      foto_url: firstUrl(r.fotos_urls),
+    }));
+  }, []);
 
-  async function changeEstado(id: number, next: PedidoEstado) {
-    if (!id) return;
-    setSaving(true);
-    const prev = pedidos;
-    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+  const fetchLavar = useCallback(async () => {
+    setLoading(true);
+    setErrMsg(null);
+    try {
+      const { data, error } = await supabase
+        .from('vw_pedido_resumen')
+        .select(
+          'nro, telefono, total, estado, pagado, items_count, items_text, fotos_urls'
+        )
+        .eq('estado', 'LAVAR')
+        .order('nro', { ascending: false });
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
-    if (error) {
-      console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev);
+      if (error) throw error;
+      setPedidos(mapRows(data ?? []));
+    } catch (err: any) {
+      console.error(err);
+      setErrMsg(err?.message ?? 'Error al cargar pedidos');
+    } finally {
+      setLoading(false);
+    }
+  }, [mapRows]);
+
+  useEffect(() => {
+    fetchLavar();
+  }, [fetchLavar]);
+
+  // Realtime liviano: si cambian pedido o pedido_foto, refrescamos lista
+  useEffect(() => {
+    const ch1 = supabase
+      .channel('rt-pedido-lavar')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido' }, fetchLavar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido_foto' }, fetchLavar)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ch1);
+    };
+  }, [fetchLavar]);
+
+  // ---------- Acciones ----------
+  const changeEstado = useCallback(
+    async (id: number, next: PedidoEstado) => {
+      if (!id) return;
+      setSaving(true);
+
+      const prev = pedidos;
+      setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+
+      const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
+
+      if (error) {
+        console.error('No se pudo actualizar estado:', error);
+        setPedidos(prev); // rollback
+        setSaving(false);
+        snack('No se pudo actualizar el estado.');
+        return;
+      }
+
+      if (next !== 'LAVAR') {
+        setPedidos((curr) => curr.filter((p) => p.id !== id));
+        setOpenId(null);
+      }
       setSaving(false);
-      return;
-    }
+      snack(`Pedido #${id} → ${next}`);
+    },
+    [pedidos, snack]
+  );
 
-    if (next !== 'LAVAR') {
-      setPedidos((curr) => curr.filter((p) => p.id !== id));
-      setOpenId(null);
-      snack(`Pedido #${id} movido a ${next}`);
-    }
-    setSaving(false);
-  }
+  const togglePago = useCallback(
+    async (id: number) => {
+      if (!id) return;
+      setSaving(true);
 
-  async function togglePago(id: number) {
-    if (!id) return;
-    setSaving(true);
-    const prev = pedidos;
-    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
+      const prev = pedidos;
+      const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+      setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
-    if (error) {
-      console.error('No se pudo actualizar pago:', error);
-      setPedidos(prev);
+      const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
+      if (error) {
+        console.error('No se pudo actualizar pago:', error);
+        setPedidos(prev); // rollback
+        setSaving(false);
+        snack('No se pudo actualizar el pago.');
+        return;
+      }
+
       setSaving(false);
-      return;
-    }
-    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
-    setSaving(false);
-  }
+      snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
+    },
+    [pedidos, snack]
+  );
 
   // ---------- Subida/registro de foto ----------
-  function abrirPicker(nro: number) {
-    setPickerForPedido(nro);
-  }
-  function cerrarPicker() {
-    setPickerForPedido(null);
-  }
+  const abrirPicker = (nro: number) => setPickerForPedido(nro);
+  const cerrarPicker = () => setPickerForPedido(null);
 
-  async function handlePick(kind: 'camera' | 'file') {
+  const handlePick = (kind: 'camera' | 'file') => {
     if (!pickerForPedido) return;
     if (kind === 'camera') inputCamRef.current?.click();
     else inputFileRef.current?.click();
-  }
+  };
 
-  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // reset para permitir mismo archivo luego
+    e.target.value = ''; // reset para permitir el mismo archivo luego
     const pid = pickerForPedido;
     if (!file || !pid) {
       cerrarPicker();
@@ -171,27 +219,25 @@ export default function LavarPage() {
     }
 
     try {
-      setUploading((prev) => ({ ...prev, [pid]: true }));
+      setUploading((u) => ({ ...u, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido/${pid}/${Date.now()}.${ext}`;
 
-      // bucket correcto según tu esquema actual
-      const up = await supabase.storage.from('imagenes').upload(path, file, {
+      const up = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
         cacheControl: '3600',
         upsert: true,
       });
       if (up.error) throw up.error;
 
-      const pub = supabase.storage.from('imagenes').getPublicUrl(path);
-      const publicUrl = pub.data?.publicUrl;
+      const { data: pubData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      const publicUrl = pubData?.publicUrl;
       if (!publicUrl) throw new Error('No se obtuvo URL pública');
 
-      // registra en pedido_foto: (pedido_id, foto_url)
       const ins = await supabase.from('pedido_foto').insert({ pedido_id: pid, foto_url: publicUrl });
       if (ins.error) throw ins.error;
 
-      // refresco local
+      // refresco local inmediato
       setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
       setImageError((prev) => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
@@ -199,10 +245,10 @@ export default function LavarPage() {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading((prev) => ({ ...prev, [pid!]: false }));
+      setUploading((u) => ({ ...u, [pid!]: false }));
       cerrarPicker(); // se cierra automáticamente
     }
-  }
+  };
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -210,7 +256,10 @@ export default function LavarPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
-        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
+        <button
+          onClick={() => router.push('/base')}
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
+        >
           ← Volver
         </button>
       </header>
@@ -226,7 +275,13 @@ export default function LavarPage() {
         {!loading && errMsg && (
           <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
             <AlertTriangle size={16} />
-            <span>{errMsg}</span>
+            <span className="mr-auto">{errMsg}</span>
+            <button
+              className="rounded-lg bg-white/15 px-3 py-1 text-xs hover:bg-white/25"
+              onClick={fetchLavar}
+            >
+              Reintentar
+            </button>
           </div>
         )}
 
@@ -257,7 +312,9 @@ export default function LavarPage() {
                       <User size={18} />
                     </span>
                     <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                      <div className="font-extrabold tracking-wide text-sm lg:text-base">
+                        N° {p.id}
+                      </div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
                         {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
@@ -276,10 +333,7 @@ export default function LavarPage() {
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
                         onClick={() =>
-                          setOpenDetail((prev) => ({
-                            ...prev,
-                            [p.id]: !prev[p.id],
-                          }))
+                          setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
                         }
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
@@ -294,7 +348,9 @@ export default function LavarPage() {
 
                       {detOpen && (
                         <div className="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 text-sm leading-6">
-                          {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
+                          {p.items_text || (
+                            <span className="opacity-70">Sin detalle disponible.</span>
+                          )}
                         </div>
                       )}
 
@@ -306,13 +362,20 @@ export default function LavarPage() {
                             title="Doble clic para cambiar la imagen"
                           >
                             <Image
-                              src={p.foto_url!}
+                              src={p.foto_url}
                               alt={`Foto pedido ${p.id}`}
                               width={0}
                               height={0}
                               sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                maxHeight: '70vh',
+                              }}
+                              onError={() =>
+                                setImageError((prev) => ({ ...prev, [p.id]: true }))
+                              }
                               priority={false}
                             />
                           </div>
@@ -323,7 +386,11 @@ export default function LavarPage() {
                             title="Agregar imagen"
                           >
                             <ImagePlus size={18} />
-                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                            <span>
+                              {uploading[p.id]
+                                ? 'Subiendo…'
+                                : 'Sin imagen adjunta. Toca para agregar.'}
+                            </span>
                           </button>
                         )}
                       </div>
@@ -380,7 +447,9 @@ export default function LavarPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -395,7 +464,9 @@ export default function LavarPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Agregar imagen al pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -411,7 +482,10 @@ export default function LavarPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button onClick={cerrarPicker} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+              <button
+                onClick={cerrarPicker}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
                 Cancelar
               </button>
             </div>
@@ -428,7 +502,13 @@ export default function LavarPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
@@ -450,7 +530,9 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
