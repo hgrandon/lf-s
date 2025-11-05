@@ -71,6 +71,35 @@ function computeTotalFrom(lineas?: Linea[] | null, fallback?: number | null) {
   return fallback ?? 0;
 }
 
+/* ========== Parseo de items_text como respaldo ========== */
+function parseItemsText(items?: string | null): Linea[] {
+  if (!items) return [];
+  // Ej: "COBERTOR 1-1½ PLAZAS 220 x 150 x4, RETIRO Y ENTREGA x1"
+  // Separamos por coma y espacios
+  return items
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      // Buscar " xN" al final
+      const m = chunk.match(/(.+?)\s+x\s*(\d+)\s*$/i);
+      if (m) {
+        const nombre = m[1].trim().replace(/\s+/g, ' ');
+        const cantidad = Number(m[2]);
+        return { nombre, cantidad, valor: 0, estado: 'LAVAR' } as Linea;
+      }
+      // Si no hay "xN", intentamos otra variante " ... xN" dentro
+      const m2 = chunk.match(/(.+?)\s*x\s*(\d+)/i);
+      if (m2) {
+        const nombre = m2[1].trim().replace(/\s+/g, ' ');
+        const cantidad = Number(m2[2]);
+        return { nombre, cantidad, valor: 0, estado: 'LAVAR' } as Linea;
+      }
+      // Fallback: una unidad
+      return { nombre: chunk, cantidad: 1, valor: 0, estado: 'LAVAR' } as Linea;
+    });
+}
+
 /* =========================
    Página principal
 ========================= */
@@ -95,10 +124,20 @@ export default function LavarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // NUEVO: estado del abanico de detalle por pedido (anidado)
+  // Abanico de detalle por pedido
   const [detOpen, setDetOpen] = useState<Record<number, boolean>>({});
-  const toggleDet = (id: number, initial?: boolean) =>
-    setDetOpen((s) => ({ ...s, [id]: initial ?? !s[id] }));
+  const toggleDet = async (id: number) => {
+    setDetOpen((s) => ({ ...s, [id]: !s[id] }));
+    // Si lo vamos a abrir y no tenemos líneas, las cargamos
+    const willOpen = !(detOpen[id] ?? false);
+    if (willOpen) {
+      const ya = detallesMap[id];
+      const enVista = pedidos.find((x) => x.id === id)?.detalle_lineas;
+      if ((!enVista || !enVista.length) && (!ya || !ya.length) && !detLoading[id]) {
+        await ensureDetalle(id);
+      }
+    }
+  };
 
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
@@ -149,10 +188,10 @@ export default function LavarPage() {
           setNombresByTel(map);
         }
 
-        // abrir detalle por defecto al iniciar (opcional)
-        const initialDet: Record<number, boolean> = {};
-        mapped.forEach((p) => (initialDet[p.id] = true));
-        setDetOpen(initialDet);
+        // abierto por defecto
+        const initial: Record<number, boolean> = {};
+        mapped.forEach((p) => (initial[p.id] = true));
+        setDetOpen(initial);
       } catch (e: any) {
         setErrMsg(e.message ?? 'Error al cargar pedidos');
       } finally {
@@ -162,7 +201,7 @@ export default function LavarPage() {
   }, []);
 
   /* =========================
-     Carga detalle (fallback)
+     Carga detalle al abrir pedido (fallback)
   ========================= */
   useEffect(() => {
     if (!openId) return;
@@ -269,9 +308,14 @@ export default function LavarPage() {
         {!loading && pedidos.map((p) => {
           const isOpen = openId === p.id;
           const nombre = p.telefono && nombresByTel[p.telefono] ? nombresByTel[p.telefono] : p.cliente;
-          const lineas = p.detalle_lineas?.length ? p.detalle_lineas : detallesMap[p.id] ?? [];
+
+          const lineasVista = p.detalle_lineas?.length ? p.detalle_lineas : undefined;
+          const lineasFallback = detallesMap[p.id]?.length ? detallesMap[p.id] : undefined;
+          const lineasParsed = !lineasVista && !lineasFallback ? parseItemsText(p.items_text) : undefined;
+          const lineas = lineasVista ?? lineasFallback ?? lineasParsed ?? [];
+
           const totalCalc = computeTotalFrom(lineas, p.total);
-          const isDetOpen = detOpen[p.id] ?? true; // abierto por defecto
+          const isDetOpen = detOpen[p.id] ?? true;
 
           return (
             <div key={p.id} className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md">
@@ -368,8 +412,12 @@ export default function LavarPage() {
                                       <tr key={i}>
                                         <td className="px-3 py-2">{artOf(l)}</td>
                                         <td className="px-3 py-2 text-center">{q}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(sub)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {v ? CLP.format(v) : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                          {sub ? CLP.format(sub) : '—'}
+                                        </td>
                                         <td className="px-3 py-2">{estOf(l)}</td>
                                       </tr>
                                     );
@@ -387,7 +435,7 @@ export default function LavarPage() {
                             </>
                           ) : (
                             <div className="p-3 text-sm leading-6">
-                              {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
+                              <span className="opacity-70">Sin detalle disponible.</span>
                               <div className="mt-3 bg-violet-200/80 text-violet-900 px-4 py-3">
                                 <span className="font-medium">Total:</span>{' '}
                                 <span className="font-extrabold text-violet-800 text-[20px] align-middle">
