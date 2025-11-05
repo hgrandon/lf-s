@@ -76,10 +76,12 @@ function computeTotalFrom(lineas?: Linea[] | null, fallback?: number | null) {
 ========================= */
 export default function LavarPage() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
+
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
@@ -89,9 +91,19 @@ export default function LavarPage() {
   const [detallesMap, setDetallesMap] = useState<Record<number, Linea[]>>({});
   const [detLoading, setDetLoading] = useState<Record<number, boolean>>({});
   const [nombresByTel, setNombresByTel] = useState<Record<string, string>>({});
+
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+
+  // NUEVO: estado del abanico de detalle por pedido (anidado)
+  const [detOpen, setDetOpen] = useState<Record<number, boolean>>({});
+  const toggleDet = (id: number, initial?: boolean) =>
+    setDetOpen((s) => ({ ...s, [id]: initial ?? !s[id] }));
+
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId]
+  );
 
   /* =========================
      Carga inicial
@@ -107,6 +119,7 @@ export default function LavarPage() {
           )
           .eq('estado', 'LAVAR')
           .order('nro', { ascending: false });
+
         if (error) throw error;
 
         const mapped: Pedido[] = (data ?? []).map((r: any) => ({
@@ -124,7 +137,7 @@ export default function LavarPage() {
 
         setPedidos(mapped);
 
-        // Resolver nombres de clientes
+        // resolver nombres
         const telefonos = [...new Set((data ?? []).map((r: any) => String(r.telefono ?? '')).filter(Boolean))];
         if (telefonos.length) {
           const { data: cli } = await supabase
@@ -135,6 +148,11 @@ export default function LavarPage() {
           cli?.forEach((c: any) => (map[String(c.telefono)] = String(c.nombre ?? '')));
           setNombresByTel(map);
         }
+
+        // abrir detalle por defecto al iniciar (opcional)
+        const initialDet: Record<number, boolean> = {};
+        mapped.forEach((p) => (initialDet[p.id] = true));
+        setDetOpen(initialDet);
       } catch (e: any) {
         setErrMsg(e.message ?? 'Error al cargar pedidos');
       } finally {
@@ -162,6 +180,7 @@ export default function LavarPage() {
         .select('cantidad, valor, estado, articulo:articulo_id(nombre), nombre, articulo, qty, precio')
         .or(`pedido_id.eq.${pedidoId},nro.eq.${pedidoId}`)
         .order('id');
+
       if (error) throw error;
 
       const rows: Linea[] = (data ?? []).map((r: any) => ({
@@ -170,6 +189,7 @@ export default function LavarPage() {
         estado: r.estado ?? 'LAVAR',
         nombre: r?.articulo?.nombre ?? r?.nombre ?? r?.articulo ?? '—',
       }));
+
       setDetallesMap((m) => ({ ...m, [pedidoId]: rows }));
     } finally {
       setDetLoading((s) => ({ ...s, [pedidoId]: false }));
@@ -238,14 +258,24 @@ export default function LavarPage() {
             <Loader2 className="animate-spin" size={18} /> Cargando pedidos…
           </div>
         )}
+
+        {!loading && errMsg && (
+          <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
+            <AlertTriangle size={16} />
+            <span>{errMsg}</span>
+          </div>
+        )}
+
         {!loading && pedidos.map((p) => {
           const isOpen = openId === p.id;
           const nombre = p.telefono && nombresByTel[p.telefono] ? nombresByTel[p.telefono] : p.cliente;
           const lineas = p.detalle_lineas?.length ? p.detalle_lineas : detallesMap[p.id] ?? [];
           const totalCalc = computeTotalFrom(lineas, p.total);
+          const isDetOpen = detOpen[p.id] ?? true; // abierto por defecto
 
           return (
             <div key={p.id} className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md">
+              {/* Header del pedido */}
               <button
                 onClick={() => setOpenId(isOpen ? null : p.id)}
                 className="w-full flex justify-between items-center px-4 py-3"
@@ -267,6 +297,7 @@ export default function LavarPage() {
                 </div>
               </button>
 
+              {/* Cuerpo del pedido */}
               {isOpen && (
                 <div className="px-4 pb-4">
                   {/* Imagen */}
@@ -279,6 +310,7 @@ export default function LavarPage() {
                         height={400}
                         className="w-full object-cover cursor-zoom-in"
                         onDoubleClick={() => abrirPicker(p.id)}
+                        onError={() => setImageError((s) => ({ ...s, [p.id]: true }))}
                       />
                     ) : (
                       <button
@@ -290,46 +322,83 @@ export default function LavarPage() {
                     )}
                   </div>
 
-                  {/* Detalle Pedido */}
-                  <div className="bg-white/10 rounded-xl border border-white/15 overflow-hidden">
+                  {/* Abanico Detalle Pedido (anidado) */}
+                  <div className="mt-3 rounded-xl overflow-hidden bg-white/10 border border-white/15">
+                    {/* Cabecera del abanico con la misma paleta */}
                     <button
-                      onClick={() => setOpenId(isOpen ? null : p.id)}
-                      className="w-full flex items-center gap-2 bg-violet-600/70 hover:bg-violet-700/80 px-4 py-2 text-left font-semibold"
+                      onClick={() => toggleDet(p.id)}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-3
+                                 bg-gradient-to-r from-violet-700/70 to-fuchsia-700/70
+                                 hover:from-violet-700 hover:to-fuchsia-700
+                                 text-white font-semibold"
                     >
-                      <Table size={16} />
-                      Detalle Pedido ({p.items_count ?? lineas.length})
+                      <span className="inline-flex items-center gap-2">
+                        <Table size={16} />
+                        Detalle Pedido ({p.items_count ?? lineas.length})
+                      </span>
+                      {isDetOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </button>
 
-                    <div className="overflow-x-auto bg-white/5">
-                      <table className="w-full text-sm text-white/95">
-                        <thead className="bg-violet-200 text-violet-900">
-                          <tr>
-                            <th className="text-left px-3 py-2 w-[44%]">Artículo</th>
-                            <th className="text-center px-3 py-2 w-[12%]">Cantidad</th>
-                            <th className="text-right px-3 py-2 w-[14%]">Valor</th>
-                            <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
-                            <th className="text-left px-3 py-2 w-[12%]">Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/10 bg-white/5">
-                          {lineas.map((l, i) => (
-                            <tr key={i}>
-                              <td className="px-3 py-2">{artOf(l)}</td>
-                              <td className="px-3 py-2 text-center">{qtyOf(l)}</td>
-                              <td className="px-3 py-2 text-right">{CLP.format(valOf(l))}</td>
-                              <td className="px-3 py-2 text-right">
-                                {CLP.format(qtyOf(l) * valOf(l))}
-                              </td>
-                              <td className="px-3 py-2">{estOf(l)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    {/* Cuerpo del abanico */}
+                    {isDetOpen && (
+                      <div className="bg-white/5 border-t border-white/10">
+                        <div className="overflow-x-auto w-full">
+                          {detLoading[p.id] ? (
+                            <div className="p-4 text-sm flex items-center gap-2">
+                              <Loader2 className="animate-spin" size={16} /> Cargando detalle…
+                            </div>
+                          ) : lineas.length ? (
+                            <>
+                              <table className="w-full text-[13px] lg:text-sm text-white/95">
+                                <thead className="bg-violet-200/90 text-violet-900">
+                                  <tr className="font-semibold">
+                                    <th className="text-left px-3 py-2 w-[44%]">Artículo</th>
+                                    <th className="text-center px-3 py-2 w-[12%]">Cantidad</th>
+                                    <th className="text-right px-3 py-2 w-[14%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
+                                    <th className="text-left px-3 py-2 w-[12%]">Estado</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/10 bg-white/5">
+                                  {lineas.map((l, i) => {
+                                    const q = qtyOf(l);
+                                    const v = valOf(l);
+                                    const sub = q * v;
+                                    return (
+                                      <tr key={i}>
+                                        <td className="px-3 py-2">{artOf(l)}</td>
+                                        <td className="px-3 py-2 text-center">{q}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(v)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(sub)}</td>
+                                        <td className="px-3 py-2">{estOf(l)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
 
-                      <div className="px-4 py-3 bg-violet-200/80 text-violet-900 font-semibold">
-                        Total: <span className="text-xl font-extrabold">{CLP.format(totalCalc)}</span>
+                              {/* Total con el mismo look violeta claro */}
+                              <div className="px-4 py-3 bg-violet-200/80 text-violet-900">
+                                <span className="font-medium">Total:</span>{' '}
+                                <span className="font-extrabold text-violet-800 text-[20px] align-middle">
+                                  {CLP.format(totalCalc)}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="p-3 text-sm leading-6">
+                              {p.items_text || <span className="opacity-70">Sin detalle disponible.</span>}
+                              <div className="mt-3 bg-violet-200/80 text-violet-900 px-4 py-3">
+                                <span className="font-medium">Total:</span>{' '}
+                                <span className="font-extrabold text-violet-800 text-[20px] align-middle">
+                                  {CLP.format(totalCalc)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
