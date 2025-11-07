@@ -2,13 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  User,
+  Table,
+  Loader2,
+  AlertTriangle,
+  Camera,
+  ImagePlus,
+} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
-
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
 type Pedido = {
   id: number; // nro
   cliente: string;
@@ -46,24 +54,6 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
-// Fallback: intenta sacar items desde pedido.detalle (JSON)
-function itemsFromDetalle(detalle: unknown): Item[] {
-  try {
-    if (!detalle || typeof detalle !== 'string') return [];
-    const parsed = JSON.parse(detalle);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((it: any) => ({
-        articulo: String(it.articulo ?? it.nombre ?? it.item ?? '').trim() || 'SIN NOMBRE',
-        qty: Number(it.cantidad ?? it.qty ?? 0),
-        valor: Number(it.valor ?? it.precio ?? 0),
-      }))
-      .filter((x) => x.articulo !== 'SIN NOMBRE' || x.qty > 0 || x.valor > 0);
-  } catch {
-    return [];
-  }
-}
-
 export default function EntregadoPage() {
   const router = useRouter();
 
@@ -82,7 +72,7 @@ export default function EntregadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Modal de “¿Desea editar?” al hacer doble clic en Total
+  // Doble clic en Total -> Editar
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -114,7 +104,7 @@ export default function EntregadoPage() {
           return;
         }
 
-        // Líneas: SOLO por pedido_id (columna existente)
+        // Líneas (¡clave correcta!: pedido_id)
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
@@ -136,13 +126,13 @@ export default function EntregadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) =>
-          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE')
-        );
+        (cli ?? []).forEach((c: any) => {
+          nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE');
+        });
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id);
+          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
           if (!pid) return;
 
           const label =
@@ -164,38 +154,29 @@ export default function EntregadoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal por pedido (prioriza pedido.foto_url; si no, toma de pedido_foto)
+        // Foto principal por pedido (primero pedido.foto_url; si no, de pedido_foto)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.pedido_id);
+          const pid = Number(f.pedido_id ?? f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
         });
 
-        // Mapea pedidos y aplica fallback de detalle->items si no hay líneas
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-          const pid = r.id as number;
-          let items = itemsByPedido.get(pid) ?? [];
-          if (!items.length) {
-            const alt = itemsFromDetalle(r.detalle);
-            if (alt.length) items = alt;
-          }
-          return {
-            id: pid,
-            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-            total: r.total ?? null,
-            estado: r.estado,
-            detalle: r.detalle ?? null,
-            foto_url: fotoByPedido.get(pid) ?? null,
-            pagado: r.pagado ?? false,
-            items,
-          };
-        });
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
+          id: r.id,
+          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+          total: r.total ?? null,
+          estado: r.estado,
+          detalle: r.detalle ?? null,
+          foto_url: fotoByPedido.get(r.id) ?? null,
+          pagado: r.pagado ?? false,
+          items: itemsByPedido.get(r.id) ?? [],
+        }));
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -223,7 +204,7 @@ export default function EntregadoPage() {
   }
 
   // Cambios de estado en Entregado
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
@@ -237,7 +218,7 @@ export default function EntregadoPage() {
       return;
     }
 
-    // En Entregado, si pasa a otro estado lo sacamos de la lista
+    // En Entregado, si cambia a otro estado, sacar de la lista
     if (next !== 'ENTREGADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -285,7 +266,6 @@ export default function EntregadoPage() {
       return;
     }
     if (!file) {
-      // cerramos igual si canceló
       setPickerForPedido(null);
       return;
     }
@@ -305,8 +285,9 @@ export default function EntregadoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      // Guarda relación y setea como foto principal del pedido
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
+      const { error: insErr } = await supabase
+        .from('pedido_foto')
+        .insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
       await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
@@ -319,11 +300,10 @@ export default function EntregadoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cerrar siempre el modal al terminar
+      setPickerForPedido(null); // cerrar siempre
     }
   }
 
-  // Modal de edición desde el total
   function askEdit(id: number) {
     setAskEditForId(id);
   }
@@ -398,7 +378,9 @@ export default function EntregadoPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                      {CLP.format(totalCalc)}
+                    </div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
                 </button>
@@ -450,6 +432,7 @@ export default function EntregadoPage() {
                                 )}
                               </tbody>
                             </table>
+
                             <div
                               className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
                               title="Doble clic para editar pedido"
@@ -502,11 +485,12 @@ export default function EntregadoPage() {
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
+            {/* Orden solicitado: Entregar – Lavar – Guardado – Pendiente/Pago */}
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
-              active={pedidoAbierto?.estado === 'ENTREGAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
               label="Lavar"
@@ -521,7 +505,7 @@ export default function EntregadoPage() {
               active={pedidoAbierto?.estado === 'GUARDADO'}
             />
             <ActionBtn
-              label="Pendiente/Pago"
+              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
