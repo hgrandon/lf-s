@@ -215,10 +215,10 @@ export default function EditarPedidoPage() {
 
               <div className="grid gap-2 sm:flex sm:items-center sm:gap-3 mb-3">
                 <select
-                  className="w-full sm:w-auto min-w-[260px] rounded-xl bg-white/10 border border-white/20 px-3 py-2 outline-none"
-                  value={selArt}
-                  onChange={(e) => setSelArt(e.target.value)}
-                >
+                    className="select-articulo w-full sm:w-auto min-w-[260px] rounded-xl border border-white/20 px-3 py-2 outline-none"
+                    value={selArt}
+                    onChange={(e) => setSelArt(e.target.value)}
+>
                   <option value="">SELECCIONE UN ARTÍCULO</option>
                   {articulos.map((a) => (
                     <option key={a.id} value={a.nombre}>
