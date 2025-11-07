@@ -58,7 +58,8 @@ type GrupoCliente = {
    Constantes
 ========================= */
 const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
-const ORIGIN_ADDR = 'Periodista Mario Peña Carreño 5304, Chile';
+const ORIGIN_ADDR = 'Periodista Mario Peña Carreño 5304, La Serena, Coquimbo, Chile';
+const REGION_HINT = 'La Serena, Coquimbo, Chile';
 const NOMINATIM_HEADERS = { 'User-Agent': 'lf-app/1.0 (contact: lf-app@example.local)' };
 
 /* =========================
@@ -98,7 +99,9 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 
 async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`;
+    // Forzamos la búsqueda solo dentro de la región de Coquimbo
+    const query = `${q}, ${REGION_HINT}`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cl&viewbox=-71.4,-29.8,-70.9,-30.1&bounded=1&q=${encodeURIComponent(query)}`;
     const r = await fetch(url, { headers: NOMINATIM_HEADERS });
     const j = (await r.json()) as any[];
     if (!Array.isArray(j) || j.length === 0) return null;
@@ -349,7 +352,8 @@ export default function EntregarPage() {
     if (typeof lat === 'number' && typeof lng === 'number' && origin) {
       return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${lat},${lng}&travelmode=driving`;
     }
-    const dest = encodeURIComponent((dir ?? '').trim());
+    const dest = encodeURIComponent(`${(dir ?? '').trim()}, ${REGION_HINT}`);
+
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
       ORIGIN_ADDR,
     )}&destination=${dest}&travelmode=driving`;
