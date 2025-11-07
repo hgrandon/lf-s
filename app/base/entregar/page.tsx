@@ -1,25 +1,30 @@
-// app/base/entregar/page.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, ImagePlus } from 'lucide-react';
 
 type Item = { articulo: string; qty: number; valor: number };
+type Estado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+
 type Pedido = {
-  id: number;           // nro
+  id: number;          // nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+  estado: Estado;
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
@@ -31,9 +36,7 @@ function firstFotoFromMixed(input: unknown): string | null {
         const arr = JSON.parse(s);
         if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
         return null;
-      } catch {
-        return null;
-      }
+      } catch { return null; }
     }
     return s;
   }
@@ -43,6 +46,7 @@ function firstFotoFromMixed(input: unknown): string | null {
 
 export default function EntregarPage() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -52,14 +56,18 @@ export default function EntregarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
-  const subtotal = (it: Item) => it.qty * it.valor;
+  // Picker / upload
+  const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const inputCamRef = useRef<HTMLInputElement>(null);
+  const inputFileRef = useRef<HTMLInputElement>(null);
 
-  function snack(msg: string) {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 1800);
-  }
+  // Modal “¿Desea editar?” (doble clic en total)
+  const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
+  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+
+  // Carga
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -70,14 +78,13 @@ export default function EntregarPage() {
         // Pedidos en ENTREGAR
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
+          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'ENTREGAR')
           .order('nro', { ascending: false });
-
         if (e1) throw e1;
 
-        const ids = (rows ?? []).map(r => (r as any).id);
-        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
+        const ids = (rows ?? []).map((r) => (r as any).id);
+        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -87,18 +94,21 @@ export default function EntregarPage() {
           return;
         }
 
+        // Líneas (clave correcta: pedido_id)
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('*')
-          .in('nro', ids);
+          .select('pedido_id, articulo, cantidad, valor')
+          .in('pedido_id', ids);
         if (e2) throw e2;
 
+        // Fotos fallback
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
-          .select('nro, url')
-          .in('nro', ids);
+          .select('pedido_id, url')
+          .in('pedido_id', ids);
         if (e3) throw e3;
 
+        // Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -106,35 +116,32 @@ export default function EntregarPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c: any) => nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE'));
 
+        // Mapear items por pedido
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
+          const pid = Number(l.pedido_id);
           if (!pid) return;
-
           const label = String(
             l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? ''
           ).trim() || 'SIN NOMBRE';
-
-          const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
-          const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
-
+          const qty = Number(l.cantidad ?? l.qty ?? 0);
+          const valor = Number(l.valor ?? l.precio ?? 0);
           const arr = itemsByPedido.get(pid) ?? [];
           arr.push({ articulo: label, qty, valor });
           itemsByPedido.set(pid, arr);
         });
 
+        // Foto principal
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.fotos_urls);
+          const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.nro);
-          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
-            fotoByPedido.set(pid, f.url);
-          }
+          const pid = Number(f.pedido_id);
+          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) fotoByPedido.set(pid, f.url);
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
@@ -160,29 +167,35 @@ export default function EntregarPage() {
         }
       }
     })();
+
     return () => { cancelled = true; };
   }, []);
 
-  // Cambiar estado del seleccionado
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  const subtotal = (it: Item) => it.qty * it.valor;
+
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1800);
+  }
+
+  // Acciones
+  async function changeEstado(id: number, next: Estado) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
       setSaving(false);
-      snack('No se pudo mover el pedido. Intenta de nuevo.');
       return;
     }
 
-    // En ENTREGAR, si cambia a ENTREGADO u otro, lo sacamos del listado
+    // En ENTREGAR, si pasa a otro estado lo retiramos de la lista
     if (next !== 'ENTREGAR') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
       snack(`Pedido #${id} movido a ${next}`);
     }
@@ -193,21 +206,72 @@ export default function EntregarPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
       setSaving(false);
-      snack('No se pudo actualizar el pago.');
       return;
     }
-
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
+  }
+
+  // Foto
+  function openPickerFor(pid: number) { setPickerForPedido(pid); }
+  async function handlePick(kind: 'camera' | 'file') {
+    if (!pickerForPedido) return;
+    if (kind === 'camera') inputCamRef.current?.click();
+    else inputFileRef.current?.click();
+  }
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = '';
+    const pid = pickerForPedido;
+    if (!pid) { setPickerForPedido(null); return; }
+    if (!file) { setPickerForPedido(null); return; }
+
+    try {
+      setUploading((prev) => ({ ...prev, [pid]: true }));
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `pedido-${pid}/${Date.now()}.${ext}`;
+
+      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+
+      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
+      const publicUrl = pub.publicUrl;
+
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
+      if (insErr) throw insErr;
+
+      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      setImageError((prev) => ({ ...prev, [pid]: false }));
+      snack(`Foto subida al pedido #${pid}`);
+    } catch (err) {
+      console.error(err);
+      snack('No se pudo subir la foto.');
+    } finally {
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
+      setPickerForPedido(null);
+    }
+  }
+
+  // Editar
+  function askEdit(id: number) { setAskEditForId(id); }
+  function closeAskEdit() { setAskEditForId(null); }
+  function goEdit() {
+    const id = askEditForId;
+    if (!id) return;
+    setAskEditForId(null);
+    router.push(`/pedido/editar/${id}`);
   }
 
   return (
@@ -240,10 +304,10 @@ export default function EntregarPage() {
           <div className="text-white/80">No hay pedidos en estado ENTREGAR.</div>
         )}
 
-        {!loading && !errMsg && pedidos.map(p => {
+        {!loading && !errMsg && pedidos.map((p) => {
           const isOpen = openId === p.id;
           const detOpen = !!openDetail[p.id];
-          const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
+          const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
           return (
             <div
@@ -278,7 +342,7 @@ export default function EntregarPage() {
                 <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                   <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                     <button
-                      onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                      onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                       className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                     >
                       <div className="flex items-center gap-2">
@@ -305,11 +369,11 @@ export default function EntregarPage() {
                                 p.items.map((it, idx) => (
                                   <tr key={idx}>
                                     <td className="px-3 py-2 truncate">
-                                      {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
+                                      {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
                                     </td>
                                     <td className="px-3 py-2 text-right">{it.qty}</td>
                                     <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                    <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                    <td className="px-3 py-2 text-right">{CLP.format(subtotal(it))}</td>
                                   </tr>
                                 ))
                               ) : (
@@ -321,7 +385,12 @@ export default function EntregarPage() {
                               )}
                             </tbody>
                           </table>
-                          <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+
+                          <div
+                            className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
+                            title="Doble clic para editar pedido"
+                            onDoubleClick={() => askEdit(p.id)}
+                          >
                             Total: {CLP.format(totalCalc)}
                           </div>
                         </div>
@@ -330,7 +399,11 @@ export default function EntregarPage() {
 
                     <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                       {p.foto_url && !imageError[p.id] ? (
-                        <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
+                        <div
+                          className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                          onDoubleClick={() => openPickerFor(p.id)}
+                          title="Doble clic para cambiar la imagen"
+                        >
                           <Image
                             src={p.foto_url!}
                             alt={`Foto pedido ${p.id}`}
@@ -338,15 +411,19 @@ export default function EntregarPage() {
                             height={0}
                             sizes="100vw"
                             style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                            onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                            onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                             priority={false}
                           />
                         </div>
                       ) : (
-                        <div className="w-full p-6 text-sm text-white/80 flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => openPickerFor(p.id)}
+                          className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                          title="Agregar imagen"
+                        >
                           <ImagePlus size={18} />
-                          <span>Sin imagen adjunta.</span>
-                        </div>
+                          <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -357,15 +434,21 @@ export default function EntregarPage() {
         })}
       </section>
 
-      {/* Acciones inferiores */}
+      {/* Barra de acciones (Entregar) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <ActionBtn
-              label="Entregado"
+              label="Entregar"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
-              active={pedidoAbierto?.estado === 'ENTREGADO'}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
+            />
+            <ActionBtn
+              label="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
             />
             <ActionBtn
               label="Guardado"
@@ -401,30 +484,70 @@ export default function EntregarPage() {
           {notice}
         </div>
       )}
+
+      {/* Modal editar */}
+      {askEditForId && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-black/50"
+          onClick={closeAskEdit}
+          onKeyDown={(e) => e.key === 'Escape' && closeAskEdit()}
+          tabIndex={-1}
+        >
+          <div
+            className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
+            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <div className="flex gap-2">
+              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+                Editar
+              </button>
+              <button onClick={closeAskEdit} className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal cámara/archivo */}
+      {pickerForPedido && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
+          <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <div className="grid gap-2">
+              <button onClick={() => handlePick('camera')} className="flex items-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+                <Camera size={18} /> Sacar foto
+              </button>
+              <button onClick={() => handlePick('file')} className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200">
+                <ImagePlus size={18} /> Buscar en archivos
+              </button>
+              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* inputs ocultos */}
+      <input ref={inputCamRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileSelected} />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
 
 function ActionBtn({
-  label,
-  onClick,
-  disabled,
-  active,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  active?: boolean;
-}) {
+  label, onClick, disabled, active,
+}: { label: string; onClick: () => void; disabled?: boolean; active?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
