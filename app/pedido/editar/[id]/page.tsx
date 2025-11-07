@@ -22,8 +22,7 @@ type PedidoHead = {
 
 type Cliente = { telefono: string; nombre: string | null };
 
-// catálogo: dejamos abierto para adaptarnos al esquema real
-type ArticuloCat = Record<string, any>;
+type ArticuloCat = { id: number; nombre: string; precio: number; activo: boolean };
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -34,19 +33,16 @@ const CLP = new Intl.NumberFormat('es-CL', {
 export default function EditarPedidoPage() {
   const router = useRouter();
   const params = useParams();
-  const id = Number(params?.id); // nro del pedido
+  const id = Number(params?.id);
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
-
   const [head, setHead] = useState<PedidoHead | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [articulos, setArticulos] = useState<ArticuloCat[]>([]);
   const [selArt, setSelArt] = useState<string>('');
   const [saving, setSaving] = useState(false);
-
-  // Modal eliminar
   const [toDelete, setToDelete] = useState<null | { idx: number; linea: Linea }>(null);
 
   const total = useMemo(
@@ -61,54 +57,44 @@ export default function EditarPedidoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedido encabezado
+        // --- PEDIDO PRINCIPAL ---
         const { data: pRow, error: eP } = await supabase
           .from('pedido')
           .select('nro, telefono, estado, pagado')
           .eq('nro', id)
-          .limit(1)
           .maybeSingle();
         if (eP) throw eP;
         if (!pRow) throw new Error('Pedido no encontrado');
 
-        // Cliente
+        // --- CLIENTE ---
         let cli: Cliente | null = null;
         if (pRow.telefono) {
           const { data: cRow, error: eC } = await supabase
             .from('clientes')
             .select('telefono, nombre')
             .eq('telefono', pRow.telefono)
-            .limit(1)
             .maybeSingle();
           if (eC) throw eC;
           cli = cRow ?? null;
         }
 
-        // Líneas del pedido
+        // --- LINEAS DEL PEDIDO ---
         const { data: lRows, error: eL } = await supabase
           .from('pedido_linea')
           .select('id, pedido_id, articulo, cantidad, valor')
           .eq('pedido_id', id);
         if (eL) throw eL;
 
-        // Catálogo de artículos:
-        // 1) intentamos en "articulo"
-        // 2) si falla, probamos "articulos"
-        let aRows: any[] = [];
-        const tryArticulo = await supabase.from('articulo').select('*');
-        if (tryArticulo.error) {
-          const tryArticulos = await supabase.from('articulos').select('*');
-          if (tryArticulos.error) {
-            throw tryArticulos.error; // si tampoco existe, mostramos el error real
-          } else {
-            aRows = tryArticulos.data ?? [];
-          }
-        } else {
-          aRows = tryArticulo.data ?? [];
-        }
+        // --- ARTICULOS ACTIVOS ---
+        const { data: aRows, error: eA } = await supabase
+          .from('articulo')
+          .select('id, nombre, precio, activo')
+          .eq('activo', true)
+          .order('nombre', { ascending: true });
+        if (eA) throw eA;
 
         if (!cancel) {
-          setHead(pRow as PedidoHead);
+          setHead(pRow);
           setCliente(cli);
           setLineas(
             (lRows ?? []).map((l: any) => ({
@@ -119,7 +105,7 @@ export default function EditarPedidoPage() {
               valor: Number(l.valor ?? 0),
             }))
           );
-          setArticulos(aRows);
+          setArticulos(aRows ?? []);
           setLoading(false);
         }
       } catch (err: any) {
@@ -135,45 +121,13 @@ export default function EditarPedidoPage() {
     };
   }, [id]);
 
-  // Obtiene un nombre "visible" desde el catálogo cualquiera sea el esquema
-  function nombreFromCat(a: ArticuloCat): string {
-    return (
-      a?.nombre ??
-      a?.articulo ??
-      a?.descripcion ??
-      a?.title ??
-      a?.name ??
-      ''
-    ).toString();
-  }
-
-  // Obtiene un valor numérico desde el catálogo cualquiera sea el esquema
-  function valorFromCat(a: ArticuloCat): number {
-    const candidates = [
-      a?.valor,
-      a?.precio,
-      a?.valor_unitario,
-      a?.precio_unitario,
-      a?.monto,
-      a?.amount,
-      a?.cost,
-    ];
-    const found = candidates.find((v) => Number.isFinite(Number(v)));
-    const n = Number(found ?? 0);
-    return Number.isFinite(n) ? n : 0;
-  }
-
   function agregarLineaDesdeSelect() {
     if (!selArt) return;
-    const cat = articulos.find(
-      (a) => nombreFromCat(a).toUpperCase() === selArt.toUpperCase()
-    );
-    const nombre = cat ? nombreFromCat(cat) : selArt;
-    const val = cat ? valorFromCat(cat) : 0;
-
+    const cat = articulos.find((a) => a.nombre === selArt);
+    if (!cat) return;
     setLineas((prev) => [
       ...prev,
-      { pedido_id: id, articulo: nombre, cantidad: 1, valor: val, id: undefined },
+      { pedido_id: id, articulo: cat.nombre, cantidad: 1, valor: cat.precio, id: undefined },
     ]);
     setSelArt('');
   }
@@ -190,25 +144,23 @@ export default function EditarPedidoPage() {
       setSaving(true);
       setErrMsg(null);
 
-      // 1) borrar todas las líneas del pedido
       const { error: delErr } = await supabase.from('pedido_linea').delete().eq('pedido_id', id);
       if (delErr) throw delErr;
 
-      // 2) insertar el estado actual
       const payload = lineas
-        .filter((l) => (l.articulo ?? '').trim() !== '')
+        .filter((l) => l.articulo.trim() !== '')
         .map((l) => ({
           pedido_id: id,
           articulo: l.articulo.trim(),
           cantidad: Number(l.cantidad || 0),
           valor: Number(l.valor || 0),
         }));
+
       if (payload.length) {
         const { error: insErr } = await supabase.from('pedido_linea').insert(payload);
         if (insErr) throw insErr;
       }
 
-      // 3) actualizar total del pedido
       const { error: upErr } = await supabase.from('pedido').update({ total }).eq('nro', id);
       if (upErr) throw upErr;
 
@@ -247,7 +199,6 @@ export default function EditarPedidoPage() {
 
         {!loading && head && (
           <>
-            {/* Tarjeta cliente */}
             <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
               <div className="text-xs uppercase text-white/70 mb-1">Cliente</div>
               <div className="text-xl font-extrabold tracking-wide">
@@ -259,11 +210,9 @@ export default function EditarPedidoPage() {
               </div>
             </div>
 
-            {/* Panel detalle */}
             <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
               <div className="text-sm font-semibold mb-3">Detalle</div>
 
-              {/* Listbox de artículos */}
               <div className="grid gap-2 sm:flex sm:items-center sm:gap-3 mb-3">
                 <select
                   className="w-full sm:w-auto min-w-[260px] rounded-xl bg-white/10 border border-white/20 px-3 py-2 outline-none"
@@ -271,15 +220,11 @@ export default function EditarPedidoPage() {
                   onChange={(e) => setSelArt(e.target.value)}
                 >
                   <option value="">SELECCIONE UN ARTÍCULO</option>
-                  {articulos.map((a, i) => {
-                    const nombre = nombreFromCat(a);
-                    const val = valorFromCat(a);
-                    return (
-                      <option key={`${a?.id ?? nombre ?? i}`} value={nombre}>
-                        {nombre} {val ? `(${CLP.format(val)})` : ''}
-                      </option>
-                    );
-                  })}
+                  {articulos.map((a) => (
+                    <option key={a.id} value={a.nombre}>
+                      {a.nombre} ({CLP.format(a.precio)})
+                    </option>
+                  ))}
                 </select>
 
                 <button
@@ -291,7 +236,6 @@ export default function EditarPedidoPage() {
                 </button>
               </div>
 
-              {/* Tabla de líneas. Clic en fila → modal eliminar */}
               <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                 <table className="w-full text-sm">
                   <thead className="bg-white/10 text-white/90">
@@ -312,45 +256,16 @@ export default function EditarPedidoPage() {
                       </tr>
                     )}
                     {lineas.map((l, idx) => {
-                      const subtotal = (Number(l.cantidad) || 0) * (Number(l.valor) || 0);
+                      const subtotal = l.cantidad * l.valor;
                       return (
                         <tr
                           key={`${idx}-${l.articulo}`}
                           className="hover:bg-white/5 cursor-pointer"
                           onClick={() => setToDelete({ idx, linea: l })}
                         >
-                          <td className="px-3 py-2">
-                            <input
-                              value={l.articulo}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) =>
-                                setLineas((prev) =>
-                                  prev.map((x, i) => (i === idx ? { ...x, articulo: e.target.value } : x))
-                                )
-                              }
-                              className="w-full rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              value={l.cantidad}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setCantidad(idx, Number(e.target.value))}
-                              className="w-20 text-right rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              value={l.valor}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setValor(idx, Number(e.target.value))}
-                              className="w-28 text-right rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
-                            />
-                          </td>
+                          <td className="px-3 py-2">{l.articulo}</td>
+                          <td className="px-3 py-2 text-right">{l.cantidad}</td>
+                          <td className="px-3 py-2 text-right">{CLP.format(l.valor)}</td>
                           <td className="px-3 py-2 text-right">{CLP.format(subtotal)}</td>
                           <td className="px-3 py-2 text-right">
                             <button
@@ -376,7 +291,6 @@ export default function EditarPedidoPage() {
               </div>
             </div>
 
-            {/* Botón guardar */}
             <div className="flex justify-end">
               <button
                 onClick={guardarCambios}
@@ -391,7 +305,6 @@ export default function EditarPedidoPage() {
         )}
       </section>
 
-      {/* Modal eliminar línea */}
       {toDelete && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 px-4">
           <div className="w-[520px] max-w-full rounded-2xl bg-white text-violet-900 shadow-2xl overflow-hidden">
