@@ -109,6 +109,12 @@ async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number }
   }
 }
 
+// dirección válida para permitir ENTREGAR
+function isBadAddress(d?: string | null) {
+  const t = (d ?? '').trim().toUpperCase();
+  return !t || t === 'LOCAL' || t === 'SIN DIRECCION' || t === 'SIN DIRECCIÓN' || t === 'S/D';
+}
+
 /* =========================
    Página ENTREGAR
 ========================= */
@@ -209,18 +215,13 @@ export default function EntregarPage() {
           byTel.set(String(c.telefono), c);
         }
 
-        // pequeña cola para no saturar Nominatim
         for (const tel of tels) {
           const c = byTel.get(tel);
           if (c && (!c.lat || !c.lng)) {
             const q = `${c.direccion ?? ''}, Chile`;
             const geo = await geocodeNominatim(q);
             if (geo) {
-              // persistir para siguientes visitas
-              await supabase
-                .from('clientes')
-                .update({ lat: geo.lat, lng: geo.lng })
-                .eq('telefono', tel);
+              await supabase.from('clientes').update({ lat: geo.lat, lng: geo.lng }).eq('telefono', tel);
               c.lat = geo.lat;
               c.lng = geo.lng;
             }
@@ -260,7 +261,11 @@ export default function EntregarPage() {
         });
 
         // 7) Distancias y orden por distancia
-        const arr: GrupoCliente[] = Array.from(gruposTmp.values());
+        let arr: GrupoCliente[] = Array.from(gruposTmp.values());
+
+        // Filtrar clientes sin dirección válida (no deben entrar a ENTREGAR)
+        arr = arr.filter((g) => !isBadAddress(g.direccion));
+
         if (origin) {
           arr.forEach((g) => {
             if (typeof g.lat === 'number' && typeof g.lng === 'number') {
@@ -304,7 +309,6 @@ export default function EntregarPage() {
       console.error(error);
       setGrupos(prev);
     } else {
-      // si sale de ENTREGAR, lo quitamos
       if (next !== 'ENTREGAR') {
         setGrupos((curr) =>
           curr
@@ -345,7 +349,6 @@ export default function EntregarPage() {
     if (typeof lat === 'number' && typeof lng === 'number' && origin) {
       return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${lat},${lng}&travelmode=driving`;
     }
-    // fallback por dirección (si no hay coords)
     const dest = encodeURIComponent((dir ?? '').trim());
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
       ORIGIN_ADDR,
@@ -360,14 +363,13 @@ export default function EntregarPage() {
   }
 
   function gmapsRutaOrdenada() {
-    // Construye una ruta con waypoints en el orden de la lista
     const destinos = grupos
       .map((g) =>
         typeof g.lat === 'number' && typeof g.lng === 'number'
           ? `${g.lat},${g.lng}`
           : encodeURIComponent(g.direccion),
       )
-      .slice(0, 15); // límite razonable de waypoints
+      .slice(0, 15);
 
     if (destinos.length === 0) return '#';
     const originStr = origin ? `${origin.lat},${origin.lng}` : encodeURIComponent(ORIGIN_ADDR);
@@ -406,7 +408,7 @@ export default function EntregarPage() {
           </div>
         )}
 
-        {!loading && grupos.length === 0 && <div className="text-white/85">No hay pedidos en ENTREGAR.</div>}
+        {!loading && grupos.length === 0 && <div className="text-white/85">No hay pedidos en ENTREGAR con dirección válida.</div>}
 
         {!loading &&
           grupos.map((g) => {
@@ -421,7 +423,14 @@ export default function EntregarPage() {
                 ].join(' ')}
               >
                 <button
-                  onClick={() => setOpenTel(open ? null : g.telefono)}
+                  onClick={() => {
+                    // doble seguridad: no abrir acordeón si no hay dirección válida
+                    if (isBadAddress(g.direccion)) {
+                      alert(`El cliente ${g.nombre} no tiene dirección válida. Este pedido no puede entregarse.`);
+                      return;
+                    }
+                    setOpenTel(open ? null : g.telefono);
+                  }}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                 >
                   <div className="flex items-center gap-3">
@@ -484,7 +493,7 @@ export default function EntregarPage() {
                           <div key={p.id} className="rounded-xl bg-white/8 border border-white/15 p-3">
                             <div className="flex items-center justify-between">
                               <div className="text-sm font-semibold">
-                                Pedido N° {p.id} • {p.pagado ? 'PAGADO' : 'PENDIENTE'}
+                                Pedido N° {p.id} — {g.direccion} • {p.pagado ? 'PAGADO' : 'PENDIENTE'}
                               </div>
                               <div className="text-sm font-extrabold">{CLP.format(totalCalc)}</div>
                             </div>
