@@ -46,6 +46,24 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
+// Intenta parsear un "detalle" JSON con items
+function itemsFromDetalle(detalle: unknown): Item[] {
+  try {
+    if (!detalle || typeof detalle !== 'string') return [];
+    const parsed = JSON.parse(detalle);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((it: any) => ({
+        articulo: String(it.articulo ?? it.nombre ?? it.item ?? '').trim() || 'SIN NOMBRE',
+        qty: Number(it.cantidad ?? it.qty ?? 0),
+        valor: Number(it.valor ?? it.precio ?? 0),
+      }))
+      .filter((x) => x.qty > 0 || x.valor > 0 || x.articulo !== 'SIN NOMBRE');
+  } catch {
+    return [];
+  }
+}
+
 export default function EntregadoPage() {
   const router = useRouter();
 
@@ -96,26 +114,37 @@ export default function EntregadoPage() {
           return;
         }
 
-        // Líneas del pedido
-        const { data: lineas, error: e2 } = await supabase
+        // Líneas por pedido_id
+        const { data: lineasById, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('pedido_id, articulo, cantidad, valor')
+          .select('pedido_id, pedido_nro, articulo, cantidad, valor')
           .in('pedido_id', ids);
+
         if (e2) throw e2;
 
+        // Líneas por pedido_nro (por si tu dataset usa esa FK)
+        const { data: lineasByNro, error: e3 } = await supabase
+          .from('pedido_linea')
+          .select('pedido_id, pedido_nro, articulo, cantidad, valor')
+          .in('pedido_nro', ids);
+
+        if (e3) throw e3;
+
+        const lineas = [...(lineasById ?? []), ...(lineasByNro ?? [])];
+
         // Fotos (fallback)
-        const { data: fotos, error: e3 } = await supabase
+        const { data: fotos, error: e4 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
           .in('pedido_id', ids);
-        if (e3) throw e3;
+        if (e4) throw e4;
 
         // Clientes
-        const { data: cli, error: e4 } = await supabase
+        const { data: cli, error: e5 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
-        if (e4) throw e4;
+        if (e5) throw e5;
 
         const nombreByTel = new Map<string, string>();
         (cli ?? []).forEach((c) =>
@@ -146,7 +175,7 @@ export default function EntregadoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal por pedido
+        // Foto principal por pedido (prioriza pedido.foto_url; si no, toma de pedido_foto)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
@@ -159,16 +188,25 @@ export default function EntregadoPage() {
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
+        // Mapea pedidos y aplica fallback de detalle->items si no hay líneas
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          const pid = r.id as number;
+          let items = itemsByPedido.get(pid) ?? [];
+          if (!items.length) {
+            const alt = itemsFromDetalle(r.detalle);
+            if (alt.length) items = alt;
+          }
+          return {
+            id: pid,
+            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: fotoByPedido.get(pid) ?? null,
+            pagado: r.pagado ?? false,
+            items,
+          };
+        });
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -210,7 +248,6 @@ export default function EntregadoPage() {
       return;
     }
 
-    // En Entregado, si pasa a otro estado lo sacamos de la lista
     if (next !== 'ENTREGADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -381,7 +418,7 @@ export default function EntregadoPage() {
                         onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items中心 gap-2">
                           <Table size={16} />
                           <span className="font-semibold">Detalle Pedido</span>
                         </div>
@@ -421,7 +458,7 @@ export default function EntregadoPage() {
                                 )}
                               </tbody>
                             </table>
-                            {/* Doble clic en TOTAL para abrir modal de edición */}
+
                             <div
                               className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
                               title="Doble clic para editar pedido"
