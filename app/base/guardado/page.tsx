@@ -7,18 +7,24 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+
 type Pedido = {
-  id: number; // alias de nro
+  id: number; // nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+  estado: PedidoEstado;
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
@@ -52,13 +58,16 @@ export default function GuardadoPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // picker de foto
+  // Picker / upload
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  // Modal “¿Desea editar?” al hacer doble clic en Total
+  const [askEditForId, setAskEditForId] = useState<number | null>(null);
+
+  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,17 +76,17 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Traer pedidos en estado GUARDADO
+        // Pedidos en GUARDADO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
+          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'GUARDADO')
           .order('nro', { ascending: false });
 
         if (e1) throw e1;
 
-        const ids = (rows ?? []).map(r => (r as any).id);
-        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
+        const ids = (rows ?? []).map((r) => (r as any).id);
+        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -87,18 +96,21 @@ export default function GuardadoPage() {
           return;
         }
 
+        // Líneas del pedido
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('*')
-          .in('nro', ids);
+          .select('pedido_id, articulo, cantidad, valor')
+          .in('pedido_id', ids);
         if (e2) throw e2;
 
+        // Fotos (fallback)
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
-          .select('nro, url')
-          .in('nro', ids);
+          .select('pedido_id, url')
+          .in('pedido_id', ids);
         if (e3) throw e3;
 
+        // Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -106,11 +118,13 @@ export default function GuardadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE')
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
+          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
           if (!pid) return;
 
           const label =
@@ -132,20 +146,21 @@ export default function GuardadoPage() {
           itemsByPedido.set(pid, arr);
         });
 
+        // Foto principal por pedido (prioriza pedido.foto_url; si no, toma de pedido_foto)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.fotos_urls);
+          const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.nro);
+          const pid = Number(f.pedido_id ?? f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id, // alias nro
+          id: r.id,
           cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
           total: r.total ?? null,
           estado: r.estado,
@@ -180,26 +195,24 @@ export default function GuardadoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambios de estado: usar siempre .eq('nro', id)
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  // Cambios de estado en Guardado
+  async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
       setSaving(false);
-      snack('No se pudo mover el pedido. Intenta de nuevo.');
       return;
     }
 
-    // En GUARDADO, si cambia a otro estado, se saca del listado
+    // En Guardado, si pasa a otro estado lo sacamos de la lista
     if (next !== 'GUARDADO') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
       snack(`Pedido #${id} movido a ${next}`);
     }
@@ -210,16 +223,14 @@ export default function GuardadoPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
       setSaving(false);
-      snack('No se pudo actualizar el pago.');
       return;
     }
 
@@ -227,7 +238,11 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  // ----------- Subida de foto -----------
+  // ------- Subida de foto -------
+  function openPickerFor(pid: number) {
+    setPickerForPedido(pid);
+  }
+
   async function handlePick(kind: 'camera' | 'file') {
     if (!pickerForPedido) return;
     if (kind === 'camera') inputCamRef.current?.click();
@@ -235,13 +250,21 @@ export default function GuardadoPage() {
   }
 
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // reset
+    const file = e.target.files?.[0] || null;
+    e.target.value = '';
     const pid = pickerForPedido;
-    if (!file || !pid) return;
+    if (!pid) {
+      setPickerForPedido(null);
+      return;
+    }
+    if (!file) {
+      // cerramos igual si canceló
+      setPickerForPedido(null);
+      return;
+    }
 
     try {
-      setUploading(prev => ({ ...prev, [pid]: true }));
+      setUploading((prev) => ({ ...prev, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
@@ -255,19 +278,36 @@ export default function GuardadoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ nro: pid, url: publicUrl });
+      // Guarda relación y setea como foto principal del pedido
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      setPedidos(prev => prev.map(p => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
-      setImageError(prev => ({ ...prev, [pid]: false }));
+      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+
+      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      setImageError((prev) => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading(prev => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null);
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
+      setPickerForPedido(null); // cerrar siempre el modal al terminar
     }
+  }
+
+  // Modal de edición desde el total
+  function askEdit(id: number) {
+    setAskEditForId(id);
+  }
+  function closeAskEdit() {
+    setAskEditForId(null);
+  }
+  function goEdit() {
+    const id = askEditForId;
+    if (!id) return;
+    setAskEditForId(null);
+    router.push(`/pedido/editar/${id}`);
   }
 
   return (
@@ -302,10 +342,10 @@ export default function GuardadoPage() {
 
         {!loading &&
           !errMsg &&
-          pedidos.map(p => {
+          pedidos.map((p) => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + subtotal(it), 0) : p.total ?? 0;
+            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
             return (
               <div
@@ -340,7 +380,7 @@ export default function GuardadoPage() {
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
-                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
@@ -367,7 +407,7 @@ export default function GuardadoPage() {
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
+                                        {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -383,7 +423,12 @@ export default function GuardadoPage() {
                                 )}
                               </tbody>
                             </table>
-                            <div className="px-3 py-3 bg-white/10 text-right font-extrabold text-white">
+                            {/* Doble clic en TOTAL para abrir modal de edición */}
+                            <div
+                              className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
+                              title="Doble clic para editar pedido"
+                              onDoubleClick={() => askEdit(p.id)}
+                            >
                               Total: {CLP.format(totalCalc)}
                             </div>
                           </div>
@@ -392,7 +437,11 @@ export default function GuardadoPage() {
 
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
-                          <div className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10">
+                          <div
+                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                            onDoubleClick={() => openPickerFor(p.id)}
+                            title="Doble clic para cambiar la imagen"
+                          >
                             <Image
                               src={p.foto_url!}
                               alt={`Foto pedido ${p.id}`}
@@ -400,13 +449,13 @@ export default function GuardadoPage() {
                               height={0}
                               sizes="100vw"
                               style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                               priority={false}
                             />
                           </div>
                         ) : (
                           <button
-                            onClick={() => setPickerForPedido(p.id)}
+                            onClick={() => openPickerFor(p.id)}
                             className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
                             title="Agregar imagen"
                           >
@@ -423,21 +472,21 @@ export default function GuardadoPage() {
           })}
       </section>
 
-      {/* Acciones inferiores */}
+      {/* Barra de acciones (Guardado) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
+            <ActionBtn
+              label="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
+            />
             <ActionBtn
               label="Lavando"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
-            />
-            <ActionBtn
-              label="Entregar"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
-              active={pedidoAbierto?.estado === 'ENTREGAR'}
             />
             <ActionBtn
               label="Entregado"
@@ -446,7 +495,7 @@ export default function GuardadoPage() {
               active={pedidoAbierto?.estado === 'ENTREGADO'}
             />
             <ActionBtn
-              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
+              label="Pendiente/Pago"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
@@ -474,7 +523,39 @@ export default function GuardadoPage() {
         </div>
       )}
 
-      {/* Modal simple para elegir origen de la imagen */}
+      {/* Modal “¿Desea editar?” */}
+      {askEditForId && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-black/50"
+          onClick={closeAskEdit}
+          onKeyDown={(e) => e.key === 'Escape' && closeAskEdit()}
+          tabIndex={-1}
+        >
+          <div
+            className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
+            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={goEdit}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
+                Editar
+              </button>
+              <button
+                onClick={closeAskEdit}
+                className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para elegir cámara/archivo */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
@@ -494,10 +575,7 @@ export default function GuardadoPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button
-                onClick={() => setPickerForPedido(null)}
-                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
-              >
+              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
                 Cancelar
               </button>
             </div>
@@ -514,13 +592,7 @@ export default function GuardadoPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input
-        ref={inputFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onFileSelected}
-      />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
@@ -542,9 +614,7 @@ function ActionBtn({
       disabled={disabled}
       className={[
         'rounded-xl py-3 text-sm font-medium border transition',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
