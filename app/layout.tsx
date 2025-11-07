@@ -15,55 +15,53 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-/** Viewport meta para móviles / PWA */
+/** Viewport / PWA */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#8B5CF6", // coincide con el tema
+  themeColor: "#8B5CF6",
   colorScheme: "light",
 };
 
 export const metadata: Metadata = {
   applicationName: "Lavandería Fabiola",
+  description: "Gestión de pedidos y clientes de Lavandería Fabiola.",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#8B5CF6",
   title: {
     default: "Lavandería Fabiola",
     template: "%s | Lavandería Fabiola",
   },
-  description: "Gestión de pedidos y clientes de Lavandería Fabiola.",
-  manifest: "/manifest.webmanifest",
-  themeColor: "#8B5CF6",
 
-  // Íconos del sitio y PWA
+  /** Íconos (asegúrate de tenerlos en /public) */
   icons: {
     icon: [
       { url: "/favicon.ico" },
-      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
     ],
-    apple: "/apple-touch-icon.png",
-    shortcut: "/favicon.ico",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    shortcut: ["/favicon.ico"],
   },
 
-  // PWA en iOS
+  /** PWA en iOS */
   appleWebApp: {
     capable: true,
     title: "Lavandería Fabiola",
     statusBarStyle: "default",
   },
 
-  // SEO / Social
+  /** Evita autolink de teléfonos en iOS y mejora SEO básico */
+  formatDetection: { telephone: false, address: false, email: false },
+  category: "business",
+
+  /** Social */
   openGraph: {
     title: "Lavandería Fabiola",
     description: "Gestión moderna y eficiente para tu lavandería.",
     url: "https://lf-s.vercel.app",
     siteName: "Lavandería Fabiola",
-    images: [
-      {
-        url: "/icon.png",
-        width: 512,
-        height: 512,
-        alt: "Lavandería Fabiola",
-      },
-    ],
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Lavandería Fabiola" }],
     locale: "es_CL",
     type: "website",
   },
@@ -71,23 +69,19 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Lavandería Fabiola",
     description: "Gestión moderna y eficiente para tu lavandería.",
-    images: ["/icon.png"],
+    images: ["/icon-512.png"],
   },
 
-  // Canonical básico (ajústalo si tuvieras rutas públicas)
-  alternates: {
-    canonical: "/",
-    languages: { "es-CL": "/" },
-  },
-  robots: {
-    index: true,
-    follow: true,
+  alternates: { canonical: "/", languages: { "es-CL": "/" } },
+  robots: { index: true, follow: true },
+
+  /** Metas extra que algunos launchers leen */
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="es"
@@ -95,7 +89,6 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen antialiased text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
-        {/* Capa de “brillo” sutil global */}
         <div
           aria-hidden
           className="pointer-events-none fixed inset-0 bg-[radial-gradient(75%_50%_at_50%_0%,rgba(255,255,255,0.12),transparent)]"
