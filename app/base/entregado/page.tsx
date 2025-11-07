@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type Pedido = {
   id: number; // nro
@@ -46,7 +46,7 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
-// Intenta parsear un "detalle" JSON con items
+// Fallback: intenta sacar items desde pedido.detalle (JSON)
 function itemsFromDetalle(detalle: unknown): Item[] {
   try {
     if (!detalle || typeof detalle !== 'string') return [];
@@ -58,7 +58,7 @@ function itemsFromDetalle(detalle: unknown): Item[] {
         qty: Number(it.cantidad ?? it.qty ?? 0),
         valor: Number(it.valor ?? it.precio ?? 0),
       }))
-      .filter((x) => x.qty > 0 || x.valor > 0 || x.articulo !== 'SIN NOMBRE');
+      .filter((x) => x.articulo !== 'SIN NOMBRE' || x.qty > 0 || x.valor > 0);
   } catch {
     return [];
   }
@@ -82,7 +82,7 @@ export default function EntregadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Modal “¿Desea editar?” al hacer doble clic en Total
+  // Modal de “¿Desea editar?” al hacer doble clic en Total
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -114,37 +114,26 @@ export default function EntregadoPage() {
           return;
         }
 
-        // Líneas por pedido_id
-        const { data: lineasById, error: e2 } = await supabase
+        // Líneas: SOLO por pedido_id (columna existente)
+        const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('pedido_id, pedido_nro, articulo, cantidad, valor')
+          .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
-
         if (e2) throw e2;
 
-        // Líneas por pedido_nro (por si tu dataset usa esa FK)
-        const { data: lineasByNro, error: e3 } = await supabase
-          .from('pedido_linea')
-          .select('pedido_id, pedido_nro, articulo, cantidad, valor')
-          .in('pedido_nro', ids);
-
-        if (e3) throw e3;
-
-        const lineas = [...(lineasById ?? []), ...(lineasByNro ?? [])];
-
         // Fotos (fallback)
-        const { data: fotos, error: e4 } = await supabase
+        const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
           .in('pedido_id', ids);
-        if (e4) throw e4;
+        if (e3) throw e3;
 
         // Clientes
-        const { data: cli, error: e5 } = await supabase
+        const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
           .in('telefono', tels);
-        if (e5) throw e5;
+        if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
         (cli ?? []).forEach((c) =>
@@ -153,7 +142,7 @@ export default function EntregadoPage() {
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
+          const pid = Number(l.pedido_id);
           if (!pid) return;
 
           const label =
@@ -182,7 +171,7 @@ export default function EntregadoPage() {
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.pedido_id ?? f.nro);
+          const pid = Number(f.pedido_id);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
@@ -234,7 +223,7 @@ export default function EntregadoPage() {
   }
 
   // Cambios de estado en Entregado
-  async function changeEstado(id: number, next: PedidoEstado) {
+  async function changeEstado(id: number, next: Pedido['estado']) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
@@ -248,6 +237,7 @@ export default function EntregadoPage() {
       return;
     }
 
+    // En Entregado, si pasa a otro estado lo sacamos de la lista
     if (next !== 'ENTREGADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -295,6 +285,7 @@ export default function EntregadoPage() {
       return;
     }
     if (!file) {
+      // cerramos igual si canceló
       setPickerForPedido(null);
       return;
     }
@@ -314,6 +305,7 @@ export default function EntregadoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
+      // Guarda relación y setea como foto principal del pedido
       const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
@@ -327,7 +319,7 @@ export default function EntregadoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null);
+      setPickerForPedido(null); // cerrar siempre el modal al terminar
     }
   }
 
@@ -418,7 +410,7 @@ export default function EntregadoPage() {
                         onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
-                        <div className="flex items中心 gap-2">
+                        <div className="flex items-center gap-2">
                           <Table size={16} />
                           <span className="font-semibold">Detalle Pedido</span>
                         </div>
@@ -458,7 +450,6 @@ export default function EntregadoPage() {
                                 )}
                               </tbody>
                             </table>
-
                             <div
                               className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
                               title="Doble clic para editar pedido"
@@ -512,16 +503,16 @@ export default function EntregadoPage() {
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
             <ActionBtn
+              label="Entregar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
+            />
+            <ActionBtn
               label="Lavar"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
               active={pedidoAbierto?.estado === 'LAVAR'}
-            />
-            <ActionBtn
-              label="Lavando"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
-              active={pedidoAbierto?.estado === 'LAVANDO'}
             />
             <ActionBtn
               label="Guardado"
