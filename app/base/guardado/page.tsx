@@ -477,10 +477,10 @@ export default function GuardadoPage() {
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
             <ActionBtn
-              label="Lavar"
+              label="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
-              active={pedidoAbierto?.estado === 'LAVAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
             />
             <ActionBtn
               label="Lavando"
