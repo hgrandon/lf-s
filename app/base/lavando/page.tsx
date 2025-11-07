@@ -18,7 +18,11 @@ type Pedido = {
   items?: Item[];
 };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
@@ -58,7 +62,7 @@ export default function LavandoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find(p => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,14 +74,14 @@ export default function LavandoPage() {
         // Pedidos en LAVANDO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, fotos_urls')
+          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'LAVANDO')
           .order('nro', { ascending: false });
 
         if (e1) throw e1;
 
-        const ids = (rows ?? []).map(r => (r as any).id);
-        const tels = (rows ?? []).map(r => (r as any).telefono).filter(Boolean);
+        const ids = (rows ?? []).map((r) => (r as any).id);
+        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -90,15 +94,15 @@ export default function LavandoPage() {
         // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
-          .select('*')
-          .in('nro', ids);
+          .select('pedido_id, articulo, cantidad, valor')
+          .in('pedido_id', ids);
         if (e2) throw e2;
 
         // Fotos
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
-          .select('nro, url')
-          .in('nro', ids);
+          .select('pedido_id, url')
+          .in('pedido_id', ids);
         if (e3) throw e3;
 
         // Clientes
@@ -109,11 +113,13 @@ export default function LavandoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach(c => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE')
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.nro ?? l.pedido_id ?? l.pedido_nro);
+          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
           if (!pid) return;
 
           const label =
@@ -135,13 +141,14 @@ export default function LavandoPage() {
           itemsByPedido.set(pid, arr);
         });
 
+        // Foto principal por pedido (prioriza pedido.foto_url; si no, toma de pedido_foto)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.fotos_urls);
+          const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.nro);
+          const pid = Number(f.pedido_id ?? f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
@@ -188,10 +195,9 @@ export default function LavandoPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, estado: next } : p)));
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar estado:', error);
       setPedidos(prev);
@@ -201,7 +207,7 @@ export default function LavandoPage() {
 
     // En Lavando, si pasa a otro estado lo sacamos de la lista
     if (next !== 'LAVANDO') {
-      setPedidos(curr => curr.filter(p => p.id !== id));
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
       snack(`Pedido #${id} movido a ${next}`);
     }
@@ -212,11 +218,10 @@ export default function LavandoPage() {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find(p => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map(p => (p.id === id ? { ...p, pagado: !actual } : p)));
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id).select('nro').single();
-
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
@@ -254,7 +259,7 @@ export default function LavandoPage() {
     }
 
     try {
-      setUploading(prev => ({ ...prev, [pid]: true }));
+      setUploading((prev) => ({ ...prev, [pid]: true }));
 
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
@@ -268,17 +273,20 @@ export default function LavandoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ nro: pid, url: publicUrl });
+      // Guarda relación y setea como foto principal del pedido
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      setPedidos(prev => prev.map(p => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
-      setImageError(prev => ({ ...prev, [pid]: false }));
+      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+
+      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      setImageError((prev) => ({ ...prev, [pid]: false }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
       snack('No se pudo subir la foto.');
     } finally {
-      setUploading(prev => ({ ...prev, [pid!]: false }));
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
       setPickerForPedido(null); // cerrar siempre el modal al terminar
     }
   }
@@ -315,12 +323,10 @@ export default function LavandoPage() {
 
         {!loading &&
           !errMsg &&
-          pedidos.map(p => {
+          pedidos.map((p) => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length
-              ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
-              : p.total ?? 0;
+            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
             return (
               <div
@@ -355,7 +361,7 @@ export default function LavandoPage() {
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                       <button
-                        onClick={() => setOpenDetail(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                        onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
@@ -382,7 +388,7 @@ export default function LavandoPage() {
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
+                                        {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -419,7 +425,7 @@ export default function LavandoPage() {
                               height={0}
                               sizes="100vw"
                               style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError(prev => ({ ...prev, [p.id]: true }))}
+                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                               priority={false}
                             />
                           </div>
@@ -513,10 +519,7 @@ export default function LavandoPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button
-                onClick={() => setPickerForPedido(null)}
-                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
-              >
+              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
                 Cancelar
               </button>
             </div>
@@ -533,13 +536,7 @@ export default function LavandoPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input
-        ref={inputFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onFileSelected}
-      />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
