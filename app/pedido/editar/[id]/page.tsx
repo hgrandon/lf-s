@@ -3,16 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  ArrowLeft,
-  Trash2,
-  Plus,
-  Save,
-  AlertTriangle,
-} from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, Save, AlertTriangle } from 'lucide-react';
 
 type Linea = {
-  id?: number | null;       // si tu tabla tiene PK id
+  id?: number | null;
   pedido_id: number;
   articulo: string;
   cantidad: number;
@@ -27,8 +21,7 @@ type PedidoHead = {
 };
 
 type Cliente = { telefono: string; nombre: string | null };
-
-type ArticuloCat = { id?: number; nombre?: string; articulo?: string; valor?: number | null };
+type ArticuloCat = { id?: number; nombre?: string; valor?: number | null };
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -39,19 +32,16 @@ const CLP = new Intl.NumberFormat('es-CL', {
 export default function EditarPedidoPage() {
   const router = useRouter();
   const params = useParams();
-  const id = Number(params?.id); // nro del pedido
+  const id = Number(params?.id);
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
-
   const [head, setHead] = useState<PedidoHead | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [articulos, setArticulos] = useState<ArticuloCat[]>([]);
   const [selArt, setSelArt] = useState<string>('');
   const [saving, setSaving] = useState(false);
-
-  // Modal eliminar
   const [toDelete, setToDelete] = useState<null | { idx: number; linea: Linea }>(null);
 
   const total = useMemo(
@@ -66,7 +56,7 @@ export default function EditarPedidoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedido encabezado
+        // Encabezado del pedido
         const { data: pRow, error: eP } = await supabase
           .from('pedido')
           .select('nro, telefono, estado, pagado')
@@ -89,17 +79,18 @@ export default function EditarPedidoPage() {
           cli = cRow ?? null;
         }
 
-        // Líneas del pedido (intenta traer id si existe)
+        // Líneas del pedido
         const { data: lRows, error: eL } = await supabase
           .from('pedido_linea')
           .select('id, pedido_id, articulo, cantidad, valor')
           .eq('pedido_id', id);
         if (eL) throw eL;
 
-        // Catálogo de artículos
+        // Catálogo de artículos (usa columna nombre, no articulo)
         const { data: aRows, error: eA } = await supabase
           .from('articulo')
-          .select('id, nombre, articulo, valor');
+          .select('id, nombre, valor')
+          .order('nombre', { ascending: true });
         if (eA) throw eA;
 
         if (!cancel) {
@@ -131,19 +122,17 @@ export default function EditarPedidoPage() {
   }, [id]);
 
   function nombreFromCat(a: ArticuloCat): string {
-    return (a.nombre ?? a.articulo ?? '').toString();
+    return (a.nombre ?? '').toString();
   }
 
   function valorFromCat(a: ArticuloCat): number {
     const v = Number(a.valor ?? 0);
     return Number.isFinite(v) ? v : 0;
-    }
+  }
 
   function agregarLineaDesdeSelect() {
     if (!selArt) return;
-    const cat = articulos.find(
-      (a) => nombreFromCat(a).toUpperCase() === selArt.toUpperCase()
-    );
+    const cat = articulos.find((a) => nombreFromCat(a).toUpperCase() === selArt.toUpperCase());
     const nombre = cat ? nombreFromCat(cat) : selArt;
     const val = cat ? valorFromCat(cat) : 0;
 
@@ -157,6 +146,7 @@ export default function EditarPedidoPage() {
   function setCantidad(idx: number, v: number) {
     setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, cantidad: v } : l)));
   }
+
   function setValor(idx: number, v: number) {
     setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, valor: v } : l)));
   }
@@ -166,11 +156,8 @@ export default function EditarPedidoPage() {
       setSaving(true);
       setErrMsg(null);
 
-      // 1) borrar todas las líneas del pedido
-      const { error: delErr } = await supabase.from('pedido_linea').delete().eq('pedido_id', id);
-      if (delErr) throw delErr;
+      await supabase.from('pedido_linea').delete().eq('pedido_id', id);
 
-      // 2) insertar el estado actual
       const payload = lineas
         .filter((l) => (l.articulo ?? '').trim() !== '')
         .map((l) => ({
@@ -179,16 +166,13 @@ export default function EditarPedidoPage() {
           cantidad: Number(l.cantidad || 0),
           valor: Number(l.valor || 0),
         }));
+
       if (payload.length) {
         const { error: insErr } = await supabase.from('pedido_linea').insert(payload);
         if (insErr) throw insErr;
       }
 
-      // 3) actualizar total del pedido
-      const { error: upErr } = await supabase
-        .from('pedido')
-        .update({ total })
-        .eq('nro', id);
+      const { error: upErr } = await supabase.from('pedido').update({ total }).eq('nro', id);
       if (upErr) throw upErr;
 
       router.push('/lavando');
@@ -209,9 +193,7 @@ export default function EditarPedidoPage() {
         >
           <ArrowLeft size={18} /> Volver
         </button>
-        <h1 className="mx-auto font-extrabold text-lg sm:text-xl">
-          Editar pedido #{id}
-        </h1>
+        <h1 className="mx-auto font-extrabold text-lg sm:text-xl">Editar pedido #{id}</h1>
       </header>
 
       <section className="px-4 lg:px-8 pb-28 grid gap-4">
@@ -226,7 +208,6 @@ export default function EditarPedidoPage() {
 
         {!loading && head && (
           <>
-            {/* Tarjeta cliente */}
             <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
               <div className="text-xs uppercase text-white/70 mb-1">Cliente</div>
               <div className="text-xl font-extrabold tracking-wide">
@@ -238,11 +219,9 @@ export default function EditarPedidoPage() {
               </div>
             </div>
 
-            {/* Panel detalle */}
             <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
               <div className="text-sm font-semibold mb-3">Detalle</div>
 
-              {/* Listbox de artículos */}
               <div className="grid gap-2 sm:flex sm:items-center sm:gap-3 mb-3">
                 <select
                   className="w-full sm:w-auto min-w-[260px] rounded-xl bg-white/10 border border-white/20 px-3 py-2 outline-none"
@@ -250,15 +229,11 @@ export default function EditarPedidoPage() {
                   onChange={(e) => setSelArt(e.target.value)}
                 >
                   <option value="">SELECCIONE UN ARTÍCULO</option>
-                  {articulos.map((a) => {
-                    const nombre = nombreFromCat(a);
-                    const val = valorFromCat(a);
-                    return (
-                      <option key={`${a.id ?? nombre}`} value={nombre}>
-                        {nombre} {val ? `(${CLP.format(val)})` : ''}
-                      </option>
-                    );
-                  })}
+                  {articulos.map((a) => (
+                    <option key={a.id ?? a.nombre} value={a.nombre}>
+                      {a.nombre} {a.valor ? `(${CLP.format(a.valor)})` : ''}
+                    </option>
+                  ))}
                 </select>
 
                 <button
@@ -270,7 +245,6 @@ export default function EditarPedidoPage() {
                 </button>
               </div>
 
-              {/* Tabla de líneas. Clic en fila → modal eliminar */}
               <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                 <table className="w-full text-sm">
                   <thead className="bg-white/10 text-white/90">
@@ -304,7 +278,9 @@ export default function EditarPedidoPage() {
                               onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
                                 setLineas((prev) =>
-                                  prev.map((x, i) => (i === idx ? { ...x, articulo: e.target.value } : x))
+                                  prev.map((x, i) =>
+                                    i === idx ? { ...x, articulo: e.target.value } : x
+                                  )
                                 )
                               }
                               className="w-full rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
@@ -355,7 +331,6 @@ export default function EditarPedidoPage() {
               </div>
             </div>
 
-            {/* Botón guardar */}
             <div className="flex justify-end">
               <button
                 onClick={guardarCambios}
@@ -370,7 +345,6 @@ export default function EditarPedidoPage() {
         )}
       </section>
 
-      {/* Modal eliminar línea */}
       {toDelete && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 px-4">
           <div className="w-[520px] max-w-full rounded-2xl bg-white text-violet-900 shadow-2xl overflow-hidden">
