@@ -601,7 +601,9 @@ export default function EstadoPage() {
                               <tbody className="divide-y divide-white/10">
                                 {p.items?.length ? p.items.map((it, idx) => (
                                   <tr key={idx}>
-                                    <td className="px-3 py-2">{it.articulo}</td>
+                                       <td className="px-3 py-2 truncate">
+                                            {it.articulo.length > 17 ? it.articulo.slice(0, 17) : it.articulo}
+                                      </td>
                                     <td className="px-3 py-2 text-right">{it.qty}</td>
                                     <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                                     <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
