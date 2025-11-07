@@ -119,7 +119,7 @@ export default function BasePage() {
       { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive, href: '/base/editar' },
       { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
       { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck, href: '/base/entregado' },
-      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/entregar' },
+      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
     ],
     []
   );
