@@ -3,16 +3,32 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Plus, Save, Trash2, ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft,
+  Trash2,
+  Plus,
+  Save,
+  AlertTriangle,
+} from 'lucide-react';
 
 type Linea = {
-  id?: number;            // opcional si tienes PK propia
+  id?: number | null;       // si tu tabla tiene PK id
   pedido_id: number;
   articulo: string;
   cantidad: number;
   valor: number;
-  _tmp?: string;          // helper local para key
 };
+
+type PedidoHead = {
+  nro: number;
+  telefono: string | null;
+  estado: string | null;
+  pagado: boolean | null;
+};
+
+type Cliente = { telefono: string; nombre: string | null };
+
+type ArticuloCat = { id?: number; nombre?: string; articulo?: string; valor?: number | null };
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -22,17 +38,21 @@ const CLP = new Intl.NumberFormat('es-CL', {
 
 export default function EditarPedidoPage() {
   const router = useRouter();
-  const params = useParams<{ id: string }>();
-  const pedidoId = Number(params?.id);
+  const params = useParams();
+  const id = Number(params?.id); // nro del pedido
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  const [cliente, setCliente] = useState<string>('');
-  const [estado, setEstado] = useState<string>('');
-  const [pagado, setPagado] = useState<boolean>(false);
+  const [head, setHead] = useState<PedidoHead | null>(null);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
+  const [articulos, setArticulos] = useState<ArticuloCat[]>([]);
+  const [selArt, setSelArt] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+
+  // Modal eliminar
+  const [toDelete, setToDelete] = useState<null | { idx: number; linea: Linea }>(null);
 
   const total = useMemo(
     () => lineas.reduce((a, l) => a + (Number(l.cantidad) || 0) * (Number(l.valor) || 0), 0),
@@ -44,225 +64,342 @@ export default function EditarPedidoPage() {
     (async () => {
       try {
         setLoading(true);
-        setErr(null);
+        setErrMsg(null);
 
-        // Cabecera del pedido (usa nro=id)
-        const { data: p, error: ep } = await supabase
+        // Pedido encabezado
+        const { data: pRow, error: eP } = await supabase
           .from('pedido')
-          .select('nro, telefono, total, estado, pagado')
-          .eq('nro', pedidoId)
-          .single();
-        if (ep) throw ep;
+          .select('nro, telefono, estado, pagado')
+          .eq('nro', id)
+          .limit(1)
+          .maybeSingle();
+        if (eP) throw eP;
+        if (!pRow) throw new Error('Pedido no encontrado');
 
-        // Nombre por teléfono
-        const tel = p?.telefono ? String(p.telefono) : '';
-        let nombre = tel;
-        if (tel) {
-          const { data: c } = await supabase.from('clientes').select('nombre').eq('telefono', tel).maybeSingle();
-          if (c?.nombre) nombre = c.nombre;
+        // Cliente
+        let cli: Cliente | null = null;
+        if (pRow.telefono) {
+          const { data: cRow, error: eC } = await supabase
+            .from('clientes')
+            .select('telefono, nombre')
+            .eq('telefono', pRow.telefono)
+            .limit(1)
+            .maybeSingle();
+          if (eC) throw eC;
+          cli = cRow ?? null;
         }
 
-        const { data: ls, error: el } = await supabase
+        // Líneas del pedido (intenta traer id si existe)
+        const { data: lRows, error: eL } = await supabase
           .from('pedido_linea')
           .select('id, pedido_id, articulo, cantidad, valor')
-          .eq('pedido_id', pedidoId)
-          .order('id', { ascending: true });
-        if (el) throw el;
+          .eq('pedido_id', id);
+        if (eL) throw eL;
+
+        // Catálogo de artículos
+        const { data: aRows, error: eA } = await supabase
+          .from('articulo')
+          .select('id, nombre, articulo, valor');
+        if (eA) throw eA;
 
         if (!cancel) {
-          setCliente(nombre ?? tel ?? 'SIN NOMBRE');
-          setEstado(p?.estado ?? '');
-          setPagado(!!p?.pagado);
-          setLineas((ls ?? []).map((l, i) => ({ ...l, _tmp: `k${i}_${l.id ?? ''}` })));
+          setHead(pRow as PedidoHead);
+          setCliente(cli);
+          setLineas(
+            (lRows ?? []).map((l: any) => ({
+              id: l.id ?? null,
+              pedido_id: l.pedido_id ?? id,
+              articulo: String(l.articulo ?? ''),
+              cantidad: Number(l.cantidad ?? 0),
+              valor: Number(l.valor ?? 0),
+            }))
+          );
+          setArticulos(aRows ?? []);
+          setLoading(false);
         }
-      } catch (e: any) {
-        if (!cancel) setErr(e?.message ?? 'Error al cargar pedido');
-      } finally {
-        if (!cancel) setLoading(false);
+      } catch (err: any) {
+        console.error(err);
+        if (!cancel) {
+          setErrMsg(err?.message ?? 'Error al cargar datos');
+          setLoading(false);
+        }
       }
     })();
     return () => {
       cancel = true;
     };
-  }, [pedidoId]);
+  }, [id]);
 
-  function addLinea() {
+  function nombreFromCat(a: ArticuloCat): string {
+    return (a.nombre ?? a.articulo ?? '').toString();
+  }
+
+  function valorFromCat(a: ArticuloCat): number {
+    const v = Number(a.valor ?? 0);
+    return Number.isFinite(v) ? v : 0;
+    }
+
+  function agregarLineaDesdeSelect() {
+    if (!selArt) return;
+    const cat = articulos.find(
+      (a) => nombreFromCat(a).toUpperCase() === selArt.toUpperCase()
+    );
+    const nombre = cat ? nombreFromCat(cat) : selArt;
+    const val = cat ? valorFromCat(cat) : 0;
+
     setLineas((prev) => [
       ...prev,
-      {
-        _tmp: `tmp_${Date.now()}`,
-        pedido_id: pedidoId,
-        articulo: '',
-        cantidad: 1,
-        valor: 0,
-      },
+      { pedido_id: id, articulo: nombre, cantidad: 1, valor: val, id: undefined },
     ]);
+    setSelArt('');
   }
 
-  function rmLinea(idx: number) {
-    setLineas((prev) => prev.filter((_, i) => i !== idx));
+  function setCantidad(idx: number, v: number) {
+    setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, cantidad: v } : l)));
+  }
+  function setValor(idx: number, v: number) {
+    setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, valor: v } : l)));
   }
 
-  function updLinea(idx: number, patch: Partial<Linea>) {
-    setLineas((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
-
-  async function guardar() {
+  async function guardarCambios() {
     try {
       setSaving(true);
-      setErr(null);
+      setErrMsg(null);
 
-      // 1) Borra líneas “vacías” locales
-      const limpias = lineas.filter((l) => String(l.articulo).trim() !== '');
+      // 1) borrar todas las líneas del pedido
+      const { error: delErr } = await supabase.from('pedido_linea').delete().eq('pedido_id', id);
+      if (delErr) throw delErr;
 
-      // 2) Upsert por (id) si existe, si no insert (pedido_id, articulo) como mínimos
-      //    Ajusta a tu PK/UK reales. Aquí usamos "id" si está presente.
-      const upsertPayload = limpias.map((l) => ({
-        id: l.id, // puede venir undefined -> insert
-        pedido_id: pedidoId,
-        articulo: l.articulo,
-        cantidad: Number(l.cantidad) || 0,
-        valor: Number(l.valor) || 0,
-      }));
+      // 2) insertar el estado actual
+      const payload = lineas
+        .filter((l) => (l.articulo ?? '').trim() !== '')
+        .map((l) => ({
+          pedido_id: id,
+          articulo: l.articulo.trim(),
+          cantidad: Number(l.cantidad || 0),
+          valor: Number(l.valor || 0),
+        }));
+      if (payload.length) {
+        const { error: insErr } = await supabase.from('pedido_linea').insert(payload);
+        if (insErr) throw insErr;
+      }
 
-      const { error: eu } = await supabase.from('pedido_linea').upsert(upsertPayload, {
-        onConflict: 'id',
-        ignoreDuplicates: false,
-      });
-      if (eu) throw eu;
+      // 3) actualizar total del pedido
+      const { error: upErr } = await supabase
+        .from('pedido')
+        .update({ total })
+        .eq('nro', id);
+      if (upErr) throw upErr;
 
-      // 3) Recalcula total en cabecera
-      const { error: ep } = await supabase.from('pedido').update({ total }).eq('nro', pedidoId);
-      if (ep) throw ep;
-
-      router.push('/lavando'); // vuelve a la lista de Lavando
-    } catch (e: any) {
-      setErr(e?.message ?? 'No se pudo guardar');
+      router.push('/lavando');
+    } catch (err: any) {
+      console.error(err);
+      setErrMsg(err?.message ?? 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-violet-900 via-fuchsia-800 to-indigo-900 text-white">
-      <header className="flex items-center justify-between px-4 md:px-8 py-4">
+    <main className="min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
+      <header className="px-4 lg:px-8 py-4 flex items-center gap-3">
         <button
           onClick={() => router.back()}
-          className="inline-flex items-center gap-1 text-white/90 hover:text-white"
+          className="inline-flex items-center gap-2 text-white/90 hover:text-white"
         >
-          <ArrowLeft size={16} /> Volver
+          <ArrowLeft size={18} /> Volver
         </button>
-        <h1 className="font-bold text-lg">Editar pedido #{pedidoId}</h1>
-        <div />
+        <h1 className="mx-auto font-extrabold text-lg sm:text-xl">
+          Editar pedido #{id}
+        </h1>
       </header>
 
-      <section className="px-4 md:px-8 pb-24">
-        {loading ? (
-          <div className="flex items-center gap-2">
-            <Loader2 className="animate-spin" size={18} /> Cargando…
+      <section className="px-4 lg:px-8 pb-28 grid gap-4">
+        {loading && <div className="text-white/90">Cargando…</div>}
+
+        {!loading && errMsg && (
+          <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
+            <AlertTriangle size={16} />
+            <span>{errMsg}</span>
           </div>
-        ) : err ? (
-          <div className="rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm flex items-center gap-2">
-            <span>⚠️</span> {err}
-          </div>
-        ) : (
+        )}
+
+        {!loading && head && (
           <>
-            <div className="rounded-2xl bg-white/10 border border-white/15 p-4 mb-4">
-              <div className="text-sm opacity-90">Cliente</div>
-              <div className="text-lg font-extrabold">{cliente}</div>
-              <div className="mt-2 text-xs opacity-90">
-                Estado: <b>{estado}</b> • {pagado ? 'PAGADO' : 'PENDIENTE'}
+            {/* Tarjeta cliente */}
+            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+              <div className="text-xs uppercase text-white/70 mb-1">Cliente</div>
+              <div className="text-xl font-extrabold tracking-wide">
+                {cliente?.nombre ?? head.telefono ?? 'SIN NOMBRE'}
+              </div>
+              <div className="text-xs text-white/80 mt-1">
+                Estado: {String(head.estado ?? '').toUpperCase() || '—'} •{' '}
+                {head.pagado ? 'PAGADO' : 'PENDIENTE'}
               </div>
             </div>
 
-            <div className="rounded-2xl bg-white/10 border border-white/15 overflow-hidden">
-              <div className="p-3 font-semibold bg-white/10">Detalle</div>
-              <div className="overflow-x-auto">
+            {/* Panel detalle */}
+            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+              <div className="text-sm font-semibold mb-3">Detalle</div>
+
+              {/* Listbox de artículos */}
+              <div className="grid gap-2 sm:flex sm:items-center sm:gap-3 mb-3">
+                <select
+                  className="w-full sm:w-auto min-w-[260px] rounded-xl bg-white/10 border border-white/20 px-3 py-2 outline-none"
+                  value={selArt}
+                  onChange={(e) => setSelArt(e.target.value)}
+                >
+                  <option value="">SELECCIONE UN ARTÍCULO</option>
+                  {articulos.map((a) => {
+                    const nombre = nombreFromCat(a);
+                    const val = valorFromCat(a);
+                    return (
+                      <option key={`${a.id ?? nombre}`} value={nombre}>
+                        {nombre} {val ? `(${CLP.format(val)})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <button
+                  onClick={agregarLineaDesdeSelect}
+                  disabled={!selArt}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/15 border border-white/20 px-3 py-2 text-sm hover:bg-white/20 disabled:opacity-50"
+                >
+                  <Plus size={16} /> Agregar ítem
+                </button>
+              </div>
+
+              {/* Tabla de líneas. Clic en fila → modal eliminar */}
+              <div className="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
                 <table className="w-full text-sm">
-                  <thead className="bg-white/10">
+                  <thead className="bg-white/10 text-white/90">
                     <tr>
-                      <th className="text-left px-3 py-2 w-[42%]">Artículo</th>
-                      <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                      <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                      <th className="text-right px-3 py-2 w-[20%]">Subtotal</th>
-                      <th className="px-3 py-2 w-[3%]"></th>
+                      <th className="text-left px-3 py-2 w-[45%]">Artículo</th>
+                      <th className="text-right px-3 py-2 w-[12%]">Cantidad</th>
+                      <th className="text-right px-3 py-2 w-[18%]">Valor</th>
+                      <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
+                      <th className="px-3 py-2 w-[7%]"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
-                    {lineas.map((l, idx) => (
-                      <tr key={l._tmp ?? idx}>
-                        <td className="px-3 py-2">
-                          <input
-                            className="w-full rounded border border-white/20 bg-white/5 px-2 py-1 outline-none"
-                            value={l.articulo}
-                            onChange={(e) => updLinea(idx, { articulo: e.target.value })}
-                            placeholder="Descripción del artículo"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            className="w-20 rounded border border-white/20 bg-white/5 px-2 py-1 text-right outline-none"
-                            value={l.cantidad}
-                            onChange={(e) => updLinea(idx, { cantidad: Number(e.target.value) })}
-                            min={0}
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            className="w-28 rounded border border-white/20 bg-white/5 px-2 py-1 text-right outline-none"
-                            value={l.valor}
-                            onChange={(e) => updLinea(idx, { valor: Number(e.target.value) })}
-                            min={0}
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {CLP.format((Number(l.cantidad) || 0) * (Number(l.valor) || 0))}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            onClick={() => rmLinea(idx)}
-                            className="rounded-lg p-2 hover:bg-white/10"
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                    {lineas.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-4 text-center text-white/70">
+                          Sin líneas. Usa el selector para agregar.
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-white/10">
-                      <td className="px-3 py-3" colSpan={3}>
-                        <button
-                          onClick={addLinea}
-                          className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/20 px-3 py-2 hover:bg-white/15"
+                    )}
+                    {lineas.map((l, idx) => {
+                      const subtotal = (Number(l.cantidad) || 0) * (Number(l.valor) || 0);
+                      return (
+                        <tr
+                          key={`${idx}-${l.articulo}`}
+                          className="hover:bg-white/5 cursor-pointer"
+                          onClick={() => setToDelete({ idx, linea: l })}
                         >
-                          <Plus size={16} /> Agregar ítem
-                        </button>
-                      </td>
-                      <td className="px-3 py-3 text-right font-extrabold">{CLP.format(total)}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
+                          <td className="px-3 py-2">
+                            <input
+                              value={l.articulo}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setLineas((prev) =>
+                                  prev.map((x, i) => (i === idx ? { ...x, articulo: e.target.value } : x))
+                                )
+                              }
+                              className="w-full rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              value={l.cantidad}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setCantidad(idx, Number(e.target.value))}
+                              className="w-20 text-right rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              value={l.valor}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setValor(idx, Number(e.target.value))}
+                              className="w-28 text-right rounded-lg bg-white/10 border border-white/15 px-2 py-1 outline-none"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">{CLP.format(subtotal)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setToDelete({ idx, linea: l });
+                              }}
+                              className="inline-flex items-center rounded-lg px-2 py-1 hover:bg-white/10"
+                              title="Eliminar"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
+
+                <div className="px-3 py-3 bg-white/10 text-right font-extrabold">
+                  Total: {CLP.format(total)}
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex justify-end">
+            {/* Botón guardar */}
+            <div className="flex justify-end">
               <button
+                onClick={guardarCambios}
                 disabled={saving}
-                onClick={guardar}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-3 font-semibold shadow disabled:opacity-60"
               >
                 <Save size={18} />
-                {saving ? 'Guardando…' : 'Guardar cambios'}
+                Guardar cambios
               </button>
             </div>
           </>
         )}
       </section>
+
+      {/* Modal eliminar línea */}
+      {toDelete && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 px-4">
+          <div className="w-[520px] max-w-full rounded-2xl bg-white text-violet-900 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b">
+              <div className="font-bold">Eliminar ítem</div>
+              <div className="text-sm text-violet-700/80">
+                ¿Deseas eliminar <b>{toDelete.linea.articulo}</b> del pedido?
+              </div>
+            </div>
+            <div className="px-5 py-4 flex justify-end gap-2">
+              <button
+                onClick={() => setToDelete(null)}
+                className="rounded-xl px-4 py-2 hover:bg-violet-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setLineas((prev) => prev.filter((_, i) => i !== toDelete.idx));
+                  setToDelete(null);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-4 py-2"
+              >
+                <Trash2 size={16} /> Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
