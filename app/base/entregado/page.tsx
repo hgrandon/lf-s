@@ -2,21 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ChevronDown,
-  ChevronRight,
-  User,
-  Table,
-  Loader2,
-  AlertTriangle,
-  Camera,
-  ImagePlus,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+
 type Pedido = {
   id: number; // nro
   cliente: string;
@@ -72,7 +64,7 @@ export default function EntregadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Doble clic en Total -> Editar
+  // Modal de “¿Desea editar?” al hacer doble clic en Total
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -104,7 +96,7 @@ export default function EntregadoPage() {
           return;
         }
 
-        // Líneas (¡clave correcta!: pedido_id)
+        // Líneas: OJO -> usamos pedido_linea.pedido_id
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
@@ -126,13 +118,16 @@ export default function EntregadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c: any) => {
-          nombreByTel.set(String(c.telefono), c.nombre ?? 'SIN NOMBRE');
+        (cli ?? []).forEach((c) => {
+          const tel = String((c as any).telefono);
+          const nom = (c as any).nombre ?? 'SIN NOMBRE';
+          nombreByTel.set(tel, nom);
         });
 
+        // Armar items por pedido
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
+          const pid = Number(l.pedido_id); // <- clave correcta
           if (!pid) return;
 
           const label =
@@ -154,14 +149,14 @@ export default function EntregadoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal por pedido (primero pedido.foto_url; si no, de pedido_foto)
+        // Foto principal por pedido (prioriza pedido.foto_url)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.pedido_id ?? f.nro);
+          const pid = Number(f.pedido_id);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
@@ -218,7 +213,7 @@ export default function EntregadoPage() {
       return;
     }
 
-    // En Entregado, si cambia a otro estado, sacar de la lista
+    // En Entregado, si pasa a otro estado, se saca de la lista
     if (next !== 'ENTREGADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -246,7 +241,7 @@ export default function EntregadoPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto -------
+  // ------- Subida/cambio de foto -------
   function openPickerFor(pid: number) {
     setPickerForPedido(pid);
   }
@@ -285,9 +280,7 @@ export default function EntregadoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase
-        .from('pedido_foto')
-        .insert({ pedido_id: pid, url: publicUrl });
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
       await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
@@ -300,10 +293,11 @@ export default function EntregadoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cerrar siempre
+      setPickerForPedido(null); // cerrar siempre el modal al terminar
     }
   }
 
+  // Modal de edición desde el total
   function askEdit(id: number) {
     setAskEditForId(id);
   }
@@ -378,9 +372,7 @@ export default function EntregadoPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(totalCalc)}
-                    </div>
+                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
                     {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </div>
                 </button>
@@ -420,7 +412,7 @@ export default function EntregadoPage() {
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                      <td className="px-3 py-2 text-right">{CLP.format(subtotal(it))}</td>
                                     </tr>
                                   ))
                                 ) : (
@@ -485,7 +477,6 @@ export default function EntregadoPage() {
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-4 gap-3">
-            {/* Orden solicitado: Entregar – Lavar – Guardado – Pendiente/Pago */}
             <ActionBtn
               label="Entregar"
               disabled={!pedidoAbierto || saving}
