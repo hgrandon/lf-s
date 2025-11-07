@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type Pedido = {
   id: number; // nro
