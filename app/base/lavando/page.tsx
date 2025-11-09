@@ -192,7 +192,7 @@ export default function LavandoPage() {
           pagado: r.pagado ?? false,
           items: itemsByPedido.get(r.id) ?? [],
         }));
-
+          mapped.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
         if (!cancelled) {
           setPedidos(mapped);
           setLoading(false);
