@@ -1,10 +1,10 @@
 // app/pedido/components/HeaderPedido.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import NuevoClienteModal from './NuevoClienteModal';
-import { Phone, Loader2 } from 'lucide-react';
+import { Phone, Loader2, XCircle } from 'lucide-react';
 
 /** ====== Tipos exportados para ser usados desde page.tsx ====== */
 export type Cliente = {
@@ -14,9 +14,10 @@ export type Cliente = {
 };
 
 /** Algunas pantallas importan este tipo desde aquí. */
-export type NextNumber = {
-  nro: number;
-};
+export type NextNumber = { nro: number };
+
+/** Estado del lookup para feedback externo si se requiere */
+export type LookupState = 'idle' | 'checking' | 'found' | 'not_found' | 'error';
 
 type Props = {
   /** Número de pedido mostrado en el encabezado */
@@ -27,33 +28,45 @@ type Props = {
   onTelefonoChange?: (t: string) => void;
   /** Callback para notificar que se cargó/creó un cliente (tel/nombre/dirección) */
   onClienteCargado?: (cli: { telefono: string; nombre: string; direccion: string }) => void;
+  /** Callback para exponer cambios de estado del lookup (opcional) */
+  onLookupStateChange?: (s: LookupState) => void;
+  /** Errores de búsqueda/IO (opcional) */
+  onError?: (e: unknown) => void;
   /** Fechas visibles en el header */
   fechaIngresoISO?: string;
   fechaEntregaISO?: string;
   /** Abrir modal automáticamente si no existe el cliente (por defecto: true) */
   autoOpenOnMissing?: boolean;
+  /** Clase extra para el contenedor principal (opcional) */
+  className?: string;
 };
 
-/* Normaliza teléfonos chilenos:
-   - Elimina todo lo que no sea dígito
-   - Si viene con 56 al inicio, lo deja como 9 dígitos (móvil CL) cuando corresponde
-*/
-function normalizeTel(raw: string): string {
+/* =========================
+   Utilidades de teléfono CL
+========================= */
+
+/**
+ * Normaliza teléfonos chilenos:
+ * - Elimina todo lo que no sea dígito
+ * - Remueve prefijo 56/056 y el 9 de móviles si viene con más dígitos
+ * - Retorna sólo dígitos
+ */
+export function normalizeTel(raw: string): string {
   const digits = (raw || '').replace(/\D/g, '');
   if (!digits) return '';
-  // Quitar prefijo 56 si viene como +569XXXXXXXX o 569XXXXXXXX
-  if ((digits.startsWith('56') && digits.length >= 11) || (digits.startsWith('056') && digits.length >= 12)) {
-    // ejemplo: 56912345678 -> 912345678
-    const trimmed = digits.replace(/^0?56/, '');
-    return trimmed;
-  }
-  return digits;
+
+  // Remover 056 o 56 al inicio
+  const noCC = digits.replace(/^0?56/, '');
+
+  // El resultado esperado en CL suele ser 9 (móvil) o 8 (fijo) dígitos.
+  // Si alguien pegó 12-13 dígitos ( +56 9 xxxxxxxx ), ya removimos 56/056 arriba.
+  return noCC;
 }
 
-function looksLikeValidCL(digits: string): boolean {
-  // Acepta 8 o 9 dígitos (hay líneas fijas de 8 y móviles de 9)
+/** Acepta 8 o 9 dígitos (fijo 8, móvil 9) */
+export function looksLikeValidCL(digits: string): boolean {
   const len = digits.length;
-  return len >= 8 && len <= 9;
+  return len === 8 || len === 9;
 }
 
 export default function HeaderPedido({
@@ -61,25 +74,36 @@ export default function HeaderPedido({
   telefono,
   onTelefonoChange,
   onClienteCargado,
+  onLookupStateChange,
+  onError,
   fechaIngresoISO,
   fechaEntregaISO,
   autoOpenOnMissing = true,
+  className = '',
 }: Props) {
   /** Estado de teléfono local si el padre no lo controla */
   const [telLocal, setTelLocal] = useState(() => normalizeTel(telefono ?? ''));
+  // Siempre trabajamos con el valor normalizado
   const tel = typeof telefono === 'string' ? normalizeTel(telefono) : telLocal;
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [state, setState] = useState<LookupState>('idle');
   const [openNuevo, setOpenNuevo] = useState(false);
+  const [notFoundOnce, setNotFoundOnce] = useState(false);
 
   /** Para no volver a abrir el modal repetidamente con el mismo teléfono */
   const lastMissingTelRef = useRef<string>('');
-
   /** Timer para debounce */
   const debTimer = useRef<number | null>(null);
   /** Evitar setState luego de ununmount */
   const mountedRef = useRef(true);
+  /** “Token” simple para invalidar respuestas tardías del lookup */
+  const reqTokenRef = useRef(0);
+
+  // sincroniza estado “externo”
+  useEffect(() => {
+    onLookupStateChange?.(state);
+  }, [state, onLookupStateChange]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -97,28 +121,24 @@ export default function HeaderPedido({
     }
   }, [telefono]);
 
-  /** Buscar cliente por teléfono (con debounce) */
-  useEffect(() => {
-    const digits = normalizeTel(tel);
+  const setChecking = useCallback(() => setState('checking'), []);
+  const setFound = useCallback(() => setState('found'), []);
+  const setNotFound = useCallback(() => setState('not_found'), []);
+  const setIdle = useCallback(() => setState('idle'), []);
+  const setErr = useCallback(() => setState('error'), []);
 
-    // Si no hay suficientes dígitos, limpiamos y no consultamos
-    if (!looksLikeValidCL(digits)) {
-      setCliente(null);
-      setOpenNuevo(false); // no mostrar modal si borra
-      lastMissingTelRef.current = '';
-      return;
-    }
-
-    if (debTimer.current) window.clearTimeout(debTimer.current);
-
-    debTimer.current = window.setTimeout(async () => {
+  const runLookup = useCallback(
+    async (digits: string, token: number) => {
       try {
-        setChecking(true);
+        setChecking();
         const { data, error } = await supabase
           .from('clientes')
           .select('telefono,nombre,direccion')
           .eq('telefono', digits)
           .maybeSingle();
+
+        // Si llegó una respuesta antigua, la ignoramos
+        if (token !== reqTokenRef.current || !mountedRef.current) return;
 
         if (error) throw error;
 
@@ -128,37 +148,65 @@ export default function HeaderPedido({
             nombre: (data.nombre ?? '') as string,
             direccion: (data.direccion ?? '') as string,
           };
-          if (!mountedRef.current) return;
           setCliente(found);
+          setFound();
           lastMissingTelRef.current = '';
+          setOpenNuevo(false);
+          setNotFoundOnce(false);
           onClienteCargado?.({
             telefono: found.telefono,
             nombre: found.nombre || '',
             direccion: found.direccion || '',
           });
-          setOpenNuevo(false);
         } else {
           // No existe
-          if (!mountedRef.current) return;
           setCliente(null);
-          // Evitar abrir el modal en loop si ya preguntamos por este mismo teléfono
+          setNotFound();
+          setNotFoundOnce(true);
           if (autoOpenOnMissing && lastMissingTelRef.current !== digits) {
             lastMissingTelRef.current = digits;
             setOpenNuevo(true);
           }
         }
       } catch (e) {
-        console.error('Error consultando cliente:', e);
-      } finally {
-        if (mountedRef.current) setChecking(false);
+        // Error real de IO/RLS/etc.
+        setErr();
+        onError?.(e);
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.error('Error consultando cliente:', e);
+        }
       }
-    }, 450);
+    },
+    [autoOpenOnMissing, onClienteCargado, onError, setChecking, setErr, setFound, setNotFound]
+  );
+
+  /** Buscar cliente por teléfono (con debounce) */
+  useEffect(() => {
+    const digits = normalizeTel(tel);
+
+    // Si no hay suficientes dígitos, limpiamos y no consultamos
+    if (!looksLikeValidCL(digits)) {
+      setCliente(null);
+      setIdle();
+      setOpenNuevo(false); // no mostrar modal si borra
+      lastMissingTelRef.current = '';
+      setNotFoundOnce(false);
+      if (debTimer.current) window.clearTimeout(debTimer.current);
+      return;
+    }
+
+    if (debTimer.current) window.clearTimeout(debTimer.current);
+
+    const token = ++reqTokenRef.current;
+    debTimer.current = window.setTimeout(() => {
+      if (mountedRef.current) runLookup(digits, token);
+    }, 400);
 
     return () => {
       if (debTimer.current) window.clearTimeout(debTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tel, autoOpenOnMissing]);
+  }, [tel, runLookup, setIdle]);
 
   function handleTelChange(v: string) {
     const norm = normalizeTel(v);
@@ -169,6 +217,29 @@ export default function HeaderPedido({
     if (norm !== lastMissingTelRef.current) {
       lastMissingTelRef.current = '';
     }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      // limpiar rápidamente
+      handleTelChange('');
+      e.currentTarget.blur();
+    } else if (e.key === 'Enter') {
+      // buscado inmediato (sin esperar debounce)
+      const digits = normalizeTel((e.currentTarget as HTMLInputElement).value);
+      if (looksLikeValidCL(digits)) {
+        if (debTimer.current) window.clearTimeout(debTimer.current);
+        const token = ++reqTokenRef.current;
+        runLookup(digits, token);
+      }
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData('text');
+    const norm = normalizeTel(text);
+    e.preventDefault();
+    handleTelChange(norm);
   }
 
   const fechaIng = useMemo(() => {
@@ -186,7 +257,7 @@ export default function HeaderPedido({
   return (
     <>
       {/* Header visual */}
-      <div className="relative mb-4">
+      <div className={`relative mb-4 ${className}`}>
         <div className="flex items-start justify-between">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white">N° {pedidoId}</h1>
           <div className="text-right text-white/90">
@@ -202,17 +273,29 @@ export default function HeaderPedido({
           </label>
           <div className="relative max-w-md">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80">
-              {checking ? <Loader2 className="animate-spin" size={16} /> : <Phone size={16} />}
+              {state === 'checking' ? <Loader2 className="animate-spin" size={16} /> : <Phone size={16} />}
             </div>
             <input
               id="pedido-telefono"
               value={tel}
-              onChange={(e) => { handleTelChange(e.target.value); }}
+              onChange={(e) => handleTelChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               inputMode="tel"
               autoComplete="tel"
               placeholder="Teléfono del cliente"
-              className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-10 py-3 text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
             />
+            {tel && (
+              <button
+                type="button"
+                aria-label="Borrar teléfono"
+                onClick={() => handleTelChange('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-white/70 hover:text-white"
+              >
+                <XCircle size={18} />
+              </button>
+            )}
           </div>
 
           {/* Si hay cliente, lo mostramos en lectura */}
@@ -224,7 +307,13 @@ export default function HeaderPedido({
           )}
 
           {/* Estado de verificación */}
-          {checking && <div className="mt-2 text-xs text-white/70">Buscando cliente…</div>}
+          {state === 'checking' && <div className="mt-2 text-xs text-white/70">Buscando cliente…</div>}
+          {state === 'not_found' && notFoundOnce && (
+            <div className="mt-2 text-xs text-white/80">No se encontró cliente con ese teléfono.</div>
+          )}
+          {state === 'error' && (
+            <div className="mt-2 text-xs text-red-200">Ocurrió un error al consultar el cliente.</div>
+          )}
         </div>
       </div>
 
@@ -236,6 +325,7 @@ export default function HeaderPedido({
         onSaved={(c) => {
           // Al guardar, fijamos el cliente y notificamos al padre
           setCliente(c);
+          setFound();
           onClienteCargado?.(c);
           setOpenNuevo(false);
         }}
