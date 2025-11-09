@@ -280,57 +280,73 @@ ${detalle}
   }
 
   // ------- Compartir comprobante por WhatsApp (imagen + texto si es posible) -------
-  async function shareComprobanteWhatsApp(p?: Pedido | null) {
-    if (!p) return;
+ async function shareComprobanteWhatsApp(p?: Pedido | null) {
+  if (!p) return;
 
-    const el = cardRefs.current[p.id];
-    if (!el) {
-      snack('Abre el pedido y vuelve a intentar.');
-      return;
-    }
+  const el = cardRefs.current[p.id];
+  if (!el) {
+    snack('Abre el pedido y vuelve a intentar.');
+    return;
+  }
 
-    try {
-      const canvas = await html2canvas(el, {
-        backgroundColor: '#6D28D9', // respaldo para fondos semitransparentes (violeta)
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
+  try {
+    // Captura con fondo blanco y sin elementos marcados como "no-print"
+    const canvas = await html2canvas(el, {
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: false,
+      scale: 2,
+      logging: false,
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      ignoreElements: (node) => {
+        const el = node as HTMLElement;
+        return el?.dataset?.noPrint === 'true' || el?.getAttribute?.('data-no-print') === 'true';
+      },
+    });
 
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
-      const text = buildWhatsAppMessage(p);
-      const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828'; // fallback fijo
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png', 0.95)
+    );
 
-      // Intento de compartir (móviles modernos)
-      if (blob && (navigator as any).canShare?.({ files: [new File([blob], 'comprobante.png', { type: 'image/png' })] })) {
-        const file = new File([blob], `comprobante-${p.id}.png`, { type: 'image/png' });
+    const text = buildWhatsAppMessage(p);
+    const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
+
+    if (blob) {
+      const file = new File([blob], `comprobante-${p.id}.png`, { type: 'image/png' });
+
+      // Web Share API (Android moderno)
+      // @ts-ignore - detección runtime
+      if (navigator?.canShare?.({ files: [file] })) {
         try {
-          await (navigator as any).share({ files: [file], text });
+          // @ts-ignore
+          await navigator.share({ files: [file], text });
           return;
         } catch {
-          // Si cancelan o falla, seguimos al fallback
+          /* cancelado o falla -> fallback */
         }
       }
 
-      // Fallback: descargar imagen y abrir WhatsApp con texto
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `comprobante-${p.id}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      }
-
-      const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
-      window.open(waUrl, '_blank');
-    } catch (e) {
-      console.error(e);
+      // Fallback: descarga imagen + abre WhatsApp con texto
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `comprobante-${p.id}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } else {
       snack('No se pudo generar la imagen del comprobante.');
     }
+
+    const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, '_blank');
+  } catch (e) {
+    console.error(e);
+    snack('No se pudo generar la imagen del comprobante.');
   }
+}
 
   // ------- Cargar/Adjuntar foto -------
   function openPickerFor(pid: number) {
@@ -546,16 +562,18 @@ ${detalle}
                             onDoubleClick={() => openPickerFor(p.id)}
                             title="Doble clic para cambiar la imagen"
                           >
-                            <Image
-                              src={p.foto_url!}
-                              alt={`Foto pedido ${p.id}`}
-                              width={0}
-                              height={0}
-                              sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                              priority={false}
-                            />
+                                <Image
+                                src={p.foto_url!}
+                                alt={`Foto pedido ${p.id}`}
+                                width={0}
+                                height={0}
+                                sizes="100vw"
+                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                priority={false}
+                                crossOrigin="anonymous"         // <— importante para html2canvas
+                                unoptimized                     // <— evita optimización que puede romper CORS
+                                />
                           </div>
                         ) : (
                           <button
