@@ -119,7 +119,8 @@ export default function LavarPage() {
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'LAVAR')
-          .order('nro', { ascending: false });
+          .order('nro', { ascending: true });
+         
 
         if (e1) throw e1;
 
@@ -198,6 +199,7 @@ export default function LavarPage() {
           pagado: r.pagado ?? false,
           items: itemsByPedido.get(r.id) ?? [],
         }));
+        mapped.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
 
         if (!cancelled) {
           setPedidos(mapped);
