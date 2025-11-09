@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import HeaderPedido, { Cliente, NextNumber } from './components/HeaderPedido';
+import HeaderPedido, { type Cliente, type NextNumber } from './components/HeaderPedido';
 import ArticulosSelect from './components/ArticulosSelect';
 import DetallePedido, { Item } from './components/DetallePedido';
 
