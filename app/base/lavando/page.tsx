@@ -117,7 +117,7 @@ export default function LavandoPage() {
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'LAVANDO')
-          .order('nro', { ascending: false });
+          .order('nro', { ascending: true });
 
         if (e1) throw e1;
 
@@ -510,6 +510,14 @@ export default function LavandoPage() {
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
+
+            <IconBtn
+              title="Guardar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
+              active={pedidoAbierto?.estado === 'GUARDAR'}
+              Icon={PackageCheck}
+            />
             <IconBtn
               title="Entregado"
               disabled={!pedidoAbierto || saving}
@@ -523,13 +531,6 @@ export default function LavandoPage() {
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
               active={pedidoAbierto?.estado === 'LAVAR'}
               Icon={Droplet}
-            />
-            <IconBtn
-              title="Lavando"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
-              active={pedidoAbierto?.estado === 'LAVANDO'}
-              Icon={WashingMachine}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
