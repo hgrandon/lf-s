@@ -16,6 +16,7 @@ import {
   Droplet,
   WashingMachine,
   CreditCard,
+  MessageCircle,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -24,8 +25,9 @@ type Item = { articulo: string; qty: number; valor: number };
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type Pedido = {
-  id: number; // nro
-  cliente: string;
+  id: number;         // nro
+  cliente: string;    // nombre o teléfono
+  telefono?: string | null;
   total: number | null;
   estado: PedidoEstado;
   detalle?: string | null;
@@ -60,7 +62,7 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
-export default function LavandoPage() {
+export default function GuardadoPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function LavandoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Modal “¿Desea editar?” al hacer doble clic en Total
+  // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -90,7 +92,7 @@ export default function LavandoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedidos en LAVANDO
+        // Pedidos en GUARDADO (tu cabecera dice "Guardado")
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
@@ -110,7 +112,7 @@ export default function LavandoPage() {
           return;
         }
 
-        // Líneas
+        // Líneas de pedido
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
@@ -132,7 +134,7 @@ export default function LavandoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? ''));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -164,16 +166,21 @@ export default function LavandoPage() {
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          const tel = r.telefono ? String(r.telefono) : null;
+          const nombre = tel ? (nombreByTel.get(tel) || '') : '';
+          return {
+            id: r.id,
+            cliente: nombre || tel || 'SIN NOMBRE',
+            telefono: tel,
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: fotoByPedido.get(r.id) ?? null,
+            pagado: r.pagado ?? false,
+            items: itemsByPedido.get(r.id) ?? [],
+          };
+        });
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -198,7 +205,7 @@ export default function LavandoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambios de estado en Lavando
+  // Cambios de estado
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
@@ -213,12 +220,12 @@ export default function LavandoPage() {
       return;
     }
 
-    // En Lavando, si pasa a otro estado lo sacamos de la lista
-        if (next !== 'GUARDADO') {
-        setPedidos((curr) => curr.filter((p) => p.id !== id));
-        setOpenId(null);
-        snack(`Pedido #${id} movido a ${next}`);
-        }
+    // Al mover desde GUARDADO a otro estado, lo sacamos de la lista
+    if (next !== 'GUARDADO') {
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
+      setOpenId(null);
+      snack(`Pedido #${id} movido a ${next}`);
+    }
     setSaving(false);
   }
 
@@ -239,6 +246,41 @@ export default function LavandoPage() {
 
     snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
+  }
+
+  // ------- WhatsApp -------
+  function buildWhatsAppMessage(p: Pedido) {
+    const hora = new Date().getHours();
+    const saludo = hora < 12 ? 'Buenos días' : 'Buenas tardes';
+    const totalCalc =
+      p.items?.length ? p.items.reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.valor) || 0), 0) : Number(p.total || 0);
+
+    const detalle =
+      p.items && p.items.length
+        ? p.items
+            .map((i) => `${i.articulo} x${i.qty} = ${new Intl.NumberFormat('es-CL').format((i.qty || 0) * (i.valor || 0))}`)
+            .join('\n')
+        : 'Sin detalle';
+
+    return `
+${saludo} ${p.cliente} 👋
+Tu servicio N° ${p.id} está LISTO ✅
+
+🧺 *Detalle del pedido:*
+${detalle}
+
+💵 *Total:* ${CLP.format(totalCalc)}
+📍 Retiro en Periodista Mario Peña Carreño #5304
+🕐 Atención Lunes a Viernes 10:00 a 20:00 hrs.
+💬 Gracias por preferir *Lavandería Fabiola* 💜`.trim();
+  }
+
+  function sendWhatsApp(p?: Pedido | null) {
+    if (!p) return;
+    const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828'; // fallback fijo
+    const msg = buildWhatsAppMessage(p);
+    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
   }
 
   // ------- Subida de foto -------
@@ -339,7 +381,7 @@ export default function LavandoPage() {
         )}
 
         {!loading && !errMsg && pedidos.length === 0 && (
-          <div className="text-white/80">No hay pedidos en estado LAVANDO.</div>
+          <div className="text-white/80">No hay pedidos en estado GUARDADO.</div>
         )}
 
         {!loading &&
@@ -347,7 +389,8 @@ export default function LavandoPage() {
           pedidos.map((p) => {
             const isOpen = openId === p.id;
             const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+            const totalCalc =
+              p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : Number(p.total ?? 0);
 
             return (
               <div
@@ -362,20 +405,17 @@ export default function LavandoPage() {
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                 >
                   <div className="flex items-center gap-3">
-
-                        <span
-                        className={[
-                            'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
-                            p.pagado
-                            ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
-                            : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
-                        ].join(' ')}
-                        aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
-                        >
-                        <User size={18} />
-                        </span>
-
-
+                    <span
+                      className={[
+                        'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                        p.pagado
+                          ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                          : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                      ].join(' ')}
+                      aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                    >
+                      <User size={18} />
+                    </span>
 
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
@@ -421,7 +461,7 @@ export default function LavandoPage() {
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                        {it.articulo.length > 30 ? it.articulo.slice(0, 30) + '…' : it.articulo}
                                       </td>
                                       <td className="px-3 py-2 text-right">{it.qty}</td>
                                       <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
@@ -486,10 +526,17 @@ export default function LavandoPage() {
           })}
       </section>
 
-      {/* Barra de acciones (Lavando) - solo iconos */}
+      {/* Barra de acciones */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-6 gap-3">
+            <IconBtn
+              title="WhatsApp"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => sendWhatsApp(pedidoAbierto)}
+              Icon={MessageCircle}
+              variant="success"
+            />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
@@ -625,25 +672,26 @@ function IconBtn({
   disabled,
   active,
   Icon,
+  variant,
 }: {
   title: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
+  variant?: 'success' | 'default';
 }) {
+  const base =
+    'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center';
+  const styles =
+    variant === 'success'
+      ? 'bg-emerald-600/80 border-emerald-300/40 text-white hover:bg-emerald-600'
+      : active
+      ? 'bg-white/20 border-white/30 text-white'
+      : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10';
+  const dis = disabled ? 'opacity-50 cursor-not-allowed' : '';
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={title}
-      title={title}
-      className={[
-        'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
-        disabled ? 'opacity-50 cursor-not-allowed' : '',
-      ].join(' ')}
-    >
+    <button onClick={onClick} disabled={disabled} aria-label={title} title={title} className={[base, styles, dis].join(' ')}>
       <Icon size={18} />
     </button>
   );
