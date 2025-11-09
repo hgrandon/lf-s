@@ -49,10 +49,10 @@ export async function shareOrDownloadImage(opts: {
   const file = new File([blob], `comprobante-${Date.now()}.png`, { type: 'image/png' });
 
   // Web Share API (móvil moderno)
-  // @ts-expect-error: detección runtime
+  // //     @ts-expect-error: detección runtime
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
-      // @ts-expect-error: detección runtime
+      //   // @ts-expect-error: detección runtime
       await navigator.share({ files: [file], text });
       return;
     } catch {
