@@ -17,11 +17,9 @@ import {
   WashingMachine,
   CreditCard,
   MessageCircle,
-  FileImage,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import html2canvas from 'html2canvas';
 
 type Item = { articulo: string; qty: number; valor: number };
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
@@ -84,15 +82,6 @@ export default function GuardadoPage() {
 
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
-
-  // ===== Modal Comprobante (IMG) =====
-  const [showComprobante, setShowComprobante] = useState(false);
-  const compRef = useRef<HTMLDivElement | null>(null);
-  const [sharing, setSharing] = useState(false);
-  const [pedidoForComp, setPedidoForComp] = useState<Pedido | null>(null);
-
-  // Ref de tarjeta por pedido (para expansión, no requerido para el comprobante)
-  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
@@ -252,7 +241,7 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  // ------- Texto WhatsApp -------
+  // ------- Texto de WhatsApp -------
   function buildWhatsAppMessage(p: Pedido) {
     const hora = new Date().getHours();
     const saludo = hora < 12 ? 'Buenos días' : 'Buenas tardes';
@@ -282,70 +271,9 @@ ${detalle}
   function sendWhatsAppText(p?: Pedido | null) {
     if (!p) return;
     const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
-    const msg = buildWhatsAppMessage(p);
-    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(msg)}`;
+    const text = buildWhatsAppMessage(p);
+    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
-  }
-
-  // ===== Comprobante (IMG) =====
-  function openComprobante(p?: Pedido | null) {
-    if (!p) return;
-    setPedidoForComp(p);
-    setShowComprobante(true);
-  }
-
-  async function shareComprobanteAsImage() {
-    if (!pedidoForComp || !compRef.current) return;
-    setSharing(true);
-    try {
-      const canvas = await html2canvas(compRef.current, {
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        allowTaint: false,
-        scale: 2,
-        logging: false,
-      });
-
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
-      const text = buildWhatsAppMessage(pedidoForComp);
-      const telefono = (pedidoForComp.telefono || '').replace(/\D/g, '') || '56991335828';
-
-      if (blob) {
-        const file = new File([blob], `comprobante-${pedidoForComp.id}.png`, { type: 'image/png' });
-        // @ts-ignore
-        if (navigator?.canShare?.({ files: [file] })) {
-          try {
-            // @ts-ignore
-            await navigator.share({ files: [file], text });
-            setShowComprobante(false);
-            setSharing(false);
-            return;
-          } catch {
-            // cancelado/falla -> fallback
-          }
-        }
-
-        // Fallback: descargar imagen + abrir WA con texto
-        const urlObj = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = urlObj;
-        a.download = `comprobante-${pedidoForComp.id}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(urlObj);
-      } else {
-        snack('No se pudo generar la imagen del comprobante.');
-      }
-
-      const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
-      window.open(waUrl, '_blank');
-    } catch (e) {
-      console.error(e);
-      snack('No se pudo generar la imagen del comprobante.');
-    } finally {
-      setSharing(false);
-    }
   }
 
   // ------- Cargar/Adjuntar foto -------
@@ -459,7 +387,6 @@ ${detalle}
             return (
               <div
                 key={p.id}
-                ref={(el) => { cardRefs.current[p.id] = el; }}
                 className={[
                   'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                   isOpen ? 'border-white/40' : 'border-white/15',
@@ -598,16 +525,11 @@ ${detalle}
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-6 gap-3">
             <IconBtn
-              title={sharing ? 'Generando comprobante…' : 'Comprobante (IMG)'}
-              disabled={!pedidoAbierto || saving || sharing}
-              onClick={() => openComprobante(pedidoAbierto)}
-              Icon={FileImage}
-            />
-            <IconBtn
-              title="WhatsApp"
+              title="WhatsApp (texto)"
               disabled={!pedidoAbierto || saving}
               onClick={() => sendWhatsAppText(pedidoAbierto)}
               Icon={MessageCircle}
+              variant="success"
             />
             <IconBtn
               title="Entregar"
@@ -636,6 +558,13 @@ ${detalle}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
+            />
+            <IconBtn
+              title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
+              active={!!pedidoAbierto?.pagado}
+              Icon={CreditCard}
             />
           </div>
 
@@ -683,103 +612,6 @@ ${detalle}
                 className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
               >
                 Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Comprobante (blanco/negro, sin imágenes externas) */}
-      {showComprobante && pedidoForComp && (
-        <div
-          className="fixed inset-0 z-40 grid place-items-center bg-black/60"
-          onClick={() => !sharing && setShowComprobante(false)}
-        >
-          <div
-            className="w-[520px] max-w-[94vw] bg-white text-black rounded-2xl shadow-2xl border border-black/10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div ref={compRef} className="p-5">
-              <div className="text-center">
-                <div className="text-xl font-extrabold tracking-wide">Lavandería Fabiola</div>
-                <div className="text-xs text-black/70">Comprobante de Servicio</div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div><b>N°:</b> {pedidoForComp.id}</div>
-                <div className="text-right"><b>Estado:</b> {pedidoForComp.pagado ? 'PAGADO' : 'PENDIENTE'}</div>
-                <div className="col-span-2"><b>Cliente:</b> {pedidoForComp.cliente}</div>
-                <div className="col-span-2"><b>Teléfono:</b> {pedidoForComp.telefono || '-'}</div>
-              </div>
-
-              <div className="mt-4 border-t border-black/10" />
-
-              <div className="mt-3">
-                <div className="font-semibold mb-2">Detalle</div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-black/10">
-                      <th className="text-left py-2 pr-2">Artículo</th>
-                      <th className="text-right py-2 pr-2">Cant.</th>
-                      <th className="text-right py-2 pr-2">Valor</th>
-                      <th className="text-right py-2">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pedidoForComp.items?.length ? (
-                      pedidoForComp.items.map((it, i) => (
-                        <tr key={i} className="border-b border-black/5">
-                          <td className="py-2 pr-2">{it.articulo}</td>
-                          <td className="py-2 pr-2 text-right">{it.qty}</td>
-                          <td className="py-2 pr-2 text-right">{CLP.format(it.valor)}</td>
-                          <td className="py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td className="py-3 text-center text-black/60" colSpan={4}>Sin artículos</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between text-sm">
-                <div className="text-black/70">
-                  Retiro en Periodista Mario Peña Carreño #5304<br />
-                  Horario Lun–Vie 10:00–20:00
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-black/60">Total</div>
-                  <div className="text-lg font-extrabold">
-                    {CLP.format(
-                      pedidoForComp.items?.length
-                        ? pedidoForComp.items.reduce((a, it) => a + it.qty * it.valor, 0)
-                        : Number(pedidoForComp.total || 0)
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 text-center text-xs text-black/60">
-                Gracias por preferir Lavandería Fabiola 💜
-              </div>
-            </div>
-
-            <div className="p-3 flex gap-2 border-t border-black/10">
-              <button
-                disabled={sharing}
-                onClick={shareComprobanteAsImage}
-                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700 disabled:opacity-60"
-              >
-                {sharing ? 'Generando comprobante…' : 'Compartir/Descargar imagen'}
-              </button>
-              <button
-                disabled={sharing}
-                onClick={() => setShowComprobante(false)}
-                className="rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
-              >
-                Cerrar
               </button>
             </div>
           </div>
@@ -834,15 +666,23 @@ function IconBtn({
   disabled,
   active,
   Icon,
+  variant,
 }: {
   title: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
+  variant?: 'success' | 'default';
 }) {
-  const base = 'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center';
-  const styles = active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10';
+  const base =
+    'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center';
+  const styles =
+    variant === 'success'
+      ? 'bg-emerald-600/80 border-emerald-300/40 text-white hover:bg-emerald-600'
+      : active
+      ? 'bg-white/20 border-white/30 text-white'
+      : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10';
   const dis = disabled ? 'opacity-50 cursor-not-allowed' : '';
   return (
     <button onClick={onClick} disabled={disabled} aria-label={title} title={title} className={[base, styles, dis].join(' ')}>
