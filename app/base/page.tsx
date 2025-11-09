@@ -134,7 +134,7 @@ export default function BasePage() {
         key: 'ENTREGADO' as EstadoKey,
         icon: PackageCheck,
         href: '/base/entregado',
-        subtitle: `Pendiente pago ${pendingEntregado}`,
+        subtitle: `P. pago ${pendingEntregado}`,
       },
       { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
     ],

@@ -1,59 +1,85 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Lock, User2 } from 'lucide-react';
+import { Loader2, Lock, User2, Eye, EyeOff } from 'lucide-react';
 
 type AuthMode = 'clave' | 'usuario';
 
 type UsuarioLoginOK = {
-  id: string;
+  id: string | number;
   nombre: string;
-  rol: 'ADMIN' | 'OPERADOR' | string;
+  rol: string | null;
 };
 
-function saveSession(payload: {
-  mode: AuthMode;
-  display: string; // nombre o "CLAVE"
-  rol?: string | null;
-}) {
-  const session = {
-    ...payload,
-    ts: Date.now(),
-  };
+const AFTER_LOGIN = '/base';          // <--- cambia a '/pedido' si prefieres
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function saveSession(payload: { mode: AuthMode; display: string; rol?: string | null }) {
   try {
-    localStorage.setItem('lf_auth', JSON.stringify(session));
+    localStorage.setItem(
+      'lf_auth',
+      JSON.stringify({ ...payload, ts: Date.now(), ttl: SESSION_TTL_MS })
+    );
   } catch {}
+}
+
+function readSession() {
+  try {
+    const raw = localStorage.getItem('lf_auth');
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s?.ts || !s?.ttl) return null;
+    if (Date.now() - s.ts > s.ttl) {
+      localStorage.removeItem('lf_auth');
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTel(raw: string) {
+  const d = (raw || '').replace(/\D/g, '');
+  // quita 56/056 si viene con código país
+  return d.replace(/^0?56/, '');
 }
 
 export default function LoginPage() {
   const router = useRouter();
-
   const [mode, setMode] = useState<AuthMode>('clave');
 
   // clave única
   const [clave, setClave] = useState('');
+  const [showClave, setShowClave] = useState(false);
+
   // usuario/pin
   const [tel, setTel] = useState('');
   const [pin, setPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // si ya hay sesión válida, entra directo
   useEffect(() => {
-    // si ya hay sesión, entra directo
-    try {
-      const raw = localStorage.getItem('lf_auth');
-      if (raw) router.replace('/base');
-    } catch {}
+    const s = readSession();
+    if (s) router.replace(AFTER_LOGIN);
   }, [router]);
+
+  const canSubmit = useMemo(() => {
+    if (loading) return false;
+    if (mode === 'clave') return Boolean(clave.trim());
+    const telefono = normalizeTel(tel);
+    return telefono.length >= 8 && Boolean(pin);
+  }, [loading, mode, clave, tel, pin]);
 
   async function loginClave() {
     setLoading(true);
     setErr(null);
     try {
-      // lee clave única
       const { data, error } = await supabase
         .from('app_settings')
         .select('valor')
@@ -61,17 +87,26 @@ export default function LoginPage() {
         .maybeSingle();
 
       if (error) throw error;
+
       const valor = String(data?.valor ?? '');
-      if (!valor) throw new Error('Clave no configurada');
+      if (!valor) throw new Error('Clave no configurada en app_settings');
 
       if (clave.trim() !== valor) {
         throw new Error('Clave incorrecta');
       }
 
-      saveSession({ mode: 'clave', display: 'CLAVE', rol: 'ADMIN' }); // puedes asumir ADMIN para clave global
-      router.replace('/base');
+      saveSession({ mode: 'clave', display: 'CLAVE', rol: 'ADMIN' });
+      router.replace(AFTER_LOGIN);
     } catch (e: any) {
-      setErr(e?.message ?? 'Error de conexión');
+      // mensajes más útiles
+      const msg =
+        e?.message ||
+        e?.error_description ||
+        (typeof e === 'string' ? e : null) ||
+        'Error de conexión';
+      setErr(msg);
+      // opcional: log en consola para diagnóstico
+      // console.error('loginClave error:', e);
     } finally {
       setLoading(false);
     }
@@ -81,28 +116,63 @@ export default function LoginPage() {
     setLoading(true);
     setErr(null);
     try {
-      const telefono = (tel || '').replace(/\D/g, '');
-      if (telefono.length < 8) throw new Error('Ingresa un teléfono válido');
+      const telefono = normalizeTel(tel);
+      if (telefono.length < 8) throw new Error('Ingresa un teléfono válido (8-9 dígitos CL).');
       if (!pin) throw new Error('Ingresa tu PIN');
 
-      // RPC seguro en BD
-      const { data, error } = await supabase.rpc('usuario_login', {
-        p_telefono: telefono,
-        p_pin: String(pin),
-      });
+      // 1) Intentar RPC
+      let ok: UsuarioLoginOK | null = null;
+      let rpcErr: any = null;
+      try {
+        const { data, error } = await supabase.rpc('usuario_login', {
+          p_telefono: telefono,
+          p_pin: String(pin),
+        });
+        if (error) rpcErr = error;
+        else ok = (data?.[0] as UsuarioLoginOK) ?? null;
+      } catch (e) {
+        rpcErr = e;
+      }
 
-      if (error) throw error;
-      const ok = (data?.[0] as UsuarioLoginOK | undefined) || null;
-      if (!ok) throw new Error('Teléfono o PIN incorrecto');
+      // 2) Si no existe RPC (o falla con 42883), hacemos Fallback a SELECT directo
+      if (!ok) {
+        const { data: rows, error: selErr } = await supabase
+          .from('usuario')
+          .select('id, nombre, rol, telefono, pin, activo')
+          .eq('telefono', telefono)
+          .eq('pin', pin)
+          .eq('activo', true)
+          .limit(1);
+
+        if (selErr) {
+          // si ambos caminos fallaron, mostramos el error más explicativo
+          throw rpcErr || selErr;
+        }
+
+        const row = rows?.[0] as any;
+        if (!row) throw new Error('Teléfono o PIN incorrecto');
+
+        ok = {
+          id: row.id,
+          nombre: row.nombre || telefono,
+          rol: row.rol ?? null,
+        };
+      }
 
       saveSession({
         mode: 'usuario',
-        display: ok.nombre || telefono,
-        rol: ok.rol || null,
+        display: ok?.nombre || telefono,
+        rol: ok?.rol ?? null,
       });
-      router.replace('/base');
+      router.replace(AFTER_LOGIN);
     } catch (e: any) {
-      setErr(e?.message ?? 'Error de conexión');
+      const msg =
+        e?.message ||
+        e?.error_description ||
+        (typeof e === 'string' ? e : null) ||
+        'Error de conexión';
+      setErr(msg);
+      // console.error('loginUsuario error:', e);
     } finally {
       setLoading(false);
     }
@@ -110,6 +180,7 @@ export default function LoginPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSubmit) return;
     if (mode === 'clave') loginClave();
     else loginUsuario();
   }
@@ -122,7 +193,7 @@ export default function LoginPage() {
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 grid place-items-center text-white font-black">
             LF
           </div>
-          <div className="text-sm text-slate-500">Acceso a la aplicación</div>
+          <div className="text-sm text-slate-500 font-semibold">Acceso a la aplicación</div>
         </div>
 
         {/* Tabs */}
@@ -153,17 +224,27 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="grid gap-3">
           {mode === 'clave' ? (
             <>
-              <input
-                type="password"
-                value={clave}
-                onChange={(e) => setClave(e.target.value)}
-                placeholder="Clave única…"
-                className="w-full rounded-xl border px-3 py-3 outline-none focus:ring-2 focus:ring-violet-300"
-                autoFocus
-              />
+              <div className="relative">
+                <input
+                  type={showClave ? 'text' : 'password'}
+                  value={clave}
+                  onChange={(e) => setClave(e.target.value)}
+                  placeholder="Clave única…"
+                  className="w-full rounded-xl border px-3 py-3 pr-10 outline-none focus:ring-2 focus:ring-violet-300"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowClave((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700"
+                  aria-label={showClave ? 'Ocultar clave' : 'Mostrar clave'}
+                >
+                  {showClave ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={!canSubmit}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 font-semibold disabled:opacity-60"
               >
                 {loading ? <Loader2 className="animate-spin" size={16} /> : null}
@@ -176,21 +257,31 @@ export default function LoginPage() {
                 inputMode="tel"
                 autoComplete="tel"
                 value={tel}
-                onChange={(e) => setTel(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setTel(e.target.value)}
                 placeholder="Teléfono"
                 className="w-full rounded-xl border px-3 py-3 outline-none focus:ring-2 focus:ring-violet-300"
                 autoFocus
               />
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="PIN"
-                className="w-full rounded-xl border px-3 py-3 outline-none focus:ring-2 focus:ring-violet-300"
-              />
+              <div className="relative">
+                <input
+                  type={showPin ? 'text' : 'password'}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="PIN"
+                  className="w-full rounded-xl border px-3 py-3 pr-10 outline-none focus:ring-2 focus:ring-violet-300"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPin((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700"
+                  aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
+                >
+                  {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={!canSubmit}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 font-semibold disabled:opacity-60"
               >
                 {loading ? <Loader2 className="animate-spin" size={16} /> : null}
