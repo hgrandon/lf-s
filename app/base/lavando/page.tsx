@@ -16,6 +16,7 @@ import {
   Droplet,
   WashingMachine,
   CreditCard,
+  Archive,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -503,6 +504,7 @@ export default function LavandoPage() {
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
+
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
@@ -510,13 +512,12 @@ export default function LavandoPage() {
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
-
             <IconBtn
               title="Guardardo"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
-              Icon={PackageCheck}
+              Icon={Archive}
             />
             <IconBtn
               title="Entregado"
