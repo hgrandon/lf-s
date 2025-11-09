@@ -40,6 +40,7 @@ type Props = {
   /** Clase extra para el contenedor principal (opcional) */
   className?: string;
 
+  /** Compatibilidad con page.tsx legado */
   onCliente?: (c: Cliente | null) => void;
   onNroInfo?: (n: NextNumber | null) => void;
 };
@@ -51,18 +52,14 @@ type Props = {
 /**
  * Normaliza teléfonos chilenos:
  * - Elimina todo lo que no sea dígito
- * - Remueve prefijo 56/056 y el 9 de móviles si viene con más dígitos
+ * - Remueve prefijo 56/056
  * - Retorna sólo dígitos
  */
 export function normalizeTel(raw: string): string {
   const digits = (raw || '').replace(/\D/g, '');
   if (!digits) return '';
-
   // Remover 056 o 56 al inicio
   const noCC = digits.replace(/^0?56/, '');
-
-  // El resultado esperado en CL suele ser 9 (móvil) o 8 (fijo) dígitos.
-  // Si alguien pegó 12-13 dígitos ( +56 9 xxxxxxxx ), ya removimos 56/056 arriba.
   return noCC;
 }
 
@@ -83,6 +80,10 @@ export default function HeaderPedido({
   fechaEntregaISO,
   autoOpenOnMissing = true,
   className = '',
+
+  // ✅ desestructuramos props legacy para que existan en el scope
+  onCliente,
+  onNroInfo,
 }: Props) {
   /** Estado de teléfono local si el padre no lo controla */
   const [telLocal, setTelLocal] = useState(() => normalizeTel(telefono ?? ''));
@@ -152,6 +153,7 @@ export default function HeaderPedido({
             direccion: (data.direccion ?? '') as string,
           };
           setCliente(found);
+          // ✅ compatibilidad con page.tsx (setCliente en el padre)
           onCliente?.(found);
           setFound();
           lastMissingTelRef.current = '';
@@ -182,7 +184,7 @@ export default function HeaderPedido({
         }
       }
     },
-    [autoOpenOnMissing, onClienteCargado, onError, setChecking, setErr, setFound, setNotFound]
+    [autoOpenOnMissing, onCliente, onClienteCargado, onError, setChecking, setErr, setFound, setNotFound]
   );
 
   /** Buscar cliente por teléfono (con debounce) */
@@ -229,7 +231,7 @@ export default function HeaderPedido({
       handleTelChange('');
       e.currentTarget.blur();
     } else if (e.key === 'Enter') {
-      // buscado inmediato (sin esperar debounce)
+      // búsqueda inmediata (sin esperar debounce)
       const digits = normalizeTel((e.currentTarget as HTMLInputElement).value);
       if (looksLikeValidCL(digits)) {
         if (debTimer.current) window.clearTimeout(debTimer.current);
@@ -329,7 +331,7 @@ export default function HeaderPedido({
         onSaved={(c) => {
           // Al guardar, fijamos el cliente y notificamos al padre
           setCliente(c);
-          onCliente?.(c);
+          onCliente?.(c); // compat con page.tsx
           setFound();
           onClienteCargado?.(c);
           setOpenNuevo(false);
