@@ -75,6 +75,9 @@ export default function GuardadoPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Loader compartir
+  const [sharing, setSharing] = useState(false);
+
   // Picker / upload
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
@@ -279,74 +282,98 @@ ${detalle}
 💬 Gracias por preferir *Lavandería Fabiola* 💜`.trim();
   }
 
-  // ------- Compartir comprobante por WhatsApp (imagen + texto si es posible) -------
- async function shareComprobanteWhatsApp(p?: Pedido | null) {
-  if (!p) return;
-
-  const el = cardRefs.current[p.id];
-  if (!el) {
-    snack('Abre el pedido y vuelve a intentar.');
-    return;
+  // Utilidad: dataURL -> Blob (fallback si canvas.toBlob da null)
+  function dataURLToBlob(dataUrl: string): Blob {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new Blob([u8arr], { type: mime });
   }
 
-  try {
-    // Captura con fondo blanco y sin elementos marcados como "no-print"
-    const canvas = await html2canvas(el, {
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      allowTaint: false,
-      scale: 2,
-      logging: false,
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      ignoreElements: (node) => {
-        const el = node as HTMLElement;
-        return el?.dataset?.noPrint === 'true' || el?.getAttribute?.('data-no-print') === 'true';
-      },
-    });
+  // ------- Compartir comprobante por WhatsApp (imagen + texto si es posible) -------
+  async function shareComprobanteWhatsApp(p?: Pedido | null) {
+    if (!p) return;
 
-    const blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b), 'image/png', 0.95)
-    );
-
-    const text = buildWhatsAppMessage(p);
-    const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
-
-    if (blob) {
-      const file = new File([blob], `comprobante-${p.id}.png`, { type: 'image/png' });
-
-      // Web Share API (Android moderno)
-      // @ts-ignore - detección runtime
-      if (navigator?.canShare?.({ files: [file] })) {
-        try {
-          // @ts-ignore
-          await navigator.share({ files: [file], text });
-          return;
-        } catch {
-          /* cancelado o falla -> fallback */
-        }
-      }
-
-      // Fallback: descarga imagen + abre WhatsApp con texto
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `comprobante-${p.id}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } else {
-      snack('No se pudo generar la imagen del comprobante.');
+    const el = cardRefs.current[p.id];
+    if (!el) {
+      snack('Abre el pedido y vuelve a intentar.');
+      return;
     }
 
-    const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
-    window.open(waUrl, '_blank');
-  } catch (e) {
-    console.error(e);
-    snack('No se pudo generar la imagen del comprobante.');
+    setSharing(true);
+    // Forzamos fondo blanco temporal para la captura (evita transparencias)
+    const prevBg = (el as HTMLElement).style.background;
+    (el as HTMLElement).style.background = '#ffffff';
+
+    try {
+      // Espera un frame antes de capturar para asegurar estilos aplicados
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+      const canvas = await html2canvas(el, {
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        allowTaint: false,
+        scale: 2,
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        ignoreElements: (node) => {
+          const n = node as HTMLElement;
+          return n?.dataset?.noPrint === 'true' || n?.getAttribute?.('data-no-print') === 'true';
+        },
+      });
+
+      let blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
+      if (!blob) {
+        // fallback: usa dataURL
+        const dataUrl = canvas.toDataURL('image/png', 0.95);
+        blob = dataURLToBlob(dataUrl);
+      }
+
+      const text = buildWhatsAppMessage(p);
+      const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
+
+      if (blob) {
+        const file = new File([blob], `comprobante-${p.id}.png`, { type: 'image/png' });
+
+        // Web Share API (Android moderno)
+        // @ts-ignore: detección en runtime
+        if (navigator?.canShare?.({ files: [file] })) {
+          try {
+            // @ts-ignore
+            await navigator.share({ files: [file], text });
+            return;
+          } catch {
+            /* cancelado o falla -> fallback */
+          }
+        }
+
+        // Fallback: descarga imagen + abre WhatsApp con texto
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `comprobante-${p.id}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        snack('No se pudo generar la imagen del comprobante.');
+      }
+
+      const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, '_blank');
+    } catch (e) {
+      console.error(e);
+      snack('No se pudo generar la imagen del comprobante.');
+    } finally {
+      (el as HTMLElement).style.background = prevBg;
+      setSharing(false);
+    }
   }
-}
 
   // ------- Cargar/Adjuntar foto -------
   function openPickerFor(pid: number) {
@@ -562,18 +589,18 @@ ${detalle}
                             onDoubleClick={() => openPickerFor(p.id)}
                             title="Doble clic para cambiar la imagen"
                           >
-                                <Image
-                                src={p.foto_url!}
-                                alt={`Foto pedido ${p.id}`}
-                                width={0}
-                                height={0}
-                                sizes="100vw"
-                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                                priority={false}
-                                crossOrigin="anonymous"         // <— importante para html2canvas
-                                unoptimized                     // <— evita optimización que puede romper CORS
-                                />
+                            <Image
+                              src={p.foto_url!}
+                              alt={`Foto pedido ${p.id}`}
+                              width={0}
+                              height={0}
+                              sizes="100vw"
+                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                              priority={false}
+                              crossOrigin="anonymous"
+                              unoptimized
+                            />
                           </div>
                         ) : (
                           <button
@@ -599,43 +626,44 @@ ${detalle}
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-6 gap-3">
             <IconBtn
-              title="WhatsApp"
-              disabled={!pedidoAbierto || saving}
+              title={sharing ? 'Generando comprobante…' : 'WhatsApp'}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => shareComprobanteWhatsApp(pedidoAbierto)}
               Icon={MessageCircle}
               variant="success"
+              loading={sharing}
             />
             <IconBtn
               title="Entregar"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
             <IconBtn
               title="Entregado"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
             />
             <IconBtn
               title="Lavar"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
               active={pedidoAbierto?.estado === 'LAVAR'}
               Icon={Droplet}
             />
             <IconBtn
               title="Lavando"
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
-              disabled={!pedidoAbierto || saving}
+              disabled={!pedidoAbierto || saving || sharing}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
@@ -741,6 +769,7 @@ function IconBtn({
   active,
   Icon,
   variant,
+  loading,
 }: {
   title: string;
   onClick: () => void;
@@ -748,9 +777,10 @@ function IconBtn({
   active?: boolean;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
   variant?: 'success' | 'default';
+  loading?: boolean;
 }) {
   const base =
-    'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center';
+    'relative rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center';
   const styles =
     variant === 'success'
       ? 'bg-emerald-600/80 border-emerald-300/40 text-white hover:bg-emerald-600'
@@ -758,9 +788,17 @@ function IconBtn({
       ? 'bg-white/20 border-white/30 text-white'
       : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10';
   const dis = disabled ? 'opacity-50 cursor-not-allowed' : '';
+
   return (
-    <button onClick={onClick} disabled={disabled} aria-label={title} title={title} className={[base, styles, dis].join(' ')}>
-      <Icon size={18} />
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={title}
+      title={title}
+      aria-busy={!!loading}
+      className={[base, styles, dis].join(' ')}
+    >
+      {loading ? <Loader2 size={18} className="animate-spin" /> : <Icon size={18} />}
     </button>
   );
 }
