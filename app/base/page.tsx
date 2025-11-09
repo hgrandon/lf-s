@@ -45,6 +45,7 @@ export default function BasePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
+  const [pendingEntregado, setPendingEntregado] = useState(0);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -86,6 +87,16 @@ export default function BasePage() {
         next.GUARDAR = 0;
         if (mountedRef.current) setCounts(next);
       }
+
+      // ENTREGADO pendientes de pago
+      const { count: pendCount, error: pendErr } = await supabase
+        .from('pedido')
+        .select('*', { count: 'exact', head: true })
+        .eq('estado', 'ENTREGADO')
+        .eq('pagado', false);
+      if (pendErr) throw pendErr;
+      if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
+
     } catch (e: any) {
       if (mountedRef.current) setErr(e?.message ?? 'Error desconocido al cargar');
       console.error('fetchCounts error:', e);
@@ -118,10 +129,16 @@ export default function BasePage() {
       { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
       { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive, href: '/base/editar' },
       { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
-      { title: 'Entregado', key: 'ENTREGADO' as EstadoKey, icon: PackageCheck, href: '/base/entregado' },
+      {
+        title: 'Entregado',
+        key: 'ENTREGADO' as EstadoKey,
+        icon: PackageCheck,
+        href: '/base/entregado',
+        subtitle: `Pendiente pago ${pendingEntregado}`,
+      },
       { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
     ],
-    []
+    [pendingEntregado]
   );
 
   const shortcuts = [
@@ -174,6 +191,7 @@ export default function BasePage() {
               count={loading ? null : t.key === 'GUARDAR' ? 0 : counts[t.key]}
               onClick={() => router.push(t.href)}
               Icon={t.icon}
+              subtitle={t.subtitle}
             />
           ))}
         </div>
@@ -209,11 +227,13 @@ function Tile({
   count,
   Icon,
   onClick,
+  subtitle,
 }: {
   title: string;
   count: number | null;
   Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   onClick: () => void;
+  subtitle?: React.ReactNode;
 }) {
   return (
     <button
@@ -228,9 +248,17 @@ function Tile({
       <div className="h-full flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <Icon className="w-6 h-6 text-white/90 shrink-0" />
-          <span className="text-base sm:text-lg font-extrabold tracking-tight truncate">{title}</span>
+          <div className="min-w-0">
+            <span className="block text-base sm:text-lg font-extrabold tracking-tight truncate">
+              {title}
+            </span>
+            {subtitle ? (
+              <span className="mt-0.5 block text-[0.9rem] sm:text-[1rem] text-yellow-300 font-extrabold italic truncate">
+                {subtitle}
+              </span>
+            ) : null}
+          </div>
         </div>
-
         <div className="text-right w-12 sm:w-14">
           {count === null ? (
             <span className="inline-block h-5 w-full rounded bg-white/20 animate-pulse" />
