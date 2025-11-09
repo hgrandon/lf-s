@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
+import html2canvas from 'html2canvas';
 
 type Item = { articulo: string; qty: number; valor: number };
 type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
@@ -83,6 +84,9 @@ export default function GuardadoPage() {
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
+  // Ref de tarjeta por pedido (para captura con html2canvas)
+  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
@@ -92,7 +96,7 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedidos en GUARDADO (tu cabecera dice "Guardado")
+        // Pedidos en GUARDADO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
@@ -248,7 +252,7 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  // ------- WhatsApp -------
+  // ------- Mensaje de WhatsApp (texto) -------
   function buildWhatsAppMessage(p: Pedido) {
     const hora = new Date().getHours();
     const saludo = hora < 12 ? 'Buenos días' : 'Buenas tardes';
@@ -275,15 +279,60 @@ ${detalle}
 💬 Gracias por preferir *Lavandería Fabiola* 💜`.trim();
   }
 
-  function sendWhatsApp(p?: Pedido | null) {
+  // ------- Compartir comprobante por WhatsApp (imagen + texto si es posible) -------
+  async function shareComprobanteWhatsApp(p?: Pedido | null) {
     if (!p) return;
-    const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828'; // fallback fijo
-    const msg = buildWhatsAppMessage(p);
-    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+
+    const el = cardRefs.current[p.id];
+    if (!el) {
+      snack('Abre el pedido y vuelve a intentar.');
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(el, {
+        backgroundColor: '#6D28D9', // respaldo para fondos semitransparentes (violeta)
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+
+      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
+      const text = buildWhatsAppMessage(p);
+      const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828'; // fallback fijo
+
+      // Intento de compartir (móviles modernos)
+      if (blob && (navigator as any).canShare?.({ files: [new File([blob], 'comprobante.png', { type: 'image/png' })] })) {
+        const file = new File([blob], `comprobante-${p.id}.png`, { type: 'image/png' });
+        try {
+          await (navigator as any).share({ files: [file], text });
+          return;
+        } catch {
+          // Si cancelan o falla, seguimos al fallback
+        }
+      }
+
+      // Fallback: descargar imagen y abrir WhatsApp con texto
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `comprobante-${p.id}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      const waUrl = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, '_blank');
+    } catch (e) {
+      console.error(e);
+      snack('No se pudo generar la imagen del comprobante.');
+    }
   }
 
-  // ------- Subida de foto -------
+  // ------- Cargar/Adjuntar foto -------
   function openPickerFor(pid: number) {
     setPickerForPedido(pid);
   }
@@ -395,6 +444,7 @@ ${detalle}
             return (
               <div
                 key={p.id}
+                ref={(el) => { cardRefs.current[p.id] = el; }}
                 className={[
                   'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                   isOpen ? 'border-white/40' : 'border-white/15',
@@ -527,13 +577,13 @@ ${detalle}
       </section>
 
       {/* Barra de acciones */}
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md" data-no-print="true">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-6 gap-3">
             <IconBtn
               title="WhatsApp"
               disabled={!pedidoAbierto || saving}
-              onClick={() => sendWhatsApp(pedidoAbierto)}
+              onClick={() => shareComprobanteWhatsApp(pedidoAbierto)}
               Icon={MessageCircle}
               variant="success"
             />
