@@ -1,14 +1,25 @@
+// app/pedido/page.tsx
 'use client';
 
 import { useState } from 'react';
-import HeaderPedido, { type Cliente, type NextNumber } from './components/HeaderPedido';
+import HeaderPedido, { type Cliente as ClienteHeader, type NextNumber } from './components/HeaderPedido';
+import DetallePedido, { Item, type Cliente as ClienteDetalle } from './components/DetallePedido';
 import ArticulosSelect from './components/ArticulosSelect';
-import DetallePedido, { Item } from './components/DetallePedido';
 
 export default function PedidoPage() {
-  const [cliente, setCliente] = useState<Cliente | null>(null);
+  // Estado que viene del Header (puede traer null en nombre/dirección)
+  const [clienteHdr, setClienteHdr] = useState<ClienteHeader | null>(null);
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
+
+  // 🔄 Adaptamos al tipo que espera DetallePedido (strings no-null)
+  const clienteDet: ClienteDetalle | undefined = clienteHdr
+    ? {
+        telefono: clienteHdr.telefono,
+        nombre: clienteHdr.nombre ?? '',
+        direccion: clienteHdr.direccion ?? '',
+      }
+    : undefined;
 
   // Recibe del combo un payload { articulo, precio, cantidad }
   const handleAddItem = (payload: { articulo: string; precio: number; cantidad: number }) => {
@@ -41,7 +52,7 @@ export default function PedidoPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Cabecera: N°, fechas, teléfono y cliente */}
-      <HeaderPedido onCliente={setCliente} onNroInfo={setNroInfo} />
+      <HeaderPedido onCliente={setClienteHdr} onNroInfo={setNroInfo} />
 
       {/* Contenido */}
       <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
@@ -51,8 +62,8 @@ export default function PedidoPage() {
 
           {/* Detalle / Total / Guardar */}
           <DetallePedido
-            cliente={cliente}
-            nroInfo={nroInfo}
+            cliente={clienteDet}
+            nroInfo={nroInfo ?? undefined}
             items={items}
             onRemoveItem={handleRemoveItem}
           />
