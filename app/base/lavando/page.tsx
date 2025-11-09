@@ -60,6 +60,29 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
+/* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [err, setErr] = useState<Error | null>(null);
+  if (err) {
+    return (
+      <div className="rounded-xl bg-red-500/15 border border-red-400/30 p-4 text-sm">
+        <div className="font-semibold mb-1">Ocurrió un error al renderizar.</div>
+        <div className="opacity-80">{String(err.message || err)}</div>
+      </div>
+    );
+  }
+  return (
+    <div
+      onErrorCapture={(e) => {
+        e.preventDefault();
+        setErr(new Error('Error de render capturado.'));
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function LavandoPage() {
   const router = useRouter();
 
@@ -90,7 +113,6 @@ export default function LavandoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedidos en LAVANDO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
@@ -110,21 +132,18 @@ export default function LavandoPage() {
           return;
         }
 
-        // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
         if (e2) throw e2;
 
-        // Fotos (fallback)
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
           .in('pedido_id', ids);
         if (e3) throw e3;
 
-        // Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -151,7 +170,6 @@ export default function LavandoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal (prioriza pedido.foto_url)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
@@ -213,7 +231,6 @@ export default function LavandoPage() {
       return;
     }
 
-    // En Lavando, si pasa a otro estado lo sacamos de la lista
     if (next !== 'LAVANDO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -256,14 +273,8 @@ export default function LavandoPage() {
     const file = e.target.files?.[0] || null;
     e.target.value = '';
     const pid = pickerForPedido;
-    if (!pid) {
-      setPickerForPedido(null);
-      return;
-    }
-    if (!file) {
-      setPickerForPedido(null);
-      return;
-    }
+    if (!pid) return setPickerForPedido(null);
+    if (!file) return setPickerForPedido(null);
 
     try {
       setUploading((prev) => ({ ...prev, [pid]: true }));
@@ -280,7 +291,6 @@ export default function LavandoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      // Guarda relación y setea como foto principal del pedido
       const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
@@ -324,154 +334,158 @@ export default function LavandoPage() {
       </header>
 
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
-        {loading && (
-          <div className="flex items-center gap-2 text-white/90">
-            <Loader2 className="animate-spin" size={18} />
-            Cargando pedidos…
-          </div>
-        )}
+        <ErrorBoundary>
+          {loading && (
+            <div className="flex items-center gap-2 text-white/90">
+              <Loader2 className="animate-spin" size={18} />
+              Cargando pedidos…
+            </div>
+          )}
 
-        {!loading && errMsg && (
-          <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
-            <AlertTriangle size={16} />
-            <span>{errMsg}</span>
-          </div>
-        )}
+          {!loading && errMsg && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
+              <AlertTriangle size={16} />
+              <span>{errMsg}</span>
+            </div>
+          )}
 
-        {!loading && !errMsg && pedidos.length === 0 && (
-          <div className="text-white/80">No hay pedidos en estado LAVANDO.</div>
-        )}
+          {!loading && !errMsg && (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
+            <div className="text-white/80">No hay pedidos en estado LAVANDO.</div>
+          )}
 
-        {!loading &&
-          !errMsg &&
-          pedidos.map((p) => {
-            const isOpen = openId === p.id;
-            const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+          {!loading &&
+            !errMsg &&
+            Array.isArray(pedidos) &&
+            pedidos.map((p) => {
+              const isOpen = openId === p.id;
+              const detOpen = !!openDetail[p.id];
+              const totalCalc =
+                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
-            return (
-              <div
-                key={p.id}
-                className={[
-                  'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
-                  isOpen ? 'border-white/40' : 'border-white/15',
-                ].join(' ')}
-              >
-                <button
-                  onClick={() => setOpenId(isOpen ? null : p.id)}
-                  className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+              return (
+                <div
+                  key={p.id}
+                  className={[
+                    'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
+                    isOpen ? 'border-white/40' : 'border-white/15',
+                  ].join(' ')}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
-                      <User size={18} />
-                    </span>
-                    <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
-                      <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                  <button
+                    onClick={() => setOpenId(isOpen ? null : p.id)}
+                    className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
+                        <User size={18} />
+                      </span>
+                      <div className="text-left">
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                        <div className="text-[10px] lg:text-xs uppercase text-white/85">
+                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
-                    {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                  </div>
-                </button>
+                    <div className="flex items-center gap-3 lg:gap-4">
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </div>
+                  </button>
 
-                {isOpen && (
-                  <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                    <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
-                      <button
-                        onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Table size={16} />
-                          <span className="font-semibold">Detalle Pedido</span>
-                        </div>
-                        {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </button>
+                  {isOpen && (
+                    <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
+                      <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                        <button
+                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Table size={16} />
+                            <span className="font-semibold">Detalle Pedido</span>
+                          </div>
+                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
 
-                      {detOpen && (
-                        <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                          <div className="overflow-x-auto w-full max-w-4xl">
-                            <table className="w-full text-xs lg:text-sm text-white/95">
-                              <thead className="bg-white/10 text-white/90">
-                                <tr>
-                                  <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                  <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                                  <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                  <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/10">
-                                {p.items?.length ? (
-                                  p.items.map((it, idx) => (
-                                    <tr key={idx}>
-                                      <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
-                                      </td>
-                                      <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
-                                    </tr>
-                                  ))
-                                ) : (
+                        {detOpen && (
+                          <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                            <div className="overflow-x-auto w-full max-w-4xl">
+                              <table className="w-full text-xs lg:text-sm text-white/95">
+                                <thead className="bg-white/10 text-white/90">
                                   <tr>
-                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
-                                      Sin artículos registrados.
-                                    </td>
+                                    <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
                                   </tr>
-                                )}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody className="divide-y divide-white/10">
+                                  {Array.isArray(p.items) && p.items.length ? (
+                                    p.items.map((it, idx) => (
+                                      <tr key={idx}>
+                                        <td className="px-3 py-2 truncate">
+                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">{it.qty}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                        Sin artículos registrados.
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
 
-                            <div
-                              className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
-                              title="Doble clic para editar pedido"
-                              onDoubleClick={() => askEdit(p.id)}
-                            >
-                              Total: {CLP.format(totalCalc)}
+                              <div
+                                className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
+                                title="Doble clic para editar pedido"
+                                onDoubleClick={() => askEdit(p.id)}
+                              >
+                                Total: {CLP.format(totalCalc)}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !imageError[p.id] ? (
-                          <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                            onDoubleClick={() => openPickerFor(p.id)}
-                            title="Doble clic para cambiar la imagen"
-                          >
-                            <Image
-                              src={p.foto_url!}
-                              alt={`Foto pedido ${p.id}`}
-                              width={0}
-                              height={0}
-                              sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                              priority={false}
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openPickerFor(p.id)}
-                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
-                            title="Agregar imagen"
-                          >
-                            <ImagePlus size={18} />
-                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
-                          </button>
                         )}
+
+                        <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                          {typeof p.foto_url === 'string' && p.foto_url && !imageError[p.id] ? (
+                            <div
+                              className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                              onDoubleClick={() => openPickerFor(p.id)}
+                              title="Doble clic para cambiar la imagen"
+                            >
+                              <Image
+                                src={p.foto_url}
+                                alt={`Foto pedido ${p.id}`}
+                                width={0}
+                                height={0}
+                                sizes="100vw"
+                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                priority={false}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => openPickerFor(p.id)}
+                              className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                              title="Agregar imagen"
+                            >
+                              <ImagePlus size={18} />
+                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  )}
+                </div>
+              );
+            })}
+        </ErrorBoundary>
       </section>
 
       {/* Barra de acciones (Lavando) - solo iconos */}
@@ -628,7 +642,7 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg:white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
