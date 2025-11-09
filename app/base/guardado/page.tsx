@@ -94,7 +94,7 @@ export default function LavandoPage() {
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
-          .eq('estado', 'LAVANDO')
+          .eq('estado', 'GUARDADO')
           .order('nro', { ascending: false });
 
         if (e1) throw e1;
@@ -214,11 +214,11 @@ export default function LavandoPage() {
     }
 
     // En Lavando, si pasa a otro estado lo sacamos de la lista
-    if (next !== 'LAVANDO') {
-      setPedidos((curr) => curr.filter((p) => p.id !== id));
-      setOpenId(null);
-      snack(`Pedido #${id} movido a ${next}`);
-    }
+        if (next !== 'GUARDADO') {
+        setPedidos((curr) => curr.filter((p) => p.id !== id));
+        setOpenId(null);
+        snack(`Pedido #${id} movido a ${next}`);
+        }
     setSaving(false);
   }
 
@@ -317,7 +317,7 @@ export default function LavandoPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
-        <h1 className="font-bold text-base lg:text-xl">Lavando</h1>
+        <h1 className="font-bold text-base lg:text-xl">Guardado</h1>
         <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
         </button>
@@ -362,9 +362,21 @@ export default function LavandoPage() {
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
-                      <User size={18} />
-                    </span>
+
+                        <span
+                        className={[
+                            'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                            p.pagado
+                            ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                            : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                        ].join(' ')}
+                        aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                        >
+                        <User size={18} />
+                        </span>
+
+
+
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
@@ -628,7 +640,7 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg:white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >

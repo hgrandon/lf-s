@@ -375,9 +375,20 @@ export default function LavandoPage() {
                     className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
-                        <User size={18} />
-                      </span>
+
+                          <span
+                            className={[
+                              'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                              p.pagado
+                                ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                                : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                            ].join(' ')}
+                            aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                          >
+                            <User size={18} />
+                          </span>
+
+
                       <div className="text-left">
                         <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
