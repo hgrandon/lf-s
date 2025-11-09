@@ -2,16 +2,32 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  User,
+  Table,
+  Loader2,
+  AlertTriangle,
+  Camera,
+  ImagePlus,
+  Truck,
+  PackageCheck,
+  Droplet,
+  WashingMachine,
+  CreditCard,
+} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+
 type Pedido = {
   id: number; // nro
   cliente: string;
   total: number | null;
-  estado: 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+  estado: PedidoEstado;
   detalle?: string | null;
   foto_url?: string | null;
   pagado?: boolean | null;
@@ -62,7 +78,7 @@ export default function LavandoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Mejora 1/2: Modal de “¿Desea editar?” al hacer doble clic en Total
+  // Modal “¿Desea editar?” al hacer doble clic en Total
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -116,9 +132,7 @@ export default function LavandoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) =>
-          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE')
-        );
+        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -126,15 +140,8 @@ export default function LavandoPage() {
           if (!pid) return;
 
           const label =
-            String(
-              l.articulo ??
-                l.nombre ??
-                l.descripcion ??
-                l.item ??
-                l.articulo_nombre ??
-                l.articulo_id ??
-                ''
-            ).trim() || 'SIN NOMBRE';
+            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
+              .trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -144,7 +151,7 @@ export default function LavandoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal por pedido (prioriza pedido.foto_url; si no, toma de pedido_foto)
+        // Foto principal (prioriza pedido.foto_url)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
@@ -186,15 +193,13 @@ export default function LavandoPage() {
     };
   }, []);
 
-  const subtotal = (it: Item) => it.qty * it.valor;
-
   function snack(msg: string) {
     setNotice(msg);
     setTimeout(() => setNotice(null), 1800);
   }
 
   // Cambios de estado en Lavando
-  async function changeEstado(id: number, next: Pedido['estado']) {
+  async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
     const prev = pedidos;
@@ -256,7 +261,6 @@ export default function LavandoPage() {
       return;
     }
     if (!file) {
-      // cerramos igual si canceló
       setPickerForPedido(null);
       return;
     }
@@ -290,19 +294,17 @@ export default function LavandoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cerrar siempre el modal al terminar
+      setPickerForPedido(null);
     }
   }
 
-  // Mejora 1/2: abrir modal de edición desde el total
+  // Modal de edición
   function askEdit(id: number) {
     setAskEditForId(id);
   }
-
   function closeAskEdit() {
     setAskEditForId(null);
   }
-
   function goEdit() {
     const id = askEditForId;
     if (!id) return;
@@ -423,7 +425,7 @@ export default function LavandoPage() {
                                 )}
                               </tbody>
                             </table>
-                            {/* Mejora 1/2: doble clic en TOTAL para abrir modal de edición */}
+
                             <div
                               className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
                               title="Doble clic para editar pedido"
@@ -472,33 +474,44 @@ export default function LavandoPage() {
           })}
       </section>
 
-      {/* Barra de acciones (Lavando) */}
+      {/* Barra de acciones (Lavando) - solo iconos */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-4 gap-3">
-            <ActionBtn
-              label="Lavar"
+          <div className="grid grid-cols-5 gap-3">
+            <IconBtn
+              title="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
-              active={pedidoAbierto?.estado === 'LAVAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
+              Icon={Truck}
             />
-            <ActionBtn
-              label="Guardado"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
-              active={pedidoAbierto?.estado === 'GUARDADO'}
-            />
-            <ActionBtn
-              label="Entregado"
+            <IconBtn
+              title="Entregado"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
+              Icon={PackageCheck}
             />
-            <ActionBtn
-              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
+            <IconBtn
+              title="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
+              Icon={Droplet}
+            />
+            <IconBtn
+              title="Lavando"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              active={pedidoAbierto?.estado === 'LAVANDO'}
+              Icon={WashingMachine}
+            />
+            <IconBtn
+              title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
+              Icon={CreditCard}
             />
           </div>
 
@@ -523,7 +536,7 @@ export default function LavandoPage() {
         </div>
       )}
 
-      {/* Modal “¿Desea editar?” (Mejora 1/2) */}
+      {/* Modal “¿Desea editar?” */}
       {askEditForId && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-black/50"
@@ -538,10 +551,7 @@ export default function LavandoPage() {
             <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
             <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
             <div className="flex gap-2">
-              <button
-                onClick={goEdit}
-                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
-              >
+              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
                 Editar
               </button>
               <button
@@ -597,28 +607,32 @@ export default function LavandoPage() {
   );
 }
 
-function ActionBtn({
-  label,
+function IconBtn({
+  title,
   onClick,
   disabled,
   active,
+  Icon,
 }: {
-  label: string;
+  title: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      aria-label={title}
+      title={title}
       className={[
-        'rounded-xl py-3 text-sm font-medium border transition',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
+        active ? 'bg:white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
-      {label}
+      <Icon size={18} />
     </button>
   );
 }
