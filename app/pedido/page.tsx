@@ -18,7 +18,7 @@ export default function PedidoPage() {
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
-  // ✅ Adaptar al tipo de DetallePedido (strings NO nulos) y nunca undefined
+  // Adaptar al tipo de DetallePedido (strings no nulos) y nunca undefined
   const clienteDet: ClienteDetalle | null = clienteHdr
     ? {
         telefono: clienteHdr.telefono,
@@ -59,12 +59,8 @@ export default function PedidoPage() {
 
       {/* Cabecera: N°, fechas, teléfono y cliente */}
       <HeaderPedido
-        // pedidoId opcional; si quieres ver N° 0, descomenta la siguiente línea:
-        // pedidoId={0}
         onCliente={setClienteHdr}
         onNroInfo={setNroInfo}
-        // autoOpenOnMissing es true por defecto; si lo quieres forzar:
-        // autoOpenOnMissing
       />
 
       {/* Contenido */}
@@ -75,8 +71,8 @@ export default function PedidoPage() {
 
           {/* Detalle / Total / Guardar */}
           <DetallePedido
-            cliente={clienteDet}   {/* ✅ Cliente | null (nunca undefined) */}
-            nroInfo={nroInfo}      {/* ✅ NextNumber | null (sin “?? undefined”) */}
+            cliente={clienteDet}
+            nroInfo={nroInfo}
             items={items}
             onRemoveItem={handleRemoveItem}
           />
