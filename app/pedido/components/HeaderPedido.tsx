@@ -39,6 +39,9 @@ type Props = {
   autoOpenOnMissing?: boolean;
   /** Clase extra para el contenedor principal (opcional) */
   className?: string;
+
+  onCliente?: (c: Cliente | null) => void;
+  onNroInfo?: (n: NextNumber | null) => void;
 };
 
 /* =========================
@@ -149,6 +152,7 @@ export default function HeaderPedido({
             direccion: (data.direccion ?? '') as string,
           };
           setCliente(found);
+          onCliente?.(found);
           setFound();
           lastMissingTelRef.current = '';
           setOpenNuevo(false);
@@ -325,6 +329,7 @@ export default function HeaderPedido({
         onSaved={(c) => {
           // Al guardar, fijamos el cliente y notificamos al padre
           setCliente(c);
+          onCliente?.(c);
           setFound();
           onClienteCargado?.(c);
           setOpenNuevo(false);
