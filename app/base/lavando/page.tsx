@@ -512,10 +512,10 @@ export default function LavandoPage() {
             />
 
             <IconBtn
-              title="Guardar"
+              title="Guardardo"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDAR')}
-              active={pedidoAbierto?.estado === 'GUARDAR'}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={PackageCheck}
             />
             <IconBtn
