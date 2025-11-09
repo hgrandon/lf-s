@@ -119,7 +119,7 @@ export default function EntregadoPage() {
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'ENTREGADO')
-          .order('nro', { ascending: true }); // más antiguos primero
+          .order('nro', { ascending: false }); // más antiguos primero
 
         if (e1) throw e1;
 
