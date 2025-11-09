@@ -2,26 +2,32 @@
 'use client';
 
 import { useState } from 'react';
-import HeaderPedido, { type Cliente as ClienteHeader, type NextNumber } from './components/HeaderPedido';
-import DetallePedido, { Item, type Cliente as ClienteDetalle } from './components/DetallePedido';
+import HeaderPedido, {
+  type Cliente as ClienteHeader,
+  type NextNumber,
+} from './components/HeaderPedido';
+import DetallePedido, {
+  Item,
+  type Cliente as ClienteDetalle,
+} from './components/DetallePedido';
 import ArticulosSelect from './components/ArticulosSelect';
 
 export default function PedidoPage() {
-  // Estado que viene del Header (puede traer null en nombre/dirección)
+  // Cliente que viene del Header (puede traer nombre/dirección null)
   const [clienteHdr, setClienteHdr] = useState<ClienteHeader | null>(null);
   const [nroInfo, setNroInfo] = useState<NextNumber | null>(null);
   const [items, setItems] = useState<Item[]>([]);
 
-  // 🔄 Adaptamos al tipo que espera DetallePedido (strings no-null)
-  const clienteDet: ClienteDetalle | undefined = clienteHdr
+  // ✅ Adaptar al tipo de DetallePedido (strings NO nulos) y nunca undefined
+  const clienteDet: ClienteDetalle | null = clienteHdr
     ? {
         telefono: clienteHdr.telefono,
         nombre: clienteHdr.nombre ?? '',
         direccion: clienteHdr.direccion ?? '',
       }
-    : undefined;
+    : null;
 
-  // Recibe del combo un payload { articulo, precio, cantidad }
+  // Recibe { articulo, precio, cantidad } del combo
   const handleAddItem = (payload: { articulo: string; precio: number; cantidad: number }) => {
     const incoming: Item = {
       articulo: payload.articulo,
@@ -52,7 +58,14 @@ export default function PedidoPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Cabecera: N°, fechas, teléfono y cliente */}
-      <HeaderPedido onCliente={setClienteHdr} onNroInfo={setNroInfo} />
+      <HeaderPedido
+        // pedidoId opcional; si quieres ver N° 0, descomenta la siguiente línea:
+        // pedidoId={0}
+        onCliente={setClienteHdr}
+        onNroInfo={setNroInfo}
+        // autoOpenOnMissing es true por defecto; si lo quieres forzar:
+        // autoOpenOnMissing
+      />
 
       {/* Contenido */}
       <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
@@ -62,8 +75,8 @@ export default function PedidoPage() {
 
           {/* Detalle / Total / Guardar */}
           <DetallePedido
-            cliente={clienteDet}
-            nroInfo={nroInfo ?? undefined}
+            cliente={clienteDet}   {/* ✅ Cliente | null (nunca undefined) */}
+            nroInfo={nroInfo}      {/* ✅ NextNumber | null (sin “?? undefined”) */}
             items={items}
             onRemoveItem={handleRemoveItem}
           />
