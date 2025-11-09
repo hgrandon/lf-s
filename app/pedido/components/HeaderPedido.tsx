@@ -1,197 +1,179 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeftCircle, Loader2, Phone } from 'lucide-react';
+import NuevoClienteModal from './NuevoClienteModal';
+import { Phone } from 'lucide-react';
 
-export type Cliente = { telefono: string; nombre: string; direccion: string };
-export type NextNumber = { nro: number; fecha: string; entrega: string };
+type Cliente = {
+  telefono: string;
+  nombre: string | null;
+  direccion: string | null;
+};
 
-const telClean = (v: string) => v.replace(/\D+/g, '').slice(0, 9);
-const isoToday = () => new Date().toISOString().slice(0, 10);
-
-function addBusinessDays(fromISO: string, days = 3) {
-  const d = new Date(fromISO + 'T00:00:00');
-  let added = 0;
-  while (added < days) {
-    d.setDate(d.getDate() + 1);
-    const wd = d.getDay();
-    if (wd !== 0 && wd !== 6) added++;
-  }
-  return d.toISOString().slice(0, 10);
-}
+type Props = {
+  /** Número de pedido mostrado en el encabezado */
+  pedidoId: number;
+  /** Teléfono controlado desde la página (si existe). Si no se pasa, el componente lo maneja internamente. */
+  telefono?: string;
+  /** Setter opcional si la página controla el teléfono */
+  onTelefonoChange?: (t: string) => void;
+  /** Callback para notificar que se cargó/creó un cliente (tel/nombre/dirección) */
+  onClienteCargado?: (cli: { telefono: string; nombre: string; direccion: string }) => void;
+  /** Fechas visibles en el header */
+  fechaIngresoISO?: string;
+  fechaEntregaISO?: string;
+};
 
 export default function HeaderPedido({
-  onCliente,
-  onNroInfo,
-}: {
-  onCliente: (c: Cliente | null) => void;
-  onNroInfo: (n: NextNumber) => void;
-}) {
-  const router = useRouter();
+  pedidoId,
+  telefono,
+  onTelefonoChange,
+  onClienteCargado,
+  fechaIngresoISO,
+  fechaEntregaISO,
+}: Props) {
+  // Si el padre no controla, usamos estado interno
+  const [telLocal, setTelLocal] = useState(telefono ?? '');
+  const tel = typeof telefono === 'string' ? telefono : telLocal;
 
-  const [tel, setTel] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [loadingCliente, setLoadingCliente] = useState(false);
-  const [nroInfo, setNroInfo] = useState<NextNumber>({
-    nro: 1,
-    fecha: isoToday(),
-    entrega: addBusinessDays(isoToday(), 3),
-  });
+  const [checking, setChecking] = useState(false);
+  const [openNuevo, setOpenNuevo] = useState(false);
 
-  /** ===============================
-   *  Correlativo robusto:
-   *  1) RPC next_pedido_number (si existe)
-   *  2) MAX(nro) + 1   (columna nro)
-   *  3) MAX(id)  + 1   (fallback si no hay nro)
-   * =============================== */
-  async function computeNextNumber(): Promise<NextNumber> {
-    const today = isoToday();
-    const entrega = addBusinessDays(today, 3);
+  const debTimer = useRef<number | null>(null);
 
-    // 1) RPC (si la tienes creada)
-    try {
-      const { data, error } = await supabase.rpc('next_pedido_number');
-      if (!error && data && typeof (data as any).nro === 'number') {
-        return { nro: (data as any).nro, fecha: today, entrega };
-      }
-    } catch {
-      /* ignore */
-    }
-
-    // 2) MAX(nro)
-    try {
-      const { data: maxNroRow, error: maxNroErr } = await supabase
-        .from('pedido')
-        .select('nro')
-        .order('nro', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!maxNroErr && maxNroRow && typeof (maxNroRow as any).nro === 'number') {
-        return { nro: (maxNroRow as any).nro + 1, fecha: today, entrega };
-      }
-    } catch {
-      /* ignore */
-    }
-
-    // 3) Fallback MAX(id)
-    try {
-      const { data: maxIdRow } = await supabase
-        .from('pedido')
-        .select('id')
-        .order('id', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (maxIdRow && typeof (maxIdRow as any).id === 'number') {
-        return { nro: (maxIdRow as any).id + 1, fecha: today, entrega };
-      }
-    } catch {
-      /* ignore */
-    }
-
-    // Si no hay filas aún
-    return { nro: 1, fecha: today, entrega };
-  }
-
+  // Mantener sincronía si el padre cambia el teléfono
   useEffect(() => {
-    (async () => {
-      const info = await computeNextNumber();
-      setNroInfo(info);
-      onNroInfo(info);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (typeof telefono === 'string') setTelLocal(telefono);
+  }, [telefono]);
 
-  // Buscar cliente en public.clientes cuando hay 9 dígitos
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  // Busca cliente por teléfono (debounced)
   useEffect(() => {
-    onCliente(null);
-    setCliente(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const t = telClean(tel);
-    if (t.length === 9) {
-      debounceRef.current = setTimeout(() => void lookupCliente(t), 250);
+    if (!tel || tel.replace(/\D/g, '').length < 8) {
+      setCliente(null);
+      return;
     }
+
+    if (debTimer.current) window.clearTimeout(debTimer.current);
+    debTimer.current = window.setTimeout(async () => {
+      try {
+        setChecking(true);
+        const { data, error } = await supabase
+          .from('clientes')
+          .select('telefono,nombre,direccion')
+          .eq('telefono', tel)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          const found = {
+            telefono: String(data.telefono),
+            nombre: (data.nombre ?? '') as string,
+            direccion: (data.direccion ?? '') as string,
+          };
+          setCliente(found);
+          onClienteCargado?.({
+            telefono: found.telefono,
+            nombre: found.nombre || '',
+            direccion: found.direccion || '',
+          });
+        } else {
+          // No existe → mostrar modal para crear
+          setCliente(null);
+          setOpenNuevo(true);
+        }
+      } catch (e) {
+        console.error('Error consultando cliente:', e);
+      } finally {
+        setChecking(false);
+      }
+    }, 450);
+
+    // cleanup
+    return () => {
+      if (debTimer.current) window.clearTimeout(debTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tel]);
 
-  async function lookupCliente(tlf: string) {
-    try {
-      setLoadingCliente(true);
-      const { data, error } = await supabase
-        .from('clientes') // OJO: tabla plural
-        .select('*')
-        .eq('telefono', tlf);
-
-      if (error) throw error;
-
-      const row = data?.[0];
-      if (row) {
-        const c: Cliente = {
-          telefono: row.telefono,
-          nombre: (row.nombre || '').toString().toUpperCase(),
-          direccion: (row.direccion || '').toString().toUpperCase(),
-        };
-        setCliente(c);
-        onCliente(c);
-      } else {
-        setCliente(null);
-        onCliente(null);
-      }
-    } finally {
-      setLoadingCliente(false);
-    }
+  function handleTelChange(v: string) {
+    const onlyDigits = v.replace(/\D/g, '');
+    if (onTelefonoChange) onTelefonoChange(onlyDigits);
+    else setTelLocal(onlyDigits);
   }
+
+  const fechaIng = useMemo(() => {
+    if (!fechaIngresoISO) return '';
+    try {
+      const d = new Date(fechaIngresoISO);
+      return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  }, [fechaIngresoISO]);
+
+  const fechaEnt = useMemo(() => {
+    if (!fechaEntregaISO) return '';
+    try {
+      const d = new Date(fechaEntregaISO);
+      return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  }, [fechaEntregaISO]);
 
   return (
     <>
-      {/* Fechas arriba-derecha */}
-      <div className="absolute right-4 top-4 z-20 text-right leading-tight">
-        <div className="text-xl sm:text-2xl font-black">{nroInfo.fecha}</div>
-        <div className="text-xl sm:text-2xl font-black">{nroInfo.entrega}</div>
-      </div>
-
-      <header className="relative z-10 mx-auto max-w-6xl px-6 pt-10">
-        <div className="flex items-center justify-between">
-          <div className="text-4xl sm:text-5xl font-black tracking-tight">{`N° ${nroInfo.nro}`}</div>
-          <button
-            onClick={() => router.push('/menu')}
-            className="inline-flex items-center justify-center rounded-full bg-white/10 border border-white/20 w-10 h-10 hover:bg-white/15"
-            aria-label="Volver"
-          >
-            <ArrowLeftCircle className="w-5 h-5" />
-          </button>
+      {/* Header visual */}
+      <div className="relative mb-4">
+        <div className="flex items-start justify-between">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white">N° {pedidoId}</h1>
+          <div className="text-right text-white/90">
+            {fechaIngresoISO && <div className="text-xl sm:text-2xl">{fechaIng}</div>}
+            {fechaEntregaISO && <div className="text-xl sm:text-2xl">{fechaEnt}</div>}
+          </div>
         </div>
 
-        {/* Teléfono + Nombre/Dirección (ligeramente más pequeño) */}
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/90 w-4 h-4" />
+        {/* Teléfono */}
+        <div className="mt-4">
+          <div className="relative max-w-md">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80">
+              <Phone size={16} />
+            </div>
             <input
               value={tel}
-              onChange={(e) => setTel(telClean(e.target.value))}
-              inputMode="numeric"
-              placeholder="9 dígitos…"
-              className="w-[280px] rounded-xl border border-white/25 bg-white/10 text-white placeholder-white/70 pl-9 pr-3 py-2 outline-none focus:border-white/60"
+              onChange={(e) => handleTelChange(e.target.value)}
+              inputMode="tel"
+              placeholder="Teléfono del cliente"
+              className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
             />
-            {loadingCliente && (
-              <Loader2 className="absolute -right-6 top-1/2 -translate-y-1/2 animate-spin text-white/90" />
-            )}
           </div>
 
+          {/* Si hay cliente, lo mostramos en lectura */}
           {cliente && (
-            <div className="text-[22px] sm:text-2xl font-extrabold tracking-tight">
-              {cliente.nombre}
-              <span className="ml-3 text-[18px] sm:text-xl font-semibold text-white/90">
-                {cliente.direccion}
-              </span>
+            <div className="mt-2 text-white/90 text-sm">
+              <div className="font-semibold uppercase">{cliente.nombre || 'SIN NOMBRE'}</div>
+              <div className="uppercase">{cliente.direccion || 'SIN DIRECCIÓN'}</div>
             </div>
           )}
+
+          {/* Estado de verificación */}
+          {checking && <div className="mt-2 text-xs text-white/70">Buscando cliente…</div>}
         </div>
-      </header>
+      </div>
+
+      {/* Modal creación de cliente */}
+      <NuevoClienteModal
+        open={openNuevo}
+        telefono={tel}
+        onClose={() => setOpenNuevo(false)}
+        onSaved={(c) => {
+          setCliente(c);
+          onClienteCargado?.(c);
+        }}
+      />
     </>
   );
 }
