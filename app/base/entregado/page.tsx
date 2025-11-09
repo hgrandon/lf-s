@@ -2,12 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, User, Table, Loader2, AlertTriangle, Camera, ImagePlus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  User,
+  Table,
+  Loader2,
+  AlertTriangle,
+  Camera,
+  ImagePlus,
+  Truck,
+  PackageCheck,
+  Droplet,
+  CreditCard,
+  Archive,
+  CheckCircle2,
+} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type Pedido = {
   id: number; // nro
@@ -46,6 +61,29 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
+/* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [err, setErr] = useState<Error | null>(null);
+  if (err) {
+    return (
+      <div className="rounded-xl bg-red-500/15 border border-red-400/30 p-4 text-sm">
+        <div className="font-semibold mb-1">Ocurrió un error al renderizar.</div>
+        <div className="opacity-80">{String(err.message || err)}</div>
+      </div>
+    );
+  }
+  return (
+    <div
+      onErrorCapture={(e) => {
+        e.preventDefault();
+        setErr(new Error('Error de render capturado.'));
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function EntregadoPage() {
   const router = useRouter();
 
@@ -64,7 +102,7 @@ export default function EntregadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Modal de “¿Desea editar?” al hacer doble clic en Total
+  // Modal “¿Desea editar?” al hacer doble clic en Total
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -76,12 +114,12 @@ export default function EntregadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        // Pedidos en ENTREGADO
+        // Pedidos ENTREGADOS
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'ENTREGADO')
-          .order('nro', { ascending: false });
+          .order('nro', { ascending: true }); // más antiguos primero
 
         if (e1) throw e1;
 
@@ -96,14 +134,14 @@ export default function EntregadoPage() {
           return;
         }
 
-        // Líneas: OJO -> usamos pedido_linea.pedido_id
+        // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
         if (e2) throw e2;
 
-        // Fotos (fallback)
+        // Fotos
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
@@ -118,28 +156,16 @@ export default function EntregadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => {
-          const tel = String((c as any).telefono);
-          const nom = (c as any).nombre ?? 'SIN NOMBRE';
-          nombreByTel.set(tel, nom);
-        });
+        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
-        // Armar items por pedido
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id); // <- clave correcta
+          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
           if (!pid) return;
 
           const label =
-            String(
-              l.articulo ??
-                l.nombre ??
-                l.descripcion ??
-                l.item ??
-                l.articulo_nombre ??
-                l.articulo_id ??
-                ''
-            ).trim() || 'SIN NOMBRE';
+            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
+              .trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -149,14 +175,14 @@ export default function EntregadoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Foto principal por pedido (prioriza pedido.foto_url)
+        // Foto principal (prioriza pedido.foto_url)
         const fotoByPedido = new Map<number, string>();
         (rows ?? []).forEach((r: any) => {
           const f = firstFotoFromMixed(r.foto_url);
           if (f) fotoByPedido.set(r.id, f);
         });
         (fotos ?? []).forEach((f: any) => {
-          const pid = Number(f.pedido_id);
+          const pid = Number(f.pedido_id ?? f.nro);
           if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
@@ -172,6 +198,14 @@ export default function EntregadoPage() {
           pagado: r.pagado ?? false,
           items: itemsByPedido.get(r.id) ?? [],
         }));
+
+        // Pendiente primero, luego pagado; dentro de cada grupo, más antiguos primero.
+        mapped.sort((a, b) => {
+          const ap = !!a.pagado;
+          const bp = !!b.pagado;
+          if (ap !== bp) return ap ? 1 : -1; // false primero
+          return (a.id ?? 0) - (b.id ?? 0);
+        });
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -191,14 +225,12 @@ export default function EntregadoPage() {
     };
   }, []);
 
-  const subtotal = (it: Item) => it.qty * it.valor;
-
   function snack(msg: string) {
     setNotice(msg);
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambios de estado en Entregado
+  // Cambio de estado (por si quieres devolver a otro estado)
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
@@ -213,7 +245,6 @@ export default function EntregadoPage() {
       return;
     }
 
-    // En Entregado, si pasa a otro estado, se saca de la lista
     if (next !== 'ENTREGADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -241,7 +272,7 @@ export default function EntregadoPage() {
     setSaving(false);
   }
 
-  // ------- Subida/cambio de foto -------
+  // ------- Subida de foto -------
   function openPickerFor(pid: number) {
     setPickerForPedido(pid);
   }
@@ -256,14 +287,8 @@ export default function EntregadoPage() {
     const file = e.target.files?.[0] || null;
     e.target.value = '';
     const pid = pickerForPedido;
-    if (!pid) {
-      setPickerForPedido(null);
-      return;
-    }
-    if (!file) {
-      setPickerForPedido(null);
-      return;
-    }
+    if (!pid) return setPickerForPedido(null);
+    if (!file) return setPickerForPedido(null);
 
     try {
       setUploading((prev) => ({ ...prev, [pid]: true }));
@@ -293,11 +318,11 @@ export default function EntregadoPage() {
       snack('No se pudo subir la foto.');
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
-      setPickerForPedido(null); // cerrar siempre el modal al terminar
+      setPickerForPedido(null);
     }
   }
 
-  // Modal de edición desde el total
+  // Modal de edición
   function askEdit(id: number) {
     setAskEditForId(id);
   }
@@ -323,183 +348,207 @@ export default function EntregadoPage() {
       </header>
 
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
-        {loading && (
-          <div className="flex items-center gap-2 text-white/90">
-            <Loader2 className="animate-spin" size={18} />
-            Cargando pedidos…
-          </div>
-        )}
+        <ErrorBoundary>
+          {loading && (
+            <div className="flex items-center gap-2 text-white/90">
+              <Loader2 className="animate-spin" size={18} />
+              Cargando pedidos…
+            </div>
+          )}
 
-        {!loading && errMsg && (
-          <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
-            <AlertTriangle size={16} />
-            <span>{errMsg}</span>
-          </div>
-        )}
+          {!loading && errMsg && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
+              <AlertTriangle size={16} />
+              <span>{errMsg}</span>
+            </div>
+          )}
 
-        {!loading && !errMsg && pedidos.length === 0 && (
-          <div className="text-white/80">No hay pedidos en estado ENTREGADO.</div>
-        )}
+          {!loading && !errMsg && (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
+            <div className="text-white/80">No hay pedidos en estado ENTREGADO.</div>
+          )}
 
-        {!loading &&
-          !errMsg &&
-          pedidos.map((p) => {
-            const isOpen = openId === p.id;
-            const detOpen = !!openDetail[p.id];
-            const totalCalc = p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+          {!loading &&
+            !errMsg &&
+            Array.isArray(pedidos) &&
+            pedidos.map((p) => {
+              const isOpen = openId === p.id;
+              const detOpen = !!openDetail[p.id];
+              const totalCalc =
+                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
-            return (
-              <div
-                key={p.id}
-                className={[
-                  'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
-                  isOpen ? 'border-white/40' : 'border-white/15',
-                ].join(' ')}
-              >
-                <button
-                  onClick={() => setOpenId(isOpen ? null : p.id)}
-                  className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+              return (
+                <div
+                  key={p.id}
+                  className={[
+                    'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
+                    isOpen ? 'border-white/40' : 'border-white/15',
+                  ].join(' ')}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
-                      <User size={18} />
-                    </span>
-                    <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
-                      <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                  <button
+                    onClick={() => setOpenId(isOpen ? null : p.id)}
+                    className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={[
+                          'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                          p.pagado
+                            ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                            : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                        ].join(' ')}
+                        aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                      >
+                        <User size={18} />
+                      </span>
+
+                      <div className="text-left">
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                        <div className="text-[10px] lg:text-xs uppercase text-white/85">
+                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
-                    {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                  </div>
-                </button>
+                    <div className="flex items-center gap-3 lg:gap-4">
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </div>
+                  </button>
 
-                {isOpen && (
-                  <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                    <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
-                      <button
-                        onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Table size={16} />
-                          <span className="font-semibold">Detalle Pedido</span>
-                        </div>
-                        {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      </button>
+                  {isOpen && (
+                    <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
+                      <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                        <button
+                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Table size={16} />
+                            <span className="font-semibold">Detalle Pedido</span>
+                          </div>
+                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
 
-                      {detOpen && (
-                        <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                          <div className="overflow-x-auto w-full max-w-4xl">
-                            <table className="w-full text-xs lg:text-sm text-white/95">
-                              <thead className="bg-white/10 text-white/90">
-                                <tr>
-                                  <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                  <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                                  <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                  <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/10">
-                                {p.items?.length ? (
-                                  p.items.map((it, idx) => (
-                                    <tr key={idx}>
-                                      <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
-                                      </td>
-                                      <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(subtotal(it))}</td>
-                                    </tr>
-                                  ))
-                                ) : (
+                        {detOpen && (
+                          <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                            <div className="overflow-x-auto w-full max-w-4xl">
+                              <table className="w-full text-xs lg:text-sm text-white/95">
+                                <thead className="bg-white/10 text-white/90">
                                   <tr>
-                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
-                                      Sin artículos registrados.
-                                    </td>
+                                    <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
                                   </tr>
-                                )}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody className="divide-y divide-white/10">
+                                  {Array.isArray(p.items) && p.items.length ? (
+                                    p.items.map((it, idx) => (
+                                      <tr key={idx}>
+                                        <td className="px-3 py-2 truncate">
+                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">{it.qty}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                        Sin artículos registrados.
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
 
-                            <div
-                              className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
-                              title="Doble clic para editar pedido"
-                              onDoubleClick={() => askEdit(p.id)}
-                            >
-                              Total: {CLP.format(totalCalc)}
+                              <div
+                                className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
+                                title="Doble clic para editar pedido"
+                                onDoubleClick={() => askEdit(p.id)}
+                              >
+                                Total: {CLP.format(totalCalc)}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !imageError[p.id] ? (
-                          <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                            onDoubleClick={() => openPickerFor(p.id)}
-                            title="Doble clic para cambiar la imagen"
-                          >
-                            <Image
-                              src={p.foto_url!}
-                              alt={`Foto pedido ${p.id}`}
-                              width={0}
-                              height={0}
-                              sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                              onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                              priority={false}
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openPickerFor(p.id)}
-                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
-                            title="Agregar imagen"
-                          >
-                            <ImagePlus size={18} />
-                            <span>{uploading[p.id] ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
-                          </button>
                         )}
+
+                        <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                          {typeof p.foto_url === 'string' && p.foto_url && !imageError[p.id] ? (
+                            <div
+                              className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                              onDoubleClick={() => openPickerFor(p.id)}
+                              title="Doble clic para cambiar la imagen"
+                            >
+                              <Image
+                                src={p.foto_url}
+                                alt={`Foto pedido ${p.id}`}
+                                width={0}
+                                height={0}
+                                sizes="100vw"
+                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                priority={false}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => openPickerFor(p.id)}
+                              className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                              title="Agregar imagen"
+                            >
+                              <ImagePlus size={18} />
+                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  )}
+                </div>
+              );
+            })}
+        </ErrorBoundary>
       </section>
 
-      {/* Barra de acciones (Entregado) */}
+      {/* Barra de acciones (Entregado) - solo iconos */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
-          <div className="grid grid-cols-4 gap-3">
-            <ActionBtn
-              label="Entregar"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
-              active={pedidoAbierto?.estado === 'ENTREGADO'}
-            />
-            <ActionBtn
-              label="Lavar"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
-              active={pedidoAbierto?.estado === 'LAVAR'}
-            />
-            <ActionBtn
-              label="Guardado"
+          <div className="grid grid-cols-5 gap-3">
+            <IconBtn
+              title="Guardado"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
+              Icon={CheckCircle2}
             />
-            <ActionBtn
-              label={pedidoAbierto?.pagado ? 'Pago' : 'Pendiente'}
+            <IconBtn
+              title="Entregar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
+              Icon={Truck}
+            />
+            <IconBtn
+              title="Entregado"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              active={pedidoAbierto?.estado === 'ENTREGADO'}
+              Icon={PackageCheck}
+            />
+            <IconBtn
+              title="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
+              Icon={Droplet}
+            />
+            <IconBtn
+              title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
+              Icon={CreditCard}
             />
           </div>
 
@@ -539,10 +588,7 @@ export default function EntregadoPage() {
             <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
             <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
             <div className="flex gap-2">
-              <button
-                onClick={goEdit}
-                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
-              >
+              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
                 Editar
               </button>
               <button
@@ -598,28 +644,32 @@ export default function EntregadoPage() {
   );
 }
 
-function ActionBtn({
-  label,
+function IconBtn({
+  title,
   onClick,
   disabled,
   active,
+  Icon,
 }: {
-  label: string;
+  title: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      aria-label={title}
+      title={title}
       className={[
-        'rounded-xl py-3 text-sm font-medium border transition',
+        'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
         active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
-      {label}
+      <Icon size={18} />
     </button>
   );
 }

@@ -17,6 +17,7 @@ import {
   WashingMachine,
   CreditCard,
   Archive,
+  CheckCircle2,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -506,18 +507,18 @@ export default function LavandoPage() {
           <div className="grid grid-cols-5 gap-3">
 
             <IconBtn
+              title="Guardardo"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              active={pedidoAbierto?.estado === 'GUARDADO'}
+              Icon={CheckCircle2}
+            />
+            <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
-            />
-            <IconBtn
-              title="Guardardo"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
-              active={pedidoAbierto?.estado === 'GUARDADO'}
-              Icon={Archive}
             />
             <IconBtn
               title="Entregado"
