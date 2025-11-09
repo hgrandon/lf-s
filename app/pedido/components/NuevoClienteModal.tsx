@@ -1,97 +1,163 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { X, Save, Loader2 } from 'lucide-react';
 
-type Props = {
-  open: boolean;
+type Cliente = {
   telefono: string;
-  onClose: () => void;
-  onSaved: (cli: { telefono: string; nombre: string; direccion: string }) => void;
+  nombre: string;
+  direccion: string;
 };
 
-export default function NuevoClienteModal({ open, telefono, onClose, onSaved }: Props) {
-  const [tel, setTel] = useState(telefono ?? '');
-  const [nombre, setNombre] = useState('');
-  const [direccion, setDireccion] = useState('');
+export default function NuevoClienteModal({
+  open,
+  telefono,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  telefono: string; // viene normalizado por HeaderPedido
+  onClose: () => void;
+  onSaved: (c: Cliente) => void;
+}) {
+  const [form, setForm] = useState<Cliente>({ telefono: '', nombre: '', direccion: '' });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setTel(telefono ?? '');
-  }, [telefono]);
+    if (open) {
+      setForm((prev) => ({ ...prev, telefono }));
+      setError(null);
+      // foco al abrir
+      const t = setTimeout(() => firstInputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [open, telefono]);
 
-  if (!open) return null;
+  const canSave = useMemo(() => {
+    return (form.telefono?.trim()?.length ?? 0) >= 8 && form.nombre.trim() !== '';
+  }, [form.telefono, form.nombre]);
 
   async function handleSave() {
-    const t = (tel || '').trim();
-    const n = (nombre || '').trim().toUpperCase();
-    const d = (direccion || '').trim().toUpperCase();
-    if (!t || !n) return;
-
     try {
       setSaving(true);
+      setError(null);
 
-      // Intenta inserción; si ya existe, hace upsert por si acaso.
-      const { error } = await supabase
+      // Validación simple
+      const tel = (form.telefono || '').replace(/\D/g, '');
+      if (tel.length < 8) {
+        setError('El teléfono debe tener al menos 8 dígitos.');
+        setSaving(false);
+        return;
+      }
+      if (!form.nombre.trim()) {
+        setError('El nombre es obligatorio.');
+        setSaving(false);
+        return;
+      }
+
+      // Inserta/actualiza cliente (upsert por teléfono)
+      const payload = {
+        telefono: tel,
+        nombre: form.nombre.trim().toUpperCase(),
+        direccion: (form.direccion || '').trim().toUpperCase(),
+      };
+
+      const { data, error } = await supabase
         .from('clientes')
-        .upsert({ telefono: t, nombre: n, direccion: d }, { onConflict: 'telefono' });
+        .upsert(payload, { onConflict: 'telefono' })
+        .select('telefono,nombre,direccion')
+        .maybeSingle();
 
       if (error) throw error;
 
-      onSaved({ telefono: t, nombre: n, direccion: d });
-      onClose();
-    } catch (e) {
-      console.error('No se pudo guardar el cliente nuevo:', e);
-      alert('No se pudo guardar el cliente. Revisa la conexión e inténtalo nuevamente.');
+      const saved: Cliente = {
+        telefono: data?.telefono ?? payload.telefono,
+        nombre: data?.nombre ?? payload.nombre,
+        direccion: data?.direccion ?? payload.direccion,
+      };
+
+      onSaved(saved); // avisa al Header y éste al padre
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? 'No se pudo guardar el cliente.');
     } finally {
       setSaving(false);
     }
   }
 
+  if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50" onClick={onClose}>
-      <div
-        className="w-[460px] max-w-[92vw] rounded-2xl bg-white p-5 text-violet-800 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-xl font-bold mb-4">Nuevo Cliente</h3>
-
-        <div className="grid gap-3">
-          <input
-            value={tel}
-            onChange={(e) => setTel(e.target.value.replace(/\D/g, ''))}
-            maxLength={12}
-            placeholder="TELÉFONO"
-            className="w-full rounded-xl border border-violet-200 px-3 py-3 outline-none focus:ring-2 focus:ring-violet-300"
-          />
-          <input
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            placeholder="NOMBRE DEL CLIENTE"
-            className="w-full rounded-xl border border-violet-200 px-3 py-3 uppercase outline-none focus:ring-2 focus:ring-violet-300"
-          />
-          <input
-            value={direccion}
-            onChange={(e) => setDireccion(e.target.value)}
-            placeholder="DIRECCIÓN DEL CLIENTE"
-            className="w-full rounded-xl border border-violet-200 px-3 py-3 uppercase outline-none focus:ring-2 focus:ring-violet-300"
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saving || !tel || !nombre}
-            className="rounded-xl bg-violet-600 text-white px-4 py-3 font-semibold hover:bg-violet-700 disabled:opacity-60"
-          >
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
+      <div className="w-[520px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div className="font-bold">Nuevo cliente</div>
           <button
             onClick={onClose}
-            disabled={saving}
-            className="rounded-xl bg-violet-100 text-violet-800 px-4 py-3 font-semibold hover:bg-violet-200"
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+            aria-label="Cerrar"
           >
-            Salir
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 grid gap-3">
+          <div className="grid gap-1">
+            <label className="text-sm font-medium">Teléfono</label>
+            <input
+              ref={firstInputRef}
+              value={form.telefono}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, telefono: e.target.value.replace(/\D/g, '') }))
+              }
+              inputMode="tel"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              placeholder="Ej: 958420620"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label className="text-sm font-medium">Nombre</label>
+            <input
+              value={form.nombre}
+              onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              placeholder="NOMBRE Y APELLIDO"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label className="text-sm font-medium">Dirección</label>
+            <input
+              value={form.direccion}
+              onChange={(e) => setForm((p) => ({ ...p, direccion: e.target.value }))}
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              placeholder="CALLE Y NÚMERO"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">{error}</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl px-4 py-2 hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button
+            disabled={!canSave || saving}
+            onClick={handleSave}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+            Guardar
           </button>
         </div>
       </div>
