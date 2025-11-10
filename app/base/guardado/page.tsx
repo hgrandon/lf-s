@@ -241,38 +241,16 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  // ------- Texto de WhatsApp -------
-  function buildWhatsAppMessage(p: Pedido) {
-    const hora = new Date().getHours();
-    const saludo = hora < 12 ? 'Buenos días' : 'Buenas tardes';
-    const totalCalc =
-      p.items?.length ? p.items.reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.valor) || 0), 0) : Number(p.total || 0);
-
-    const detalle =
-      p.items && p.items.length
-        ? p.items
-            .map((i) => `${i.articulo} x${i.qty} = ${new Intl.NumberFormat('es-CL').format((i.qty || 0) * (i.valor || 0))}`)
-            .join('\n')
-        : 'Sin detalle';
-
-    return `
-${saludo} ${p.cliente} 👋
-Tu servicio N° ${p.id} está LISTO ✅
-
-🧺 *Detalle del pedido:*
-${detalle}
-
-💵 *Total:* ${CLP.format(totalCalc)}
-📍 Retiro en Periodista Mario Peña Carreño #5304
-🕐 Atención Lunes a Viernes 10:00 a 20:00 hrs.
-💬 Gracias por preferir *Lavandería Fabiola* 💜`.trim();
-  }
-
-  function sendWhatsAppText(p?: Pedido | null) {
+  // ------- WhatsApp: enviar LINK del comprobante -------
+  function sendComprobanteLink(p?: Pedido | null) {
     if (!p) return;
+    const link = `${window.location.origin}/comprobante/${p.id}`;
+    const texto =
+      `🧾 *Lavandería Fabiola*\n` +
+      `Tu comprobante está disponible aquí 👇\n${link}\n\n` +
+      `Gracias por preferirnos 💜`;
     const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
-    const text = buildWhatsAppMessage(p);
-    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(text)}`;
+    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(texto)}`;
     window.open(url, '_blank');
   }
 
@@ -437,7 +415,7 @@ ${detalle}
                       </button>
 
                       {detOpen && (
-                        <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                        <div className="mt-3 rounded-xl overflow-hidden bg白/5 border border-white/10 flex justify-center">
                           <div className="overflow-x-auto w-full max-w-4xl">
                             <table className="w-full text-xs lg:text-sm text-white/95">
                               <thead className="bg-white/10 text-white/90">
@@ -525,9 +503,9 @@ ${detalle}
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-6 gap-3">
             <IconBtn
-              title="WhatsApp (texto)"
+              title="Comprobante"
               disabled={!pedidoAbierto || saving}
-              onClick={() => sendWhatsAppText(pedidoAbierto)}
+              onClick={() => sendComprobanteLink(pedidoAbierto)}
               Icon={MessageCircle}
               variant="success"
             />
