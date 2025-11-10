@@ -1,238 +1,141 @@
-'use client';
+// app/comprobante/[nro]/page.tsx
+import { Metadata } from "next";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
+export const dynamic = "force-dynamic";
 
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
-type Item = { articulo: string; qty: number; valor: number };
-type Pedido = {
-  id: number;            // nro
-  cliente: string;       // nombre o teléfono
-  telefono?: string|null;
-  total: number|null;
-  estado: PedidoEstado;
-  detalle?: string|null;
-  foto_url?: string|null;
-  pagado?: boolean|null;
-  items?: Item[];
-};
+type Params = { params: { nro: string } };
 
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
-
-function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
-  if (typeof input === 'string') {
-    const s = input.trim();
-    if (!s) return null;
-    if (s.startsWith('[')) {
-      try {
-        const arr = JSON.parse(s);
-        return Array.isArray(arr) && typeof arr[0] === 'string' ? arr[0] : null;
-      } catch { return null; }
-    }
-    return s;
-  }
-  if (Array.isArray(input) && typeof input[0] === 'string') return input[0];
-  return null;
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const nro = params.nro;
+  return {
+    title: `Comprobante #${nro} | Lavandería Fabiola`,
+    description: `Comprobante visual del pedido #${nro}`,
+    robots: { index: false, follow: false },
+  };
 }
 
-export default function ComprobantePage() {
-  const { id } = useParams<{ id: string }>();
-  const nro = Number(id);
+export default async function ComprobantePage({ params }: Params) {
+  const nro = Number(params.nro || 0);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string|null>(null);
-  const [pedido, setPedido] = useState<Pedido | null>(null);
+  if (!nro || Number.isNaN(nro)) {
+    return (
+      <main className="min-h-screen bg-white text-gray-900 grid place-items-center p-6">
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-xl font-bold mb-2">N° inválido</h1>
+          <p className="text-sm text-gray-600">La URL debe ser /comprobante/1234</p>
+          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium">← Volver</Link>
+        </div>
+      </main>
+    );
+  }
 
-  const totalCalc = useMemo(() => {
-    if (!pedido) return 0;
-    if (pedido.items?.length) {
-      return pedido.items.reduce((a, it) => a + (Number(it.qty)||0) * (Number(it.valor)||0), 0);
-    }
-    return Number(pedido.total || 0);
-  }, [pedido]);
+  const [{ data: pedido }, { data: lineas }, { data: fotos }] = await Promise.all([
+    supabase.from("pedido").select("nro, telefono, total, detalle, pagado, estado, foto_url").eq("nro", nro).maybeSingle(),
+    supabase.from("pedido_linea").select("articulo, cantidad, valor").eq("pedido_id", nro),
+    supabase.from("pedido_foto").select("url").eq("pedido_id", nro),
+  ]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  if (!pedido) {
+    return (
+      <main className="min-h-screen bg-white text-gray-900 grid place-items-center p-6">
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-xl font-bold mb-2">No encontrado</h1>
+          <p className="text-sm text-gray-600">No existe el pedido #{nro}</p>
+          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium">← Volver</Link>
+        </div>
+      </main>
+    );
+  }
 
-        // 1) pedir pedido base
-        const { data: rows, error: e1 } = await supabase
-          .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url, created_at')
-          .eq('nro', nro)
-          .limit(1);
-        if (e1) throw e1;
-        const r = rows?.[0];
-        if (!r) throw new Error('Pedido no encontrado');
+  const items = (lineas ?? []).map((l) => ({
+    articulo: String(l.articulo ?? "").trim() || "SIN NOMBRE",
+    qty: Number(l.cantidad ?? 0),
+    valor: Number(l.valor ?? 0),
+  }));
 
-        // 2) líneas
-        const { data: lineas, error: e2 } = await supabase
-          .from('pedido_linea')
-          .select('pedido_id, articulo, cantidad, valor')
-          .eq('pedido_id', nro);
-        if (e2) throw e2;
-
-        // 3) cliente (nombre por teléfono si existe)
-        let nombre = '';
-        if (r.telefono) {
-          const { data: cli } = await supabase
-            .from('clientes')
-            .select('telefono, nombre, direccion')
-            .eq('telefono', r.telefono)
-            .limit(1);
-          nombre = cli?.[0]?.nombre || '';
-        }
-
-        // 4) foto fallback en pedido_foto si no hay principal
-        let foto = firstFotoFromMixed(r.foto_url);
-        if (!foto) {
-          const { data: fotos } = await supabase
-            .from('pedido_foto')
-            .select('url')
-            .eq('pedido_id', nro)
-            .limit(1);
-          foto = fotos?.[0]?.url || null;
-        }
-
-        const items: Item[] = (lineas ?? []).map((l: any) => ({
-          articulo: String(l.articulo ?? '').trim() || 'SIN NOMBRE',
-          qty: Number(l.cantidad ?? 0),
-          valor: Number(l.valor ?? 0),
-        }));
-
-        const mapped: Pedido = {
-          id: r.id,
-          cliente: nombre || String(r.telefono ?? 'SIN NOMBRE'),
-          telefono: r.telefono ?? null,
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          pagado: r.pagado ?? null,
-          foto_url: foto,
-          items,
-        };
-
-        if (!cancelled) {
-          setPedido(mapped);
-          setLoading(false);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setError(err?.message ?? 'Error al cargar comprobante');
-          setLoading(false);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [nro]);
+  const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+  const total = items.length ? items.reduce((a, it) => a + it.qty * it.valor, 0) : Number(pedido.total ?? 0);
+  const foto =
+    (typeof pedido.foto_url === "string" && pedido.foto_url) ||
+    (fotos && fotos[0]?.url) ||
+    null;
 
   return (
-    <main className="min-h-screen bg-white text-neutral-900 flex items-start justify-center py-8 print:py-0">
-      {/* Botonera (oculta al imprimir) */}
-      <div className="fixed top-3 right-3 flex gap-2 print:hidden">
-        <button
-          onClick={() => window.print()}
-          className="rounded-lg bg-violet-600 text-white px-4 py-2 text-sm hover:bg-violet-700"
-        >
-          Imprimir
-        </button>
-      </div>
-
-      <div className="w-[420px] max-w-[92vw] bg-white rounded-2xl shadow-xl border border-neutral-200 overflow-hidden print:shadow-none print:border-0">
-        {/* Header */}
-        <div className="flex items-center gap-3 bg-violet-700 text-white px-4 py-3">
-          <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center font-bold">LF</div>
-          <h1 className="font-bold text-lg">Lavandería Fabiola</h1>
+    <main className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8">
+      <div className="mx-auto max-w-[420px] bg-white rounded-2xl shadow-xl ring-1 ring-gray-200 overflow-hidden">
+        <div className="bg-violet-700 text-white px-5 py-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center font-extrabold">LF</div>
+          <h1 className="font-bold">Lavandería Fabiola</h1>
         </div>
 
-        <div className="px-4 py-3">
-          {loading && <div className="text-sm text-neutral-600">Cargando comprobante…</div>}
-          {error && <div className="text-sm text-red-600">⚠️ {error}</div>}
+        <div className="px-5 pt-4 pb-2 text-sm">
+          <div className="font-semibold">Comprobante N° {nro}</div>
+          <div className="text-gray-600">Teléfono: +56 {String(pedido.telefono ?? "").replace(/^56/, "")}</div>
+          <div className="text-gray-600">Fecha: {new Date().toLocaleString("es-CL")}</div>
+        </div>
 
-          {pedido && (
-            <>
-              {/* Encabezado de datos */}
-              <div className="text-sm leading-5">
-                <div className="font-semibold">Comprobante N° {pedido.id}</div>
-                <div>Cliente: {pedido.cliente}</div>
-                {pedido.telefono && <div>Teléfono: +{String(pedido.telefono)}</div>}
-                <div>Fecha: {new Date().toLocaleString('es-CL')}</div>
-              </div>
-
-              <hr className="my-3 border-neutral-300" />
-
-              {/* Tabla */}
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b border-neutral-300">
-                    <th className="py-2">Artículo</th>
-                    <th className="py-2 text-right">Cant.</th>
-                    <th className="py-2 text-right">Valor</th>
-                    <th className="py-2 text-right">Subtotal</th>
+        <div className="px-5">
+          <div className="border-t border-gray-200 my-2" />
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="py-2">Artículo</th>
+                <th className="py-2 text-right">Cant.</th>
+                <th className="py-2 text-right">Valor</th>
+                <th className="py-2 text-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length ? (
+                items.map((it, i) => (
+                  <tr key={i} className="border-t border-gray-100">
+                    <td className="py-2 pr-2">{it.articulo}</td>
+                    <td className="py-2 text-right">{it.qty}</td>
+                    <td className="py-2 text-right">{CLP.format(it.valor)}</td>
+                    <td className="py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {pedido.items?.length ? (
-                    pedido.items.map((it, i) => (
-                      <tr key={i} className="border-b border-neutral-200 last:border-0">
-                        <td className="py-2 pr-2">{it.articulo}</td>
-                        <td className="py-2 text-right">{it.qty}</td>
-                        <td className="py-2 text-right">{CLP.format(it.valor)}</td>
-                        <td className="py-2 text-right">{CLP.format((it.qty || 0) * (it.valor || 0))}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="py-2" colSpan={4}>Sin detalle</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-
-              {/* Total */}
-              <div className="flex justify-end mt-3">
-                <div className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 font-extrabold text-violet-700">
-                  Total: {CLP.format(totalCalc)}
-                </div>
-              </div>
-
-              {/* Foto opcional */}
-              {typeof pedido.foto_url === 'string' && pedido.foto_url && (
-                <div className="mt-4">
-                  <Image
-                    src={pedido.foto_url}
-                    alt={`Foto del pedido ${pedido.id}`}
-                    width={800}
-                    height={600}
-                    className="rounded-lg border border-neutral-200"
-                    style={{ width: '100%', height: 'auto' }}
-                    unoptimized
-                    crossOrigin="anonymous"
-                  />
-                </div>
+                ))
+              ) : (
+                <tr className="border-t border-gray-100">
+                  <td colSpan={4} className="py-4 text-center text-gray-500">Sin artículos</td>
+                </tr>
               )}
+            </tbody>
+          </table>
 
-              {/* Footer */}
-              <div className="mt-5 text-center">
-                <div className="font-semibold text-violet-700">
-                  Gracias por preferir Lavandería Fabiola
-                </div>
-                <div className="text-xs text-neutral-500 mt-1">
-                  — Comprobante no válido como boleta tributaria —
-                </div>
-              </div>
-            </>
-          )}
+          <div className="flex justify-end mt-3 mb-2">
+            <div className="px-4 py-2 rounded-xl bg-violet-50 text-violet-800 font-extrabold">
+              Total: {CLP.format(total)}
+            </div>
+          </div>
+        </div>
+
+        {foto && (
+          <div className="px-5 pb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={foto}
+              alt={`pedido ${nro}`}
+              className="w-full rounded-lg border border-gray-200"
+              crossOrigin="anonymous"
+            />
+          </div>
+        )}
+
+        <div className="px-5 pb-6 text-center text-sm">
+          <div className="text-gray-700">Retiro en:<br />Periodista Mario Peña Carreño #5304</div>
+          <div className="text-gray-500 mt-1">Lun a Vie 10:00 a 20:00 hrs.</div>
+          <div className="text-violet-700 font-semibold mt-3">Gracias por preferir Lavandería Fabiola</div>
+          <div className="text-gray-400 text-xs mt-1">— Documento no válido como boleta tributaria —</div>
         </div>
       </div>
 
-      {/* Reglas de impresión */}
+      <div className="text-center mt-4">
+        <Link href="/base" className="text-violet-700 font-medium">← Volver</Link>
+      </div>
+
       <style jsx global>{`
         @page { margin: 10mm; }
         @media print {
