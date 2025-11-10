@@ -1,5 +1,5 @@
 // app/comprobante/[nro]/page.tsx
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -37,14 +37,8 @@ export default async function ComprobantePage({ params }: Params) {
       .select("nro, telefono, total, detalle, pagado, estado, foto_url")
       .eq("nro", nro)
       .maybeSingle(),
-    supabase
-      .from("pedido_linea")
-      .select("articulo, cantidad, valor")
-      .eq("pedido_id", nro),
-    supabase
-      .from("pedido_foto")
-      .select("url")
-      .eq("pedido_id", nro),
+    supabase.from("pedido_linea").select("articulo, cantidad, valor").eq("pedido_id", nro),
+    supabase.from("pedido_foto").select("url").eq("pedido_id", nro),
   ]);
 
   if (!pedido) {
@@ -73,7 +67,13 @@ export default async function ComprobantePage({ params }: Params) {
 
   const total =
     items.length > 0
-      ? items.reduce((a, it) => a + (Number.isFinite(it.qty) ? it.qty : 0) * (Number.isFinite(it.valor) ? it.valor : 0), 0)
+      ? items.reduce(
+          (a, it) =>
+            a +
+            (Number.isFinite(it.qty) ? it.qty : 0) *
+              (Number.isFinite(it.valor) ? it.valor : 0),
+          0
+        )
       : Number(pedido.total ?? 0);
 
   const foto =
@@ -81,7 +81,7 @@ export default async function ComprobantePage({ params }: Params) {
     (fotos && fotos[0]?.url) ||
     null;
 
-  // Teléfono legible: quita prefijo 56 si viene duplicado, y agrupa
+  // Teléfono legible
   const telRaw = String(pedido.telefono ?? "").replace(/\D/g, "");
   const telCL = telRaw.startsWith("56") ? telRaw.slice(2) : telRaw;
   const telFmt =
@@ -131,7 +131,9 @@ export default async function ComprobantePage({ params }: Params) {
                 ))
               ) : (
                 <tr className="border-t border-gray-100">
-                  <td colSpan={4} className="py-4 text-center text-gray-500">Sin artículos</td>
+                  <td colSpan={4} className="py-4 text-center text-gray-500">
+                    Sin artículos
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -164,8 +166,12 @@ export default async function ComprobantePage({ params }: Params) {
             Retiro en:<br />Periodista Mario Peña Carreño #5304
           </div>
           <div className="text-gray-500 mt-1">Lun a Vie 10:00 a 20:00 hrs.</div>
-          <div className="text-violet-700 font-semibold mt-3">Gracias por preferir Lavandería Fabiola</div>
-          <div className="text-gray-400 text-xs mt-1">— Documento no válido como boleta tributaria —</div>
+          <div className="text-violet-700 font-semibold mt-3">
+            Gracias por preferir Lavandería Fabiola
+          </div>
+          <div className="text-gray-400 text-xs mt-1">
+            — Documento no válido como boleta tributaria —
+          </div>
         </div>
       </div>
 
