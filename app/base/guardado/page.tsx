@@ -62,6 +62,12 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
+/** Base URL robusta para construir links (cliente/servidor) */
+function getBaseUrl() {
+  if (typeof window !== 'undefined') return window.location.origin;
+  return process.env.NEXT_PUBLIC_SITE_URL || 'https://lf-s.vercel.app';
+}
+
 export default function GuardadoPage() {
   const router = useRouter();
 
@@ -241,10 +247,11 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  // ------- WhatsApp: enviar LINK del comprobante -------
+  /** Enviar link del comprobante por WhatsApp */
   function sendComprobanteLink(p?: Pedido | null) {
     if (!p) return;
-    const link = `${window.location.origin}/comprobante/${p.id}`;
+    const base = getBaseUrl();
+    const link = `${base}/comprobante/${p.id}`;
     const texto =
       `🧾 *Lavandería Fabiola*\n` +
       `Tu comprobante está disponible aquí 👇\n${link}\n\n` +
@@ -415,7 +422,7 @@ export default function GuardadoPage() {
                       </button>
 
                       {detOpen && (
-                        <div className="mt-3 rounded-xl overflow-hidden bg白/5 border border-white/10 flex justify-center">
+                        <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
                           <div className="overflow-x-auto w-full max-w-4xl">
                             <table className="w-full text-xs lg:text-sm text-white/95">
                               <thead className="bg-white/10 text-white/90">
