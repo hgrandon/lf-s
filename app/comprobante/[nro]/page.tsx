@@ -32,9 +32,19 @@ export default async function ComprobantePage({ params }: Params) {
   }
 
   const [{ data: pedido }, { data: lineas }, { data: fotos }] = await Promise.all([
-    supabase.from("pedido").select("nro, telefono, total, detalle, pagado, estado, foto_url").eq("nro", nro).maybeSingle(),
-    supabase.from("pedido_linea").select("articulo, cantidad, valor").eq("pedido_id", nro),
-    supabase.from("pedido_foto").select("url").eq("pedido_id", nro),
+    supabase
+      .from("pedido")
+      .select("nro, telefono, total, detalle, pagado, estado, foto_url")
+      .eq("nro", nro)
+      .maybeSingle(),
+    supabase
+      .from("pedido_linea")
+      .select("articulo, cantidad, valor")
+      .eq("pedido_id", nro),
+    supabase
+      .from("pedido_foto")
+      .select("url")
+      .eq("pedido_id", nro),
   ]);
 
   if (!pedido) {
@@ -55,27 +65,49 @@ export default async function ComprobantePage({ params }: Params) {
     valor: Number(l.valor ?? 0),
   }));
 
-  const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
-  const total = items.length ? items.reduce((a, it) => a + it.qty * it.valor, 0) : Number(pedido.total ?? 0);
+  const CLP = new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency: "CLP",
+    maximumFractionDigits: 0,
+  });
+
+  const total =
+    items.length > 0
+      ? items.reduce((a, it) => a + (Number.isFinite(it.qty) ? it.qty : 0) * (Number.isFinite(it.valor) ? it.valor : 0), 0)
+      : Number(pedido.total ?? 0);
+
   const foto =
     (typeof pedido.foto_url === "string" && pedido.foto_url) ||
     (fotos && fotos[0]?.url) ||
     null;
 
+  // Teléfono legible: quita prefijo 56 si viene duplicado, y agrupa
+  const telRaw = String(pedido.telefono ?? "").replace(/\D/g, "");
+  const telCL = telRaw.startsWith("56") ? telRaw.slice(2) : telRaw;
+  const telFmt =
+    telCL.length === 9
+      ? `+56 9 ${telCL.slice(1, 5)} ${telCL.slice(5)}`
+      : telRaw
+      ? `+${telRaw}`
+      : "—";
+
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900 p-4 md:p-8">
       <div className="mx-auto max-w-[420px] bg-white rounded-2xl shadow-xl ring-1 ring-gray-200 overflow-hidden">
+        {/* Header */}
         <div className="bg-violet-700 text-white px-5 py-4 flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-white/20 grid place-items-center font-extrabold">LF</div>
           <h1 className="font-bold">Lavandería Fabiola</h1>
         </div>
 
+        {/* Encabezado comprobante */}
         <div className="px-5 pt-4 pb-2 text-sm">
           <div className="font-semibold">Comprobante N° {nro}</div>
-          <div className="text-gray-600">Teléfono: +56 {String(pedido.telefono ?? "").replace(/^56/, "")}</div>
+          <div className="text-gray-600">Teléfono: {telFmt}</div>
           <div className="text-gray-600">Fecha: {new Date().toLocaleString("es-CL")}</div>
         </div>
 
+        {/* Tabla */}
         <div className="px-5">
           <div className="border-t border-gray-200 my-2" />
           <table className="w-full text-sm">
@@ -105,6 +137,7 @@ export default async function ComprobantePage({ params }: Params) {
             </tbody>
           </table>
 
+          {/* Total */}
           <div className="flex justify-end mt-3 mb-2">
             <div className="px-4 py-2 rounded-xl bg-violet-50 text-violet-800 font-extrabold">
               Total: {CLP.format(total)}
@@ -112,6 +145,7 @@ export default async function ComprobantePage({ params }: Params) {
           </div>
         </div>
 
+        {/* Foto (opcional) */}
         {foto && (
           <div className="px-5 pb-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -124,8 +158,11 @@ export default async function ComprobantePage({ params }: Params) {
           </div>
         )}
 
+        {/* Pie */}
         <div className="px-5 pb-6 text-center text-sm">
-          <div className="text-gray-700">Retiro en:<br />Periodista Mario Peña Carreño #5304</div>
+          <div className="text-gray-700">
+            Retiro en:<br />Periodista Mario Peña Carreño #5304
+          </div>
           <div className="text-gray-500 mt-1">Lun a Vie 10:00 a 20:00 hrs.</div>
           <div className="text-violet-700 font-semibold mt-3">Gracias por preferir Lavandería Fabiola</div>
           <div className="text-gray-400 text-xs mt-1">— Documento no válido como boleta tributaria —</div>
@@ -136,12 +173,17 @@ export default async function ComprobantePage({ params }: Params) {
         <Link href="/base" className="text-violet-700 font-medium">← Volver</Link>
       </div>
 
-      <style>{`
-        @page { margin: 10mm; }
-        @media print {
-          html, body { background: #fff !important; }
-        }
-      `}</style>
+      {/* CSS de impresión SIN styled-jsx */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @page { margin: 10mm; }
+            @media print {
+              html, body { background: #fff !important; }
+            }
+          `,
+        }}
+      />
     </main>
   );
 }
