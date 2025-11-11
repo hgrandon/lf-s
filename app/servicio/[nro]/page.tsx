@@ -7,6 +7,20 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: { nro: string } };
 
+type PedidoRow = {
+  nro: number;
+  telefono: string | null;
+  total: number | null;
+  detalle: string | null;
+  pagado: boolean | null;
+  estado: string | null;
+  tipo_entrega: string | null;
+  fecha_ingreso: string | null;
+  fecha_entrega: string | null;
+};
+
+type LineaRow = { articulo: string | null; cantidad: number | null; valor: number | null };
+
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const nro = params.nro;
   return {
@@ -43,7 +57,9 @@ export default async function ServicioPage({ params }: Params) {
         <div className="max-w-md w-full text-center">
           <h1 className="text-xl font-bold mb-2">N° inválido</h1>
           <p className="text-sm text-gray-600">La URL debe ser /servicio/1234</p>
-          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium">← Volver</Link>
+          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium" prefetch={false}>
+            ← Volver
+          </Link>
         </div>
       </main>
     );
@@ -52,10 +68,16 @@ export default async function ServicioPage({ params }: Params) {
   const [{ data: pedido }, { data: lineas }] = await Promise.all([
     supabase
       .from("pedido")
-      .select("nro, telefono, total, detalle, pagado, estado, tipo_entrega, fecha_ingreso, fecha_entrega")
+      .select(
+        "nro, telefono, total, detalle, pagado, estado, tipo_entrega, fecha_ingreso, fecha_entrega"
+      )
       .eq("nro", nro)
-      .maybeSingle(),
-    supabase.from("pedido_linea").select("articulo, cantidad, valor").eq("pedido_id", nro),
+      .maybeSingle<PedidoRow>(),
+    supabase
+      .from("pedido_linea")
+      .select("articulo, cantidad, valor")
+      .eq("pedido_id", nro)
+      .returns<LineaRow[]>(),
   ]);
 
   if (!pedido) {
@@ -64,13 +86,14 @@ export default async function ServicioPage({ params }: Params) {
         <div className="max-w-md w-full text-center">
           <h1 className="text-xl font-bold mb-2">No encontrado</h1>
           <p className="text-sm text-gray-600">No existe el pedido #{nro}</p>
-          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium">← Volver</Link>
+          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium" prefetch={false}>
+            ← Volver
+          </Link>
         </div>
       </main>
     );
   }
 
-  // Cliente (por teléfono) — opcional
   let clienteNombre: string | null = null;
   let clienteDireccion: string | null = null;
   if (pedido.telefono) {
@@ -78,7 +101,7 @@ export default async function ServicioPage({ params }: Params) {
       .from("cliente")
       .select("nombre, direccion")
       .eq("telefono", pedido.telefono)
-      .maybeSingle();
+      .maybeSingle<{ nombre: string | null; direccion: string | null }>();
     clienteNombre = cli?.nombre ?? null;
     clienteDireccion = cli?.direccion ?? null;
   }
@@ -101,7 +124,6 @@ export default async function ServicioPage({ params }: Params) {
       : Number(pedido.total ?? 0);
 
   const { telFmt, telE164 } = fmtTel(String(pedido.telefono ?? ""));
-
   const listoParaRetirar = ["ENTREGAR", "GUARDADO", "ENTREGADO"].includes(String(pedido.estado ?? ""));
   const estadoBadge =
     pedido.pagado === true
@@ -109,7 +131,6 @@ export default async function ServicioPage({ params }: Params) {
       : { txt: "PENDIENTE", cls: "bg-rose-100 text-rose-700" };
 
   const saludo = clienteNombre ? `Hola ${clienteNombre},` : "Servicio";
-
   const msgWA = encodeURIComponent(
     [
       `${saludo} tu servicio #${nro} está ${listoParaRetirar ? "listo para retirar" : "en proceso"}.`,
@@ -127,7 +148,6 @@ export default async function ServicioPage({ params }: Params) {
   );
   const waHref = telE164 ? `https://wa.me/${telE164}?text=${msgWA}` : null;
 
-  // Auto-imprimir si viene ?popup=1
   const autoPrintScript = `
     (function(){
       try {
@@ -142,7 +162,6 @@ export default async function ServicioPage({ params }: Params) {
   return (
     <main className="min-h-screen bg-[#F6F7FB] text-gray-900 p-4">
       <div className="mx-auto max-w-[520px]">
-        {/* Header superior */}
         <header className="flex items-start justify-between mb-3">
           <div>
             <div className="text-sm text-gray-500">{saludo}</div>
@@ -153,13 +172,10 @@ export default async function ServicioPage({ params }: Params) {
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-wide text-gray-500">N° SERVICIO</div>
             <div className="text-2xl font-extrabold text-violet-600 leading-none">{nro}</div>
-            {listoParaRetirar && (
-              <div className="text-[11px] font-semibold text-emerald-600 mt-1">LISTO</div>
-            )}
+            {listoParaRetirar && <div className="text-[11px] font-semibold text-emerald-600 mt-1">LISTO</div>}
           </div>
         </header>
 
-        {/* Tarjeta de monto y estado */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -169,7 +185,6 @@ export default async function ServicioPage({ params }: Params) {
             <div className="text-right">
               <div className="text-sm text-gray-500">Estado</div>
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold ${estadoBadge.cls}`}>
-                {/* ícono alerta simple */}
                 <svg viewBox="0 0 24 24" className="w-4 h-4 mr-1" fill="currentColor">
                   <path d="M12 2a10 10 0 100 20 10 10 0 000-20Zm1 14h-2v-2h2v2Zm0-4h-2V6h2v6Z" />
                 </svg>
@@ -178,7 +193,6 @@ export default async function ServicioPage({ params }: Params) {
             </div>
           </div>
 
-          {/* Banner efectivo si no está pagado */}
           {pedido.pagado !== true && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm font-semibold flex items-center">
               <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2" fill="currentColor">
@@ -190,10 +204,8 @@ export default async function ServicioPage({ params }: Params) {
           )}
         </section>
 
-        {/* Info de retiro */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
           <h2 className="font-bold text-gray-800 mb-3">Información de Retiro</h2>
-
           <div className="flex items-start gap-3 mb-3">
             <svg viewBox="0 0 24 24" className="w-5 h-5 mt-0.5 text-violet-600" fill="currentColor">
               <path d="M12 2C8.14 2 5 5.14 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.86-3.14-7-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"/>
@@ -217,7 +229,6 @@ export default async function ServicioPage({ params }: Params) {
           </div>
         </section>
 
-        {/* Detalle del servicio */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
           <div className="p-4">
             <h2 className="font-bold text-gray-800">Detalle del Servicio</h2>
@@ -229,9 +240,12 @@ export default async function ServicioPage({ params }: Params) {
                 {items.map((it, i) => (
                   <div key={i} className="flex items-start justify-between">
                     <div className="pr-2">
-                      <div className="font-semibold text-gray-900">{it.articulo} {fmtCLP(it.valor)}</div>
+                      <div className="font-semibold text-gray-900">
+                        {it.articulo} {fmtCLP(it.valor)}
+                      </div>
                       <div className="text-xs text-gray-500 mt-0.5">
-                        Cantidad: <span className="font-medium text-gray-700">{it.qty}</span> · Valor unitario: <span className="font-medium text-gray-700">{fmtCLP(it.valor)}</span>
+                        Cantidad: <span className="font-medium text-gray-700">{it.qty}</span> · Valor unitario:{" "}
+                        <span className="font-medium text-gray-700">{fmtCLP(it.valor)}</span>
                       </div>
                     </div>
                     <div className="font-extrabold text-gray-900">{fmtCLP(it.qty * it.valor)}</div>
@@ -249,7 +263,6 @@ export default async function ServicioPage({ params }: Params) {
           </div>
         </section>
 
-        {/* Acciones */}
         <div className="flex flex-wrap items-center justify-center gap-3 text-sm mb-6">
           <button
             className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
@@ -278,7 +291,7 @@ export default async function ServicioPage({ params }: Params) {
             </a>
           )}
 
-          <Link href="/base" className="px-3 py-2 rounded-lg border border-violet-300 text-violet-700 bg-white hover:bg-violet-50">
+          <Link href="/base" className="px-3 py-2 rounded-lg border border-violet-300 text-violet-700 bg-white hover:bg-violet-50" prefetch={false}>
             ← Volver
           </Link>
         </div>
@@ -288,7 +301,6 @@ export default async function ServicioPage({ params }: Params) {
         </footer>
       </div>
 
-      {/* Estilos de impresión mínimos */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
