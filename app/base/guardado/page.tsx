@@ -62,10 +62,22 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
-/** Base URL robusta para construir links (cliente/servidor) */
+/** Normaliza a E.164 Chile. Acepta "9 1234 5678", "569...", "+569...", etc. */
+function toE164CL(raw?: string | null): string | null {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length === 9) return `56${digits}`;                 // ej: 9XXXXXXXX -> 569XXXXXXXX
+  if (digits.length === 11 && digits.startsWith('56')) return digits; // ej: 569XXXXXXXX
+  if (digits.length === 13 && digits.startsWith('0056')) return digits.slice(2);
+  if (digits.startsWith('56')) return digits;                     // largo raro pero con 56
+  return `56${digits}`;                                          // último recurso
+}
+
+/** Base URL robusta (cliente/servidor) */
 function getBaseUrl() {
   if (typeof window !== 'undefined') return window.location.origin;
-  return process.env.NEXT_PUBLIC_SITE_URL || 'https://lf-s.vercel.app';
+  // Configurar en Vercel: NEXT_PUBLIC_SITE_URL = https://tu-dominio.com
+  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 }
 
 export default function GuardadoPage() {
@@ -247,18 +259,43 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  /** Enviar link del comprobante por WhatsApp */
+  /** Enviar link del servicio/comprobante por WhatsApp (robusto con fallback) */
   function sendComprobanteLink(p?: Pedido | null) {
     if (!p) return;
+
     const base = getBaseUrl();
-    const link = `${base}/comprobante/${p.id}`;
-    const texto =
-      `🧾 *Lavandería Fabiola*\n` +
-      `Tu comprobante está disponible aquí 👇\n${link}\n\n` +
-      `Gracias por preferirnos 💜`;
-    const telefono = (p.telefono || '').replace(/\D/g, '') || '56991335828';
-    const url = `https://wa.me/${telefono}?text=${encodeURIComponent(texto)}`;
-    window.open(url, '_blank');
+    // Si tu resumen está en /comprobante/[nro], cambia por esa ruta:
+    const link = `${base}/servicio/${p.id}?popup=1`;
+
+    const texto = [
+      '🧾 *Lavandería Fabiola*',
+      'Tu comprobante está aquí:',
+      link,
+      '',
+      'Gracias por preferirnos 💜',
+    ].join('\n');
+
+    const backup = (process.env.NEXT_PUBLIC_WA_BACKUP || '56991335828').trim();
+    const telE164 = toE164CL(p.telefono) || toE164CL(backup);
+    if (!telE164) {
+      navigator.clipboard?.writeText(link);
+      alert('No hay teléfono. Copié el link al portapapeles.');
+      return;
+    }
+
+    const encoded = encodeURIComponent(texto);
+    const waUrl = `https://wa.me/${telE164}?text=${encoded}`;
+    const w = window.open(waUrl, '_blank');
+
+    // Fallback para navegadores que bloquean popups
+    if (!w || w.closed || typeof w.closed === 'undefined') {
+      const apiUrl = `https://api.whatsapp.com/send?phone=${telE164}&text=${encoded}`;
+      const w2 = window.open(apiUrl, '_blank');
+      if (!w2) {
+        navigator.clipboard?.writeText(`${texto}\n`);
+        alert('No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.');
+      }
+    }
   }
 
   // ------- Cargar/Adjuntar foto -------
