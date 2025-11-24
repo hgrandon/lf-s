@@ -180,6 +180,7 @@ function NuevoClienteModal({
 }
 
 /** Modal para editar cantidad y valor del artículo seleccionado */
+/** Modal para editar cantidad y valor del artículo seleccionado */
 function DetalleArticuloModal({
   open,
   articulo,
@@ -204,6 +205,9 @@ function DetalleArticuloModal({
   if (!open || !articulo) return null;
 
   function handleAgregar() {
+    // 👇 esto elimina el error de TypeScript
+    if (!articulo) return;
+
     const q = Math.max(1, Number(qty || 0));
     const v = Math.max(0, Number(valor || 0));
     onConfirm({ articulo: articulo.nombre, qty: q, valor: v });
@@ -249,6 +253,7 @@ function DetalleArticuloModal({
     </div>
   );
 }
+
 
 /** Modal para nuevo artículo */
 function NuevoArticuloModal({
