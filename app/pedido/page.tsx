@@ -155,7 +155,11 @@ function NuevoClienteModal({
               placeholder="CALLE Y NÚMERO"
             />
           </div>
-          {error && <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">{error}</div>}
+          {error && (
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">
+              {error}
+            </div>
+          )}
         </div>
         <div className="px-5 py-4 border-t flex justify-end gap-2">
           <button onClick={onClose} className="rounded-xl px-4 py-2 hover:bg-slate-50">
@@ -168,6 +172,77 @@ function NuevoClienteModal({
           >
             {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Modal para editar cantidad y valor del artículo seleccionado */
+function DetalleArticuloModal({
+  open,
+  articulo,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  articulo: Articulo | null;
+  onClose: () => void;
+  onConfirm: (d: { articulo: string; qty: number; valor: number }) => void;
+}) {
+  const [qty, setQty] = useState(1);
+  const [valor, setValor] = useState<number>(0);
+
+  useEffect(() => {
+    if (open && articulo) {
+      setQty(1);
+      setValor(articulo.precio ?? 0);
+    }
+  }, [open, articulo]);
+
+  if (!open || !articulo) return null;
+
+  function handleAgregar() {
+    const q = Math.max(1, Number(qty || 0));
+    const v = Math.max(0, Number(valor || 0));
+    onConfirm({ articulo: articulo.nombre, qty: q, valor: v });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
+      <div className="w-[420px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 text-center font-extrabold text-violet-700 border-b">
+          {articulo.nombre}
+        </div>
+
+        <div className="px-5 py-4 grid gap-3">
+          <input
+            value={String(valor)}
+            onChange={(e) => setValor(Number(e.target.value || 0))}
+            inputMode="numeric"
+            className="w-full rounded-xl border px-3 py-2 text-right outline-none focus:ring-2 focus:ring-violet-300"
+            placeholder="Valor"
+          />
+          <input
+            value={String(qty)}
+            onChange={(e) => setQty(Number(e.target.value || 0))}
+            inputMode="numeric"
+            className="w-full rounded-xl border px-3 py-2 text-right outline-none focus:ring-2 focus:ring-violet-300"
+            placeholder="Cantidad"
+          />
+
+          <button
+            onClick={handleAgregar}
+            className="mt-2 w-full rounded-xl bg-violet-700 py-2 text-white font-semibold hover:bg-violet-800"
+          >
+            Agregar Detalle
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full rounded-xl bg-violet-100 py-2 text-violet-800 font-semibold hover:bg-violet-200"
+          >
+            Salir
           </button>
         </div>
       </div>
@@ -253,7 +328,11 @@ function NuevoArticuloModal({
               placeholder="0"
             />
           </div>
-          {error && <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">{error}</div>}
+          {error && (
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">
+              {error}
+            </div>
+          )}
         </div>
         <div className="px-5 py-4 border-t flex justify-end gap-2">
           <button onClick={onClose} className="rounded-xl px-4 py-2 hover:bg-slate-50">
@@ -350,7 +429,12 @@ export default function PedidoPage() {
   // artículos
   const [catalogo, setCatalogo] = useState<Articulo[]>([]);
   const [selArt, setSelArt] = useState('');
+  const [busquedaArt, setBusquedaArt] = useState('');
   const [openArtModal, setOpenArtModal] = useState(false);
+
+  // modal de detalle
+  const [openDetalle, setOpenDetalle] = useState(false);
+  const [articuloDetalle, setArticuloDetalle] = useState<Articulo | null>(null);
 
   // líneas
   const [items, setItems] = useState<Item[]>([]);
@@ -368,7 +452,6 @@ export default function PedidoPage() {
   /* === Cargar correlativo y fechas === */
   useEffect(() => {
     (async () => {
-      // correlativo
       const { data: row, error } = await supabase
         .from('pedido')
         .select('nro')
@@ -379,12 +462,8 @@ export default function PedidoPage() {
       const last = Number(row?.nro || 0);
       const nro = last + 1;
 
-      // fechas
       const hoy = new Date();
       const ingreso = ymd(hoy);
-
-      // si hoy es viernes (5), sumamos desde lunes => 3 días hábiles = miércoles
-      // la función addBusinessDays ya ignora sábados y domingos
       const entregaDate = addBusinessDays(hoy, 3);
       const entrega = ymd(entregaDate);
 
@@ -432,7 +511,7 @@ export default function PedidoPage() {
           setOpenCliModal(false);
         } else {
           setCliente(null);
-          setOpenCliModal(true); // no existe → ofrecer crear
+          setOpenCliModal(true);
         }
       } catch (e) {
         console.error(e);
@@ -445,29 +524,60 @@ export default function PedidoPage() {
     };
   }, [telefono]);
 
-  /* === Agregar línea desde selector === */
+  /* === Abrir modal de detalle al elegir artículo === */
   function addFromSelect() {
-    if (!selArt) return;
-    if (selArt === '__OTRO__') {
+    const nombreSel = (selArt || busquedaArt || '').trim();
+    if (!nombreSel) return;
+
+    if (
+      nombreSel === '__OTRO__' ||
+      nombreSel.toUpperCase() === 'OTRO (+)' ||
+      nombreSel.toUpperCase() === 'OTRO'
+    ) {
       setOpenArtModal(true);
       return;
     }
-    const found = catalogo.find((a) => a.nombre === selArt);
-    if (!found) return;
+
+    const found = catalogo.find((a) => a.nombre === nombreSel);
+    if (!found) {
+      alert('Este artículo no existe en el listado. Usa "OTRO (+)" para crearlo.');
+      return;
+    }
+
+    setArticuloDetalle(found);
+    setOpenDetalle(true);
+  }
+
+  function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
     setItems((prev) => {
-      const i = prev.findIndex((x) => x.articulo === found.nombre && x.valor === found.precio);
-      if (i >= 0) {
-        const next = [...prev];
-        const newQty = next[i].qty + 1;
-        next[i] = { ...next[i], qty: newQty, subtotal: newQty * next[i].valor };
-        return next;
+      const index = prev.findIndex(
+        (x) => x.articulo === d.articulo && x.valor === d.valor
+      );
+
+      if (index >= 0) {
+        const updated = [...prev];
+        const newQty = Number(updated[index].qty) + Number(d.qty);
+        updated[index] = {
+          ...updated[index],
+          qty: newQty,
+          subtotal: newQty * Number(updated[index].valor),
+        };
+        return updated;
       }
+
       return [
         ...prev,
-        { articulo: found.nombre, qty: 1, valor: found.precio, subtotal: found.precio },
+        {
+          articulo: d.articulo,
+          qty: Number(d.qty),
+          valor: Number(d.valor),
+          subtotal: Number(d.qty) * Number(d.valor),
+        },
       ];
     });
+
     setSelArt('');
+    setBusquedaArt('');
   }
 
   function setQty(idx: number, v: number) {
@@ -478,6 +588,7 @@ export default function PedidoPage() {
       return next;
     });
   }
+
   function setValor(idx: number, v: number) {
     setItems((prev) => {
       const next = [...prev];
@@ -486,6 +597,7 @@ export default function PedidoPage() {
       return next;
     });
   }
+
   function removeItem(i: number) {
     setItems((prev) => prev.filter((_, idx) => idx !== i));
   }
@@ -494,7 +606,6 @@ export default function PedidoPage() {
   async function uploadFoto(file: File) {
     try {
       setSubiendoFoto(true);
-      // nombre: pedidoNro_timestamp.ext (si aún no tenemos nro, usa NOW)
       const stamp = Date.now();
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = `tmp_${stamp}.${ext}`;
@@ -519,7 +630,6 @@ export default function PedidoPage() {
     try {
       setSaving(true);
 
-      // crea cabezera
       const payload = {
         nro: nextInfo.nro,
         telefono: cliente?.telefono ?? null,
@@ -533,7 +643,6 @@ export default function PedidoPage() {
       const { error: eP } = await supabase.from('pedido').insert(payload);
       if (eP) throw eP;
 
-      // detalle
       const lineas = items
         .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
         .map((it) => ({
@@ -547,15 +656,12 @@ export default function PedidoPage() {
         if (eL) throw eL;
       }
 
-      // ¡Listo!
       alert(`Pedido #${nextInfo.nro} guardado correctamente`);
-      // limpiar
       setItems([]);
       setFotoUrl(null);
       setTelefono('');
       setCliente(null);
 
-      // recalcular siguiente correlativo y fechas
       const hoy = new Date();
       setNextInfo({
         nro: nextInfo.nro + 1,
@@ -588,7 +694,9 @@ export default function PedidoPage() {
 
         {/* Teléfono / cliente */}
         <div className="mt-4">
-          <label className="sr-only" htmlFor="tel">Teléfono del cliente</label>
+          <label className="sr-only" htmlFor="tel">
+            Teléfono del cliente
+          </label>
           <div className="relative max-w-md">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80">
               {checkingCli ? <Loader2 className="animate-spin" size={16} /> : <Phone size={16} />}
@@ -621,13 +729,16 @@ export default function PedidoPage() {
             <div className="flex gap-2 items-center">
               <select
                 value={selArt}
-                onChange={(e) => setSelArt(e.target.value)}
+                onChange={(e) => {
+                  setSelArt(e.target.value);
+                  setBusquedaArt(e.target.value);
+                }}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
               >
                 <option value="">Seleccionar artículo...</option>
                 {catalogo.map((a) => (
                   <option key={a.id} value={a.nombre}>
-                    {a.nombre} ({CLP.format(a.precio)})
+                    {a.nombre}
                   </option>
                 ))}
                 <option value="__OTRO__">OTRO (+)</option>
@@ -699,7 +810,9 @@ export default function PedidoPage() {
                   <td colSpan={3} className="px-3 py-3 text-right font-bold">
                     Total
                   </td>
-                  <td className="px-3 py-3 text-right font-extrabold">{CLP.format(total)}</td>
+                  <td className="px-3 py-3 text-right font-extrabold">
+                    {CLP.format(total)}
+                  </td>
                   <td />
                 </tr>
               </tfoot>
@@ -715,7 +828,9 @@ export default function PedidoPage() {
           >
             <ImagePlus size={18} />
             <span className="text-sm">
-              {fotoUrl ? 'Foto cargada. Toca para cambiar.' : 'Sin imagen adjunta. Toca para agregar.'}
+              {fotoUrl
+                ? 'Foto cargada. Toca para cambiar.'
+                : 'Sin imagen adjunta. Toca para agregar.'}
             </span>
           </div>
 
@@ -756,6 +871,16 @@ export default function PedidoPage() {
         onPicked={(file) => {
           if (file) uploadFoto(file);
           else setOpenFoto(false);
+        }}
+      />
+
+      <DetalleArticuloModal
+        open={openDetalle}
+        articulo={articuloDetalle}
+        onClose={() => setOpenDetalle(false)}
+        onConfirm={(d) => {
+          confirmarDetalleLinea(d);
+          setOpenDetalle(false);
         }}
       />
 
