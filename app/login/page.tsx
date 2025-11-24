@@ -13,7 +13,7 @@ type UsuarioLoginOK = {
   rol: string | null;
 };
 
-const AFTER_LOGIN = '/base';          // <--- cambia a '/pedido' si prefieres
+const AFTER_LOGIN = '/menu';          // <--- cambia a '/pedido' si prefieres
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 function saveSession(payload: { mode: AuthMode; display: string; rol?: string | null }) {
