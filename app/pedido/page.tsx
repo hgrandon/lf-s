@@ -18,9 +18,15 @@ import {
    Tipos básicos
 ========================= */
 type Cliente = { telefono: string; nombre: string; direccion: string };
-type Articulo = { id: number; nombre: string; precio: number; activo: boolean };
+type Articulo = {
+  id: number;
+  nombre: string;
+  precio: number;
+  activo: boolean;
+};
 type Item = { articulo: string; qty: number; valor: number; subtotal: number };
 type NextInfo = { nro: number; fechaIngresoISO: string; fechaEntregaISO: string };
+type LineaHistorico = { articulo: string; cantidad: number | null };
 
 /* =========================
    Utilidades
@@ -180,7 +186,6 @@ function NuevoClienteModal({
 }
 
 /** Modal para editar cantidad y valor del artículo seleccionado */
-/** Modal para editar cantidad y valor del artículo seleccionado */
 function DetalleArticuloModal({
   open,
   articulo,
@@ -205,9 +210,6 @@ function DetalleArticuloModal({
   if (!open || !articulo) return null;
 
   function handleAgregar() {
-    // 👇 esto elimina el error de TypeScript
-    if (!articulo) return;
-
     const q = Math.max(1, Number(qty || 0));
     const v = Math.max(0, Number(valor || 0));
     onConfirm({ articulo: articulo.nombre, qty: q, valor: v });
@@ -253,7 +255,6 @@ function DetalleArticuloModal({
     </div>
   );
 }
-
 
 /** Modal para nuevo artículo */
 function NuevoArticuloModal({
@@ -457,35 +458,72 @@ export default function PedidoPage() {
   /* === Cargar correlativo y fechas === */
   useEffect(() => {
     (async () => {
-      const { data: row, error } = await supabase
-        .from('pedido')
-        .select('nro')
-        .order('nro', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) console.error(error);
-      const last = Number(row?.nro || 0);
-      const nro = last + 1;
+      try {
+        const { data: row, error } = await supabase
+          .from('pedido')
+          .select('nro')
+          .order('nro', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
 
-      const hoy = new Date();
-      const ingreso = ymd(hoy);
-      const entregaDate = addBusinessDays(hoy, 3);
-      const entrega = ymd(entregaDate);
+        const last = Number(row?.nro || 0);
+        const nro = last + 1;
 
-      setNextInfo({ nro, fechaIngresoISO: ingreso, fechaEntregaISO: entrega });
+        const hoy = new Date();
+        const ingreso = ymd(hoy);
+        const entregaDate = addBusinessDays(hoy, 3);
+        const entrega = ymd(entregaDate);
+
+        setNextInfo({ nro, fechaIngresoISO: ingreso, fechaEntregaISO: entrega });
+      } catch (e) {
+        console.error('Error cargando correlativo', e);
+      }
     })();
   }, []);
 
-  /* === Cargar artículos activos === */
+  /* === Cargar artículos activos y ordenarlos por lo más vendido === */
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from('articulo')
-        .select('id,nombre,precio,activo')
-        .eq('activo', true)
-        .order('nombre', { ascending: true });
-      if (error) console.error(error);
-      setCatalogo((data as Articulo[]) || []);
+      try {
+        // 1) catálogo base
+        const { data: dataArt, error: errArt } = await supabase
+          .from('articulo')
+          .select('id,nombre,precio,activo')
+          .eq('activo', true);
+
+        if (errArt) throw errArt;
+        const articulos = (dataArt as Articulo[]) || [];
+
+        // 2) histórico de líneas
+        const { data: dataHist, error: errHist } = await supabase
+          .from('pedido_linea')
+          .select('articulo,cantidad');
+
+        if (errHist) throw errHist;
+        const historico = (dataHist as LineaHistorico[]) || [];
+
+        // 3) mapa nombre -> cantidad total
+        const usoPorArticulo: Record<string, number> = {};
+        for (const l of historico) {
+          const nombre = (l.articulo || '').toUpperCase().trim();
+          if (!nombre) continue;
+          const cant = Number(l.cantidad || 0);
+          usoPorArticulo[nombre] = (usoPorArticulo[nombre] || 0) + cant;
+        }
+
+        // 4) ordenar: más usados primero
+        const ordenados = [...articulos].sort((a, b) => {
+          const ua = usoPorArticulo[a.nombre.toUpperCase().trim()] || 0;
+          const ub = usoPorArticulo[b.nombre.toUpperCase().trim()] || 0;
+          if (ub !== ua) return ub - ua;
+          return a.nombre.localeCompare(b.nombre);
+        });
+
+        setCatalogo(ordenados);
+      } catch (e) {
+        console.error('Error cargando artículos ordenados por uso', e);
+      }
     })();
   }, []);
 
