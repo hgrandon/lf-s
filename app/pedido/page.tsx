@@ -7,7 +7,6 @@ import {
   Phone,
   Loader2,
   ImagePlus,
-  Camera,
   X,
   Save,
   Plus,
@@ -18,15 +17,26 @@ import {
    Tipos básicos
 ========================= */
 type Cliente = { telefono: string; nombre: string; direccion: string };
+
 type Articulo = {
   id: number;
   nombre: string;
   precio: number;
   activo: boolean;
 };
+
 type Item = { articulo: string; qty: number; valor: number; subtotal: number };
-type NextInfo = { nro: number; fechaIngresoISO: string; fechaEntregaISO: string };
-type LineaHistorico = { articulo: string; cantidad: number | null };
+
+type NextInfo = {
+  nro: number;
+  fechaIngresoISO: string;
+  fechaEntregaISO: string;
+};
+
+type LineaHistorico = {
+  articulo: string;
+  cantidad: number | null;
+};
 
 /* =========================
    Utilidades
@@ -70,7 +80,11 @@ function NuevoClienteModal({
   onClose: () => void;
   onSaved: (c: Cliente) => void;
 }) {
-  const [form, setForm] = useState<Cliente>({ telefono: '', nombre: '', direccion: '' });
+  const [form, setForm] = useState<Cliente>({
+    telefono: '',
+    nombre: '',
+    direccion: '',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refFirst = useRef<HTMLInputElement | null>(null);
@@ -120,12 +134,16 @@ function NuevoClienteModal({
   }
 
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
       <div className="w-[520px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div className="font-bold">Nuevo cliente</div>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-slate-100 text-slate-500">
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+          >
             <X size={18} />
           </button>
         </div>
@@ -136,7 +154,10 @@ function NuevoClienteModal({
               ref={refFirst}
               value={form.telefono}
               onChange={(e) =>
-                setForm((p) => ({ ...p, telefono: e.target.value.replace(/\D/g, '') }))
+                setForm((p) => ({
+                  ...p,
+                  telefono: e.target.value.replace(/\D/g, ''),
+                }))
               }
               inputMode="tel"
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
@@ -147,7 +168,9 @@ function NuevoClienteModal({
             <label className="text-sm font-medium">Nombre</label>
             <input
               value={form.nombre}
-              onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, nombre: e.target.value }))
+              }
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
               placeholder="NOMBRE Y APELLIDO"
             />
@@ -156,7 +179,9 @@ function NuevoClienteModal({
             <label className="text-sm font-medium">Dirección</label>
             <input
               value={form.direccion}
-              onChange={(e) => setForm((p) => ({ ...p, direccion: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, direccion: e.target.value }))
+              }
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
               placeholder="CALLE Y NÚMERO"
             />
@@ -168,7 +193,10 @@ function NuevoClienteModal({
           )}
         </div>
         <div className="px-5 py-4 border-t flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl px-4 py-2 hover:bg-slate-50">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 hover:bg-slate-50"
+          >
             Cancelar
           </button>
           <button
@@ -210,16 +238,22 @@ function DetalleArticuloModal({
   if (!open || !articulo) return null;
 
   function handleAgregar() {
+    if (!articulo) return;
+
     const q = Math.max(1, Number(qty || 0));
     const v = Math.max(0, Number(valor || 0));
-    onConfirm({ articulo: articulo.nombre, qty: q, valor: v });
+    onConfirm({
+      articulo: articulo?.nombre ?? '',
+      qty: q,
+      valor: v,
+    });
   }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
       <div className="w-[420px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         <div className="px-5 py-4 text-center font-extrabold text-violet-700 border-b">
-          {articulo.nombre}
+          {articulo?.nombre ?? ''}
         </div>
 
         <div className="px-5 py-4 grid gap-3">
@@ -249,6 +283,51 @@ function DetalleArticuloModal({
             className="w-full rounded-xl bg-violet-100 py-2 text-violet-800 font-semibold hover:bg-violet-200"
           >
             Salir
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Modal de confirmación para eliminar artículo */
+function DeleteItemModal({
+  open,
+  articulo,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  articulo: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
+      <div className="w-[460px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 text-center font-extrabold text-violet-700 border-b">
+          ¿Eliminar este artículo?
+        </div>
+        <div className="px-6 py-5 text-center text-sm text-slate-700">
+          <p>
+            <span className="font-semibold">&quot;{articulo}&quot;</span> será eliminado
+            del pedido.
+          </p>
+        </div>
+        <div className="px-6 py-4 border-t flex gap-3 justify-center">
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl bg-violet-700 text-white font-semibold py-2 hover:bg-violet-800"
+          >
+            Eliminar
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl bg-violet-100 text-violet-800 font-semibold py-2 hover:bg-violet-200"
+          >
+            Cancelar
           </button>
         </div>
       </div>
@@ -305,12 +384,16 @@ function NuevoArticuloModal({
   }
 
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
       <div className="w-[520px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div className="font-bold">Nuevo artículo</div>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-slate-100 text-slate-500">
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+          >
             <X size={18} />
           </button>
         </div>
@@ -341,7 +424,10 @@ function NuevoArticuloModal({
           )}
         </div>
         <div className="px-5 py-4 border-t flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl px-4 py-2 hover:bg-slate-50">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 hover:bg-slate-50"
+          >
             Cancelar
           </button>
           <button
@@ -358,72 +444,10 @@ function NuevoArticuloModal({
   );
 }
 
-/** Modal para elegir/sacar foto y subir a Supabase */
-function FotoModal({
-  open,
-  onClose,
-  onPicked,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onPicked: (file: File | null) => void;
-}) {
-  const refCam = useRef<HTMLInputElement | null>(null);
-  const refFile = useRef<HTMLInputElement | null>(null);
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4">
-      <div className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl">
-        <div className="relative bg-gradient-to-r from-violet-700 to-violet-600 px-6 py-4 text-center text-white font-extrabold">
-          FOTO
-          <button
-            onClick={onClose}
-            className="absolute right-3 top-3 rounded-full bg-white/20 p-1 hover:bg-white/30"
-            aria-label="Cerrar"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-5 grid gap-3">
-          <button
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 justify-center"
-            onClick={() => refCam.current?.click()}
-          >
-            <Camera size={18} /> Usar cámara
-          </button>
-          <button
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 px-4 py-3 justify-center"
-            onClick={() => refFile.current?.click()}
-          >
-            <ImagePlus size={18} /> Elegir desde galería
-          </button>
-
-          <input
-            ref={refCam}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => onPicked(e.target.files?.[0] ?? null)}
-          />
-          <input
-            ref={refFile}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => onPicked(e.target.files?.[0] ?? null)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* =========================
    Página principal
 ========================= */
 export default function PedidoPage() {
-  // encabezado
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
 
   // cliente
@@ -442,17 +466,24 @@ export default function PedidoPage() {
   const [openDetalle, setOpenDetalle] = useState(false);
   const [articuloDetalle, setArticuloDetalle] = useState<Articulo | null>(null);
 
+  // modal de eliminar
+  const [openDelete, setOpenDelete] = useState(false);
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+
   // líneas
   const [items, setItems] = useState<Item[]>([]);
 
   // foto
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
-  const [openFoto, setOpenFoto] = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
   const total = useMemo(
-    () => items.reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.valor) || 0), 0),
-    [items]
+    () =>
+      items.reduce(
+        (a, it) => a + (Number(it.qty) || 0) * (Number(it.valor) || 0),
+        0,
+      ),
+    [items],
   );
 
   /* === Cargar correlativo y fechas === */
@@ -486,7 +517,6 @@ export default function PedidoPage() {
   useEffect(() => {
     (async () => {
       try {
-        // 1) catálogo base
         const { data: dataArt, error: errArt } = await supabase
           .from('articulo')
           .select('id,nombre,precio,activo')
@@ -495,7 +525,6 @@ export default function PedidoPage() {
         if (errArt) throw errArt;
         const articulos = (dataArt as Articulo[]) || [];
 
-        // 2) histórico de líneas
         const { data: dataHist, error: errHist } = await supabase
           .from('pedido_linea')
           .select('articulo,cantidad');
@@ -503,7 +532,6 @@ export default function PedidoPage() {
         if (errHist) throw errHist;
         const historico = (dataHist as LineaHistorico[]) || [];
 
-        // 3) mapa nombre -> cantidad total
         const usoPorArticulo: Record<string, number> = {};
         for (const l of historico) {
           const nombre = (l.articulo || '').toUpperCase().trim();
@@ -512,7 +540,6 @@ export default function PedidoPage() {
           usoPorArticulo[nombre] = (usoPorArticulo[nombre] || 0) + cant;
         }
 
-        // 4) ordenar: más usados primero
         const ordenados = [...articulos].sort((a, b) => {
           const ua = usoPorArticulo[a.nombre.toUpperCase().trim()] || 0;
           const ub = usoPorArticulo[b.nombre.toUpperCase().trim()] || 0;
@@ -536,6 +563,7 @@ export default function PedidoPage() {
       return;
     }
     if (debRef.current) window.clearTimeout(debRef.current);
+
     debRef.current = window.setTimeout(async () => {
       try {
         setCheckingCli(true);
@@ -545,6 +573,7 @@ export default function PedidoPage() {
           .eq('telefono', digits)
           .maybeSingle();
         if (error) throw error;
+
         if (data) {
           setCliente({
             telefono: String(data.telefono),
@@ -562,6 +591,7 @@ export default function PedidoPage() {
         setCheckingCli(false);
       }
     }, 400) as unknown as number;
+
     return () => {
       if (debRef.current) window.clearTimeout(debRef.current);
     };
@@ -594,7 +624,7 @@ export default function PedidoPage() {
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
     setItems((prev) => {
       const index = prev.findIndex(
-        (x) => x.articulo === d.articulo && x.valor === d.valor
+        (x) => x.articulo === d.articulo && x.valor === d.valor,
       );
 
       if (index >= 0) {
@@ -623,26 +653,21 @@ export default function PedidoPage() {
     setBusquedaArt('');
   }
 
-  function setQty(idx: number, v: number) {
-    setItems((prev) => {
-      const next = [...prev];
-      const qty = Math.max(0, Number(v || 0));
-      next[idx] = { ...next[idx], qty, subtotal: qty * next[idx].valor };
-      return next;
-    });
+  function requestDelete(idx: number) {
+    setDeleteIndex(idx);
+    setOpenDelete(true);
   }
 
-  function setValor(idx: number, v: number) {
-    setItems((prev) => {
-      const next = [...prev];
-      const val = Math.max(0, Number(v || 0));
-      next[idx] = { ...next[idx], valor: val, subtotal: val * next[idx].qty };
-      return next;
-    });
+  function confirmDelete() {
+    if (deleteIndex === null) return;
+    setItems((prev) => prev.filter((_, i) => i !== deleteIndex));
+    setDeleteIndex(null);
+    setOpenDelete(false);
   }
 
-  function removeItem(i: number) {
-    setItems((prev) => prev.filter((_, idx) => idx !== i));
+  function cancelDelete() {
+    setDeleteIndex(null);
+    setOpenDelete(false);
   }
 
   /* === Foto === */
@@ -652,9 +677,11 @@ export default function PedidoPage() {
       const stamp = Date.now();
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = `tmp_${stamp}.${ext}`;
-      const { data, error } = await supabase.storage.from('fotos').upload(fileName, file, {
-        upsert: false,
-      });
+      const { data, error } = await supabase.storage
+        .from('fotos')
+        .upload(fileName, file, {
+          upsert: false,
+        });
       if (error) throw error;
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data.path);
       setFotoUrl(pub.publicUrl);
@@ -662,14 +689,19 @@ export default function PedidoPage() {
       console.error(e);
     } finally {
       setSubiendoFoto(false);
-      setOpenFoto(false);
     }
   }
 
   /* === Guardar pedido === */
   const [saving, setSaving] = useState(false);
+
   async function guardarPedido() {
     if (!nextInfo) return;
+    if (!items.length) {
+      alert('Debes agregar al menos un artículo.');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -683,6 +715,7 @@ export default function PedidoPage() {
         fecha_entrega: nextInfo.fechaEntregaISO,
         foto_url: fotoUrl ?? null,
       };
+
       const { error: eP } = await supabase.from('pedido').insert(payload);
       if (eP) throw eP;
 
@@ -694,12 +727,14 @@ export default function PedidoPage() {
           cantidad: it.qty,
           valor: it.valor,
         }));
+
       if (lineas.length) {
         const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
         if (eL) throw eL;
       }
 
       alert(`Pedido #${nextInfo.nro} guardado correctamente`);
+
       setItems([]);
       setFotoUrl(null);
       setTelefono('');
@@ -719,6 +754,11 @@ export default function PedidoPage() {
     }
   }
 
+  const articuloAEliminar =
+    deleteIndex !== null && items[deleteIndex]
+      ? items[deleteIndex].articulo
+      : '';
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
@@ -730,8 +770,12 @@ export default function PedidoPage() {
             N° {nextInfo?.nro ?? '—'}
           </h1>
           <div className="text-right">
-            <div className="text-xl sm:text-2xl">{nextInfo?.fechaIngresoISO ?? ''}</div>
-            <div className="text-xl sm:text-2xl">{nextInfo?.fechaEntregaISO ?? ''}</div>
+            <div className="text-xl sm:text-2xl">
+              {nextInfo?.fechaIngresoISO ?? ''}
+            </div>
+            <div className="text-xl sm:text-2xl">
+              {nextInfo?.fechaEntregaISO ?? ''}
+            </div>
           </div>
         </div>
 
@@ -742,12 +786,18 @@ export default function PedidoPage() {
           </label>
           <div className="relative max-w-md">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80">
-              {checkingCli ? <Loader2 className="animate-spin" size={16} /> : <Phone size={16} />}
+              {checkingCli ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : (
+                <Phone size={16} />
+              )}
             </div>
             <input
               id="tel"
               value={telefono}
-              onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ''))}
+              onChange={(e) =>
+                setTelefono(e.target.value.replace(/\D/g, ''))
+              }
               inputMode="tel"
               autoComplete="tel"
               placeholder="9 dígitos..."
@@ -756,8 +806,12 @@ export default function PedidoPage() {
           </div>
           {cliente && (
             <div className="mt-2 text-white/90 text-sm">
-              <div className="font-semibold uppercase">{cliente.nombre || 'SIN NOMBRE'}</div>
-              <div className="uppercase">{cliente.direccion || 'SIN DIRECCIÓN'}</div>
+              <div className="font-semibold uppercase">
+                {cliente.nombre || 'SIN NOMBRE'}
+              </div>
+              <div className="uppercase">
+                {cliente.direccion || 'SIN DIRECCIÓN'}
+              </div>
             </div>
           )}
         </div>
@@ -778,7 +832,7 @@ export default function PedidoPage() {
                 }}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
               >
-                <option value="">Seleccionar artículo...</option>
+                <option value="">SELECCIONAR UN ARTÍCULO</option>
                 {catalogo.map((a) => (
                   <option key={a.id} value={a.nombre}>
                     {a.nombre}
@@ -796,22 +850,26 @@ export default function PedidoPage() {
             </div>
           </div>
 
-          {/* Tabla detalle */}
+          {/* Tabla detalle (solo lectura, estilo similar a app local) */}
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-violet-100 text-violet-900">
                 <tr>
                   <th className="text-left px-3 py-2 w-[45%]">Artículo</th>
-                  <th className="text-right px-3 py-2 w-[12%]">Cantidad</th>
-                  <th className="text-right px-3 py-2 w-[18%]">Valor</th>
+                  <th className="text-center px-3 py-2 w-[12%]">Cantidad</th>
+                  <th className="text-right px-3 py-2 w-[15%]">Valor</th>
                   <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
-                  <th className="px-3 py-2 w-[7%]"></th>
+                  <th className="text-center px-3 py-2 w-[10%]">Estado</th>
+                  <th className="px-3 py-2 w-[7%]" />
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                    <td
+                      colSpan={6}
+                      className="px-3 py-4 text-center text-slate-500"
+                    >
                       Sin artículos todavía.
                     </td>
                   </tr>
@@ -819,26 +877,17 @@ export default function PedidoPage() {
                 {items.map((it, idx) => (
                   <tr key={`${idx}-${it.articulo}`}>
                     <td className="px-3 py-2">{it.articulo}</td>
+                    <td className="px-3 py-2 text-center">{it.qty}</td>
                     <td className="px-3 py-2 text-right">
-                      <input
-                        value={String(it.qty)}
-                        onChange={(e) => setQty(idx, Number(e.target.value || 0))}
-                        inputMode="numeric"
-                        className="w-20 text-right rounded-lg border px-2 py-1"
-                      />
+                      {CLP.format(it.valor)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <input
-                        value={String(it.valor)}
-                        onChange={(e) => setValor(idx, Number(e.target.value || 0))}
-                        inputMode="numeric"
-                        className="w-28 text-right rounded-lg border px-2 py-1"
-                      />
+                      {CLP.format(it.subtotal)}
                     </td>
-                    <td className="px-3 py-2 text-right">{CLP.format(it.subtotal)}</td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2 text-center">LAVAR</td>
+                    <td className="px-3 py-2 text-center">
                       <button
-                        onClick={() => removeItem(idx)}
+                        onClick={() => requestDelete(idx)}
                         className="inline-flex items-center rounded-lg px-2 py-1 hover:bg-slate-100"
                         title="Eliminar"
                       >
@@ -850,31 +899,39 @@ export default function PedidoPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3} className="px-3 py-3 text-right font-bold">
+                  <td
+                    colSpan={3}
+                    className="px-3 py-3 text-right font-bold"
+                  >
                     Total
                   </td>
                   <td className="px-3 py-3 text-right font-extrabold">
                     {CLP.format(total)}
                   </td>
-                  <td />
+                  <td colSpan={2} />
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* Foto */}
-          <div
-            className="mt-4 flex items-center gap-3 rounded-xl bg-violet-50 text-violet-700 px-3 py-3 cursor-pointer"
-            onClick={() => setOpenFoto(true)}
-            role="button"
-            title="Agregar foto"
-          >
-            <ImagePlus size={18} />
-            <span className="text-sm">
-              {fotoUrl
-                ? 'Foto cargada. Toca para cambiar.'
-                : 'Sin imagen adjunta. Toca para agregar.'}
+          {/* Archivo / Foto: estilo similar a input clásico */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <span className="sr-only">Seleccionar archivo</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadFoto(file);
+                }}
+                className="block text-sm"
+              />
+            </label>
+            <span className="text-sm text-slate-600">
+              {fotoUrl ? 'Imagen cargada.' : 'SIN ARCHIVOS SELECCIONADOS'}
             </span>
+            <ImagePlus className="text-violet-500" size={18} />
           </div>
 
           {/* Guardar */}
@@ -884,7 +941,11 @@ export default function PedidoPage() {
               disabled={saving || !nextInfo}
               className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 disabled:opacity-60"
             >
-              {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              {saving ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : (
+                <Save size={16} />
+              )}
               Guardar Pedido
             </button>
           </div>
@@ -903,17 +964,10 @@ export default function PedidoPage() {
         open={openArtModal}
         onClose={() => setOpenArtModal(false)}
         onSaved={(a) => {
-          setCatalogo((prev) => [...prev, a].sort((x, y) => x.nombre.localeCompare(y.nombre)));
+          setCatalogo((prev) =>
+            [...prev, a].sort((x, y) => x.nombre.localeCompare(y.nombre)),
+          );
           setSelArt(a.nombre);
-        }}
-      />
-
-      <FotoModal
-        open={openFoto}
-        onClose={() => setOpenFoto(false)}
-        onPicked={(file) => {
-          if (file) uploadFoto(file);
-          else setOpenFoto(false);
         }}
       />
 
@@ -925,6 +979,13 @@ export default function PedidoPage() {
           confirmarDetalleLinea(d);
           setOpenDetalle(false);
         }}
+      />
+
+      <DeleteItemModal
+        open={openDelete}
+        articulo={articuloAEliminar}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
       />
 
       {/* estado de subida */}
