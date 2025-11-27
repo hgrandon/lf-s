@@ -456,7 +456,7 @@ export default function PedidoPage() {
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
-  // ref tipado como HTMLInputElement (sin null) para que coincida con Fotos
+  // ref para la cámara / archivo (se usa en Correlativo y Fotos)
   const fotoInputRef = useRef<HTMLInputElement>(null!);
 
   const total = useMemo(
@@ -738,7 +738,7 @@ export default function PedidoPage() {
       : '';
 
   return (
-    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Header (correlativo + teléfono) */}
@@ -757,42 +757,36 @@ export default function PedidoPage() {
         />
       </header>
 
-      {/* Contenido (artículos + foto + guardar) */}
-      <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
-        <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
-          <Articulos
-            catalogo={catalogo}
-            items={items}
-            total={total}
-            onSelectArticulo={handleSelectArticulo}
-            onRowClick={requestDelete}
-          />
+      {/* Contenido: selector + tabla (Articulos) y foto */}
+      <section className="relative z-10 mx-auto max-w-6xl px-4 sm:px-6 mt-6 space-y-4">
+        <Articulos
+          catalogo={catalogo}
+          items={items}
+          total={total}
+          onSelectArticulo={handleSelectArticulo}
+          onRowClick={requestDelete}
+        />
 
-          <Fotos
-            fotoUrl={fotoUrl}
-            inputRef={fotoInputRef}
-            onFileSelected={(file) => {
-              if (file) uploadFoto(file);
-            }}
-          />
-
-          {/* Botón guardar */}
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={guardarPedido}
-              disabled={saving || !nextInfo}
-              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 disabled:opacity-60"
-            >
-              {saving ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <Save size={16} />
-              )}
-              Guardar Pedido
-            </button>
-          </div>
-        </div>
+        <Fotos
+          fotoUrl={fotoUrl}
+          inputRef={fotoInputRef}
+          onFileSelected={(file) => {
+            if (file) uploadFoto(file);
+          }}
+        />
       </section>
+
+      {/* Botón guardar fijo abajo, como en tu mock */}
+      <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
+        <button
+          onClick={guardarPedido}
+          disabled={saving || !nextInfo}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+        >
+          {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+          Guardar Pedido
+        </button>
+      </footer>
 
       {/* Modales */}
       <NuevoClienteModal
@@ -809,7 +803,6 @@ export default function PedidoPage() {
           setCatalogo((prev) =>
             [...prev, a].sort((x, y) => x.nombre.localeCompare(y.nombre)),
           );
-          // al crear artículo nuevo abrimos modal de cantidad/valor de inmediato
           handleSelectArticulo(a.nombre);
         }}
       />
@@ -831,9 +824,8 @@ export default function PedidoPage() {
         onCancel={cancelDelete}
       />
 
-      {/* estado de subida */}
       {subiendoFoto && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-xl bg-white/90 text-slate-900 px-3 py-2 shadow">
+        <div className="fixed bottom-20 right-4 z-50 rounded-xl bg-white/90 text-slate-900 px-3 py-2 shadow">
           Subiendo foto…
         </div>
       )}
