@@ -53,9 +53,7 @@ export default function Articulos({
     <div className="space-y-4">
       {/* === SELECTOR DE ARTÍCULOS === */}
       <div className="space-y-1">
-        <label className="text-sm font-semibold text-white">
-          Seleccionar artículo
-        </label>
+
 
         <select
           value={sel}
