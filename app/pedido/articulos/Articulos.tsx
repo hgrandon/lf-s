@@ -51,8 +51,7 @@ export default function Articulos({
 
   return (
     <div className="space-y-4">
-      
-      {/* === SELECTOR DE ARTÍCULOS SIN FONDO BLANCO === */}
+      {/* === SELECTOR DE ARTÍCULOS === */}
       <div className="space-y-1">
         <label className="text-sm font-semibold text-white">
           Seleccionar artículo
@@ -73,7 +72,7 @@ export default function Articulos({
         </select>
       </div>
 
-      {/* === TABLA A TODO EL ANCHO (SIN CONTENEDOR BLANCO) === */}
+      {/* === TABLA A TODO EL ANCHO === */}
       <div className="rounded-2xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs sm:text-sm">
@@ -101,9 +100,16 @@ export default function Articulos({
                   onClick={() => onRowClick(idx)}
                   className="cursor-pointer hover:bg-white/10"
                 >
-                  <td className="px-4 py-2 truncate" title={it.articulo}>
-                    {it.articulo}
+                  {/* MÁXIMO 18 CARACTERES, MAYÚSCULAS, CON "…" */}
+                  <td
+                    className="px-4 py-2 max-w-[120px] truncate whitespace-nowrap font-semibold"
+                    title={it.articulo}
+                  >
+                    {it.articulo.length > 18
+                      ? it.articulo.slice(0, 18).toUpperCase() + '…'
+                      : it.articulo.toUpperCase()}
                   </td>
+
                   <td className="px-2 py-2 text-center">{it.qty}</td>
                   <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                   <td className="px-3 py-2 text-right">
