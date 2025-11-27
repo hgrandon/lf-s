@@ -1,5 +1,4 @@
-// app/pedido/articulos/Articulos.tsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 export type Articulo = {
   id: number;
@@ -72,67 +71,69 @@ export default function Articulos({
         </div>
       </div>
 
-      {/* Tabla detalle con fondo degradado como la app local */}
-      <div className="mt-2 overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 via-fuchsia-500 to-violet-600 text-white shadow-md">
-        <table className="w-full text-sm">
-          <thead className="bg-white/10">
-            <tr>
-              <th className="text-left px-4 py-2 w-[45%]">Artículo</th>
-              <th className="text-center px-2 py-2 w-[10%]">Can.</th>
-              <th className="text-right px-3 py-2 w-[15%]">Valor</th>
-              <th className="text-right px-3 py-2 w-[20%]">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/10">
-            {items.length === 0 && (
+      {/* Tabla detalle estilo app local (de borde a borde del contenedor) */}
+      <div className="mt-2 rounded-xl overflow-hidden bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm text-white/95">
+            <thead className="bg-white/10">
               <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-4 text-center text-white/80"
-                >
-                  Sin artículos todavía.
-                </td>
+                <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                <th className="text-center px-2 py-2 w-[12%]">Can.</th>
+                <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                <th className="text-right px-3 py-2 w-[28%]">Subtotal</th>
               </tr>
+            </thead>
+
+            <tbody className="divide-y divide-white/10">
+              {items.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-4 text-center text-white/80"
+                  >
+                    Sin artículos todavía.
+                  </td>
+                </tr>
+              )}
+
+              {items.map((it, idx) => (
+                <tr
+                  key={`${idx}-${it.articulo}`}
+                  onClick={() => onRowClick(idx)}
+                  className="cursor-pointer hover:bg-white/10 transition-colors"
+                >
+                  <td
+                    className="px-3 py-2 max-w-[190px] truncate whitespace-nowrap"
+                    title={it.articulo}
+                  >
+                    {it.articulo.length > 18
+                      ? it.articulo.slice(0, 18) + '…'
+                      : it.articulo}
+                  </td>
+                  <td className="px-2 py-2 text-center">{it.qty}</td>
+                  <td className="px-3 py-2 text-right">
+                    {CLP.format(it.valor)}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {CLP.format(it.subtotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+
+            {items.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={2} />
+                  <td className="px-3 py-3 text-right font-bold">Total:</td>
+                  <td className="px-3 py-3 text-right font-extrabold">
+                    {CLP.format(total)}
+                  </td>
+                </tr>
+              </tfoot>
             )}
-            {items.map((it, idx) => (
-              <tr
-                key={`${idx}-${it.articulo}`}
-                onClick={() => onRowClick(idx)}
-                className="cursor-pointer hover:bg-white/10 transition-colors"
-              >
-                <td
-                  className="px-4 py-2 max-w-[220px] truncate whitespace-nowrap"
-                  title={it.articulo}
-                >
-                  {it.articulo.length > 18
-                    ? it.articulo.slice(0, 18) + '…'
-                    : it.articulo}
-                </td>
-                <td className="px-2 py-2 text-center">{it.qty}</td>
-                <td className="px-3 py-2 text-right">
-                  {CLP.format(it.valor)}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  {CLP.format(it.subtotal)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2} />
-              <td
-                colSpan={2}
-                className="px-4 py-3 text-right font-bold text-base"
-              >
-                <span className="mr-1">Total:</span>
-                <span className="font-extrabold text-lg">
-                  {CLP.format(total)}
-                </span>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+          </table>
+        </div>
       </div>
     </>
   );
