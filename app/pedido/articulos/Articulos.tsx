@@ -96,7 +96,12 @@ export default function Articulos({
                 onClick={() => onRowClick(idx)}
                 className="cursor-pointer hover:bg-white/10 transition-colors"
               >
-                <td className="px-4 py-2">{it.articulo}</td>
+                <td
+                    className="px-4 py-2 max-w-[180px] truncate whitespace-nowrap"
+                    title={it.articulo}  // tooltip para ver el nombre completo si pasa el mouse
+                    >
+                    {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '…' : it.articulo}
+                    </td>
                 <td className="px-2 py-2 text-center">{it.qty}</td>
                 <td className="px-3 py-2 text-right">
                   {CLP.format(it.valor)}
