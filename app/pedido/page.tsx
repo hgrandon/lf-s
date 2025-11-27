@@ -455,7 +455,9 @@ export default function PedidoPage() {
   // foto
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
-  const fotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ref tipado como HTMLInputElement (sin null) para que coincida con Fotos
+  const fotoInputRef = useRef<HTMLInputElement>(null!);
 
   const total = useMemo(
     () =>
