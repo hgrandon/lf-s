@@ -3,29 +3,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  Phone,
-  Loader2,
-  ImagePlus,
-  X,
-  Save,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { Loader2, Save, X } from 'lucide-react';
+
+import Correlativo from './correlativo/Correlativo';
+import Telefono, { Cliente } from './telefono/Telefono';
+import Articulos, { Articulo, Item } from './articulos/Articulos';
+import Fotos from './fotos/Fotos';
 
 /* =========================
-   Tipos básicos
+   Tipos extra
 ========================= */
-type Cliente = { telefono: string; nombre: string; direccion: string };
-
-type Articulo = {
-  id: number;
-  nombre: string;
-  precio: number;
-  activo: boolean;
-};
-
-type Item = { articulo: string; qty: number; valor: number; subtotal: number };
 
 type NextInfo = {
   nro: number;
@@ -57,12 +44,6 @@ function addBusinessDays(start: Date, businessDays: number): Date {
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
-
-const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency',
-  currency: 'CLP',
-  maximumFractionDigits: 0,
-});
 
 /* =========================
    Modales reutilizables
@@ -213,7 +194,7 @@ function NuevoClienteModal({
   );
 }
 
-/** Modal para editar cantidad y valor del artículo seleccionado */
+/** Modal de detalle artículo */
 function DetalleArticuloModal({
   open,
   articulo,
@@ -239,7 +220,6 @@ function DetalleArticuloModal({
 
   function handleAgregar() {
     if (!articulo) return;
-
     const q = Math.max(1, Number(qty || 0));
     const v = Math.max(0, Number(valor || 0));
     onConfirm({
@@ -447,6 +427,7 @@ function NuevoArticuloModal({
 /* =========================
    Página principal
 ========================= */
+
 export default function PedidoPage() {
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
 
@@ -597,7 +578,7 @@ export default function PedidoPage() {
     };
   }, [telefono]);
 
-  /* === Abrir modal de detalle al elegir artículo === */
+  /* === Lógica para artículos === */
   function addFromSelect() {
     const nombreSel = (selArt || busquedaArt || '').trim();
     if (!nombreSel) return;
@@ -763,178 +744,45 @@ export default function PedidoPage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* Header */}
+      {/* Header (correlativo + teléfono) */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
-        <div className="flex items-start justify-between">
-          <h1 className="text-4xl sm:text-5xl font-extrabold">
-            N° {nextInfo?.nro ?? '—'}
-          </h1>
-          <div className="text-right">
-            <div className="text-xl sm:text-2xl">
-              {nextInfo?.fechaIngresoISO ?? ''}
-            </div>
-            <div className="text-xl sm:text-2xl">
-              {nextInfo?.fechaEntregaISO ?? ''}
-            </div>
-          </div>
-        </div>
-
-        {/* Teléfono / cliente */}
-        <div className="mt-4">
-          <label className="sr-only" htmlFor="tel">
-            Teléfono del cliente
-          </label>
-          <div className="relative max-w-md">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80">
-              {checkingCli ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <Phone size={16} />
-              )}
-            </div>
-            <input
-              id="tel"
-              value={telefono}
-              onChange={(e) =>
-                setTelefono(e.target.value.replace(/\D/g, ''))
-              }
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="9 dígitos..."
-              className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
-            />
-          </div>
-          {cliente && (
-            <div className="mt-2 text-white/90 text-sm">
-              <div className="font-semibold uppercase">
-                {cliente.nombre || 'SIN NOMBRE'}
-              </div>
-              <div className="uppercase">
-                {cliente.direccion || 'SIN DIRECCIÓN'}
-              </div>
-            </div>
-          )}
-        </div>
+        <Correlativo
+          nro={nextInfo?.nro}
+          fechaIngreso={nextInfo?.fechaIngresoISO}
+          fechaEntrega={nextInfo?.fechaEntregaISO}
+        />
+        <Telefono
+          telefono={telefono}
+          onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
+          checkingCli={checkingCli}
+          cliente={cliente}
+        />
       </header>
 
-      {/* Contenido */}
+      {/* Contenido (artículos + foto + guardar) */}
       <section className="relative z-10 mx-auto max-w-6xl px-6 mt-6">
         <div className="rounded-2xl bg-white text-slate-900 p-4 sm:p-5 shadow-[0_10px_30px_rgba(0,0,0,.20)]">
-          {/* Selector de artículo */}
-          <div className="grid gap-2 mb-3">
-            <label className="text-sm font-semibold">Seleccionar artículo</label>
-            <div className="flex gap-2 items-center">
-              <select
-                value={selArt}
-                onChange={(e) => {
-                  setSelArt(e.target.value);
-                  setBusquedaArt(e.target.value);
-                }}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
-              >
-                <option value="">SELECCIONAR UN ARTÍCULO</option>
-                {catalogo.map((a) => (
-                  <option key={a.id} value={a.nombre}>
-                    {a.nombre}
-                  </option>
-                ))}
-                <option value="__OTRO__">OTRO (+)</option>
-              </select>
-              <button
-                onClick={addFromSelect}
-                disabled={!selArt}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 disabled:opacity-60"
-              >
-                <Plus size={16} /> Agregar
-              </button>
-            </div>
-          </div>
+          <Articulos
+            catalogo={catalogo}
+            items={items}
+            selArt={selArt}
+            onSelArtChange={(v) => {
+              setSelArt(v);
+              setBusquedaArt(v);
+            }}
+            onAgregar={addFromSelect}
+            onDeleteItem={requestDelete}
+            total={total}
+          />
 
-          {/* Tabla detalle (solo lectura, estilo similar a app local) */}
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-sm">
-              <thead className="bg-violet-100 text-violet-900">
-                <tr>
-                  <th className="text-left px-3 py-2 w-[45%]">Artículo</th>
-                  <th className="text-center px-3 py-2 w-[12%]">Cantidad</th>
-                  <th className="text-right px-3 py-2 w-[15%]">Valor</th>
-                  <th className="text-right px-3 py-2 w-[18%]">Subtotal</th>
-                  <th className="text-center px-3 py-2 w-[10%]">Estado</th>
-                  <th className="px-3 py-2 w-[7%]" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {items.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-3 py-4 text-center text-slate-500"
-                    >
-                      Sin artículos todavía.
-                    </td>
-                  </tr>
-                )}
-                {items.map((it, idx) => (
-                  <tr key={`${idx}-${it.articulo}`}>
-                    <td className="px-3 py-2">{it.articulo}</td>
-                    <td className="px-3 py-2 text-center">{it.qty}</td>
-                    <td className="px-3 py-2 text-right">
-                      {CLP.format(it.valor)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {CLP.format(it.subtotal)}
-                    </td>
-                    <td className="px-3 py-2 text-center">LAVAR</td>
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        onClick={() => requestDelete(idx)}
-                        className="inline-flex items-center rounded-lg px-2 py-1 hover:bg-slate-100"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-3 py-3 text-right font-bold"
-                  >
-                    Total
-                  </td>
-                  <td className="px-3 py-3 text-right font-extrabold">
-                    {CLP.format(total)}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <Fotos
+            fotoUrl={fotoUrl}
+            onFileSelected={(file) => {
+              if (file) uploadFoto(file);
+            }}
+          />
 
-          {/* Archivo / Foto: estilo similar a input clásico */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <span className="sr-only">Seleccionar archivo</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadFoto(file);
-                }}
-                className="block text-sm"
-              />
-            </label>
-            <span className="text-sm text-slate-600">
-              {fotoUrl ? 'Imagen cargada.' : 'SIN ARCHIVOS SELECCIONADOS'}
-            </span>
-            <ImagePlus className="text-violet-500" size={18} />
-          </div>
-
-          {/* Guardar */}
+          {/* Botón guardar */}
           <div className="mt-4">
             <button
               onClick={guardarPedido}
