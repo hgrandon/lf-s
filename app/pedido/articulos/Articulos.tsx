@@ -105,8 +105,8 @@ export default function Articulos({
                     className="px-4 py-2 max-w-[120px] truncate whitespace-nowrap font-semibold"
                     title={it.articulo}
                   >
-                    {it.articulo.length > 18
-                      ? it.articulo.slice(0, 18).toUpperCase() + '…'
+                    {it.articulo.length > 19
+                      ? it.articulo.slice(0, 19).toUpperCase() + '.'
                       : it.articulo.toUpperCase()}
                   </td>
 
