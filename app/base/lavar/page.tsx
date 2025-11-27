@@ -31,8 +31,8 @@ type Pedido = {
   total: number | null;
   estado: PedidoEstado;
   detalle?: string | null;
-  foto_url?: string | null; // seguirá existiendo como "foto principal"
-  fotos?: string[]; // NUEVO: todas las fotos del pedido
+  foto_url?: string | null; // puede ser string o JSON con varias URLs
+  fotos?: string[]; // lista de fotos para el slider
   pagado?: boolean | null;
   items?: Item[];
 };
@@ -43,24 +43,34 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
+// SACA SOLO LA PRIMERA FOTO (por compatibilidad con pantallas antiguas)
 function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
+  const all = allFotosFromMixed(input);
+  return all[0] ?? null;
+}
+
+// NUEVO: SACA TODAS LAS FOTOS POSIBLES DESDE string | JSON | array
+function allFotosFromMixed(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+  }
   if (typeof input === 'string') {
     const s = input.trim();
-    if (!s) return null;
+    if (!s) return [];
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
-        return null;
+        if (Array.isArray(arr)) {
+          return arr.filter((x: unknown): x is string => typeof x === 'string' && x.trim() !== '');
+        }
       } catch {
-        return null;
+        // si falla el JSON, lo tomamos como string simple
       }
     }
-    return s;
+    return [s];
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
-  return null;
+  return [];
 }
 
 /* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
@@ -146,7 +156,7 @@ export default function LavarPage() {
           .in('pedido_id', ids);
         if (e2) throw e2;
 
-        // Fotos (todas las fotos de cada pedido)
+        // Fotos (todas las filas de pedido_foto)
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
@@ -180,7 +190,7 @@ export default function LavarPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Agrupar fotos por pedido
+        // Agrupar fotos por pedido desde tabla pedido_foto
         const fotosByPedido = new Map<number, string[]>();
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.pedido_id ?? f.nro);
@@ -192,14 +202,19 @@ export default function LavarPage() {
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-          const baseFoto = firstFotoFromMixed(r.foto_url);
+          // fotos base que puedan venir en foto_url (string o JSON)
+          const baseFotos = allFotosFromMixed(r.foto_url);
           const extra = fotosByPedido.get(r.id) ?? [];
 
           const fotosArr: string[] = [];
-          if (baseFoto) fotosArr.push(baseFoto);
+          baseFotos.forEach((u) => {
+            if (u && !fotosArr.includes(u)) fotosArr.push(u);
+          });
           extra.forEach((u) => {
             if (u && !fotosArr.includes(u)) fotosArr.push(u);
           });
+
+          const principal = fotosArr[0] ?? firstFotoFromMixed(r.foto_url) ?? null;
 
           return {
             id: r.id,
@@ -207,7 +222,7 @@ export default function LavarPage() {
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
-            foto_url: baseFoto ?? fotosArr[0] ?? null,
+            foto_url: principal,
             fotos: fotosArr,
             pagado: r.pagado ?? false,
             items: itemsByPedido.get(r.id) ?? [],
@@ -318,26 +333,28 @@ export default function LavarPage() {
       const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      // También actualizamos foto_url como principal (para compatibilidad)
-      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+      // Obtener fotos actuales del pedido para actualizar JSON en foto_url
+      const pedidoActual = pedidos.find((p) => p.id === pid);
+      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const nuevasFotos = [...fotosActuales, publicUrl];
 
-      // Actualizar estado local: agregamos la nueva foto al arreglo y la dejamos seleccionada
+      // Guardamos la lista completa en foto_url como JSON
+      await supabase.from('pedido').update({ foto_url: JSON.stringify(nuevasFotos) }).eq('nro', pid);
+
+      // Actualizar estado local
       setPedidos((prev) =>
         prev.map((p) =>
           p.id === pid
             ? {
                 ...p,
                 foto_url: publicUrl,
-                fotos: [...(p.fotos ?? []), publicUrl],
+                fotos: nuevasFotos,
               }
             : p,
         ),
       );
       setImageError((prev) => ({ ...prev, [pid]: false }));
-      setCurrentSlide((prev) => ({
-        ...prev,
-        [pid]: (prev[pid] ?? ( (pedidos.find(p => p.id === pid)?.fotos?.length ?? 0) )) // apunta al final
-      }));
+      setCurrentSlide((prev) => ({ ...prev, [pid]: nuevasFotos.length - 1 }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
