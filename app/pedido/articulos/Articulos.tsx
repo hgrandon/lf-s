@@ -73,7 +73,7 @@ export default function Articulos({
       </div>
 
       {/* Tabla detalle con fondo degradado estilo base */}
-      <div className="mt-2 overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
+      <div className="mt-2 -mx-4 sm:mx-0 overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
         <table className="w-full text-sm">
           <thead className="bg-white/10">
             <tr>
@@ -101,7 +101,7 @@ export default function Articulos({
                 className="cursor-pointer hover:bg-white/10 transition-colors"
               >
                 <td
-                  className="px-4 py-2 max-w-[180px] truncate whitespace-nowrap"
+                  className="px-4 py-2 max-w-[200px] truncate whitespace-nowrap"
                   title={it.articulo} // tooltip para ver el nombre completo
                 >
                   {it.articulo.length > 18
