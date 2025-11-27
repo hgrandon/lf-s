@@ -677,57 +677,71 @@ export default function PedidoPage() {
   /* === Guardar pedido === */
   const [saving, setSaving] = useState(false);
 
-  async function guardarPedido() {
-    if (!nextInfo) return;
-    if (!items.length) {
-      alert('Debes agregar al menos un artículo.');
-      return;
+async function guardarPedido() {
+  if (!nextInfo) return;
+  if (!items.length) {
+    alert('Debes agregar al menos un artículo.');
+    return;
+  }
+
+  try {
+    setSaving(true);
+
+    // Si hay foto, la guardamos como arreglo JSON para ser compatible con el slider de Lavar
+    const fotosArray = fotoUrl ? [fotoUrl] : [];
+
+    const payload = {
+      nro: nextInfo.nro,
+      telefono: cliente?.telefono ?? null,
+      total,
+      estado: 'LAVAR',
+      pagado: false,
+      fecha_ingreso: nextInfo.fechaIngresoISO,
+      fecha_entrega: nextInfo.fechaEntregaISO,
+      // IMPORTANTE: ahora como JSON si hay foto
+      foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
+    };
+
+    // 1) Insertar pedido
+    const { error: eP } = await supabase.from('pedido').insert(payload);
+    if (eP) throw eP;
+
+    // 2) Insertar líneas
+    const lineas = items
+      .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
+      .map((it) => ({
+        pedido_id: nextInfo.nro,
+        articulo: it.articulo,
+        cantidad: it.qty,
+        valor: it.valor,
+      }));
+
+    if (lineas.length) {
+      const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
+      if (eL) throw eL;
     }
 
-    try {
-      setSaving(true);
-
-      const payload = {
-        nro: nextInfo.nro,
-        telefono: cliente?.telefono ?? null,
-        total,
-        estado: 'LAVAR',
-        pagado: false,
-        fecha_ingreso: nextInfo.fechaIngresoISO,
-        fecha_entrega: nextInfo.fechaEntregaISO,
-        foto_url: fotoUrl ?? null,
-      };
-
-      const { error: eP } = await supabase.from('pedido').insert(payload);
-      if (eP) throw eP;
-
-      const lineas = items
-        .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
-        .map((it) => ({
-          pedido_id: nextInfo.nro,
-          articulo: it.articulo,
-          cantidad: it.qty,
-          valor: it.valor,
-        }));
-
-      if (lineas.length) {
-        const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
-        if (eL) throw eL;
-      }
-
-      alert(`Pedido #${nextInfo.nro} guardado correctamente`);
-
-      // Volver al menú principal después de guardar
-      router.push('/base');
-      return;
-
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message ?? 'No se pudo guardar el pedido');
-    } finally {
-      setSaving(false);
+    // 3) Insertar foto inicial en pedido_foto (si existe)
+    if (fotoUrl) {
+      const { error: eF } = await supabase
+        .from('pedido_foto')
+        .insert({ pedido_id: nextInfo.nro, url: fotoUrl });
+      if (eF) throw eF;
     }
-  } 
+
+    alert(`Pedido #${nextInfo.nro} guardado correctamente`);
+
+    // Volver al menú principal después de guardar
+    router.push('/base');
+    return;
+  } catch (e: any) {
+    console.error(e);
+    alert(e?.message ?? 'No se pudo guardar el pedido');
+  } finally {
+    setSaving(false);
+  }
+}
+
 
   const articuloAEliminar =
     deleteIndex !== null && items[deleteIndex]
