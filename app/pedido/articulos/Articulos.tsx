@@ -1,5 +1,6 @@
-// app/pedido/articulos/Articulos.tsx
-import { useState } from 'react';
+'use client';
+
+import { useState, type ChangeEvent } from 'react';
 
 export type Articulo = {
   id: number;
@@ -8,7 +9,12 @@ export type Articulo = {
   activo: boolean;
 };
 
-export type Item = { articulo: string; qty: number; valor: number; subtotal: number };
+export type Item = {
+  articulo: string;
+  qty: number;
+  valor: number;
+  subtotal: number;
+};
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -20,7 +26,9 @@ type Props = {
   catalogo: Articulo[];
   items: Item[];
   total: number;
+  // se llama cuando el usuario elige un artículo en el select
   onSelectArticulo: (nombre: string) => void;
+  // se llama cuando el usuario hace clic en una fila de la tabla
   onRowClick: (index: number) => void;
 };
 
@@ -33,25 +41,27 @@ export default function Articulos({
 }: Props) {
   const [sel, setSel] = useState('');
 
-  function handleChangeSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+  function handleChangeSelect(e: ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (!value) {
       setSel('');
       return;
     }
-    setSel('');
-    onSelectArticulo(value);
+    setSel(''); // vuelve a “SELECCIONAR…” después
+    onSelectArticulo(value); // dispara modal / lógica en el padre
   }
 
   return (
-    <>
+    <div className="space-y-3">
       {/* Selector de artículo */}
-      <div className="grid gap-2 mb-3">
-        <label className="text-sm font-semibold">Seleccionar artículo</label>
+      <div className="space-y-1">
+        <label className="text-sm font-semibold text-slate-800">
+          Seleccionar artículo
+        </label>
         <select
           value={sel}
           onChange={handleChangeSelect}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
+          className="w-full rounded-2xl border border-slate-300 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-300"
         >
           <option value="">SELECCIONAR UN ARTÍCULO</option>
           {catalogo.map((a) => (
@@ -63,10 +73,11 @@ export default function Articulos({
         </select>
       </div>
 
-      {/* Tabla con degradado, ocupando todo el ancho del card blanco */}
-      <div className="mt-3 -mx-4 sm:-mx-5">
-        <div className="overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
-          <table className="w-full text-sm">
+      {/* Tabla detalle con fondo degradado, ocupando TODO el ancho del recuadro blanco */}
+      <div className="rounded-3xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white shadow-[0_8px_20px_rgba(0,0,0,0.25)]">
+        {/* Scroll de seguridad en celus muy angostos */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-xs sm:text-sm">
             <thead className="bg-white/10">
               <tr>
                 <th className="text-left px-4 py-2 w-[45%]">Artículo</th>
@@ -86,6 +97,7 @@ export default function Articulos({
                   </td>
                 </tr>
               )}
+
               {items.map((it, idx) => (
                 <tr
                   key={`${idx}-${it.articulo}`}
@@ -93,7 +105,7 @@ export default function Articulos({
                   className="cursor-pointer hover:bg-white/10 transition-colors"
                 >
                   <td
-                    className="px-4 py-2 max-w-[200px] truncate whitespace-nowrap"
+                    className="px-4 py-2 max-w-[220px] truncate whitespace-nowrap"
                     title={it.articulo}
                   >
                     {it.articulo.length > 18
@@ -126,6 +138,6 @@ export default function Articulos({
           </table>
         </div>
       </div>
-    </>
+    </div>
   );
 }
