@@ -439,8 +439,6 @@ export default function PedidoPage() {
 
   // artículos
   const [catalogo, setCatalogo] = useState<Articulo[]>([]);
-  const [selArt, setSelArt] = useState('');
-  const [busquedaArt, setBusquedaArt] = useState('');
   const [openArtModal, setOpenArtModal] = useState(false);
 
   // modal de detalle
@@ -578,9 +576,8 @@ export default function PedidoPage() {
     };
   }, [telefono]);
 
-  /* === Lógica para artículos === */
-  function addFromSelect() {
-    const nombreSel = (selArt || busquedaArt || '').trim();
+  /* === Lógica para selección de artículos (abre modal al elegir) === */
+  function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
     if (
@@ -629,9 +626,6 @@ export default function PedidoPage() {
         },
       ];
     });
-
-    setSelArt('');
-    setBusquedaArt('');
   }
 
   function requestDelete(idx: number) {
@@ -765,14 +759,9 @@ export default function PedidoPage() {
           <Articulos
             catalogo={catalogo}
             items={items}
-            selArt={selArt}
-            onSelArtChange={(v) => {
-              setSelArt(v);
-              setBusquedaArt(v);
-            }}
-            onAgregar={addFromSelect}
-            onDeleteItem={requestDelete}
             total={total}
+            onSelectArticulo={handleSelectArticulo}
+            onRowClick={requestDelete}
           />
 
           <Fotos
@@ -815,7 +804,8 @@ export default function PedidoPage() {
           setCatalogo((prev) =>
             [...prev, a].sort((x, y) => x.nombre.localeCompare(y.nombre)),
           );
-          setSelArt(a.nombre);
+          // al crear artículo nuevo abrimos modal de cantidad/valor de inmediato
+          handleSelectArticulo(a.nombre);
         }}
       />
 
