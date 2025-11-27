@@ -3,7 +3,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Save, X } from 'lucide-react';
+import {
+  Loader2,
+  Save,
+  X,
+  Table as TableIcon,
+  Camera,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 
 import Correlativo from './correlativo/Correlativo';
 import Telefono, { Cliente } from './telefono/Telefono';
@@ -456,8 +464,12 @@ export default function PedidoPage() {
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
-  // ref para la cámara / archivo (se usa en Correlativo y Fotos)
+  // ref para input de foto
   const fotoInputRef = useRef<HTMLInputElement>(null!);
+
+  // acordeones
+  const [openAccArticulos, setOpenAccArticulos] = useState(true);
+  const [openAccFotos, setOpenAccFotos] = useState(false);
 
   const total = useMemo(
     () =>
@@ -738,7 +750,7 @@ export default function PedidoPage() {
       : '';
 
   return (
-    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-24">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* Header (correlativo + teléfono) */}
@@ -757,36 +769,90 @@ export default function PedidoPage() {
         />
       </header>
 
-      {/* Contenido: selector + tabla (Articulos) y foto */}
+      {/* Contenido con acordeones */}
       <section className="relative z-10 mx-auto max-w-6xl px-4 sm:px-6 mt-6 space-y-4">
-        <Articulos
-          catalogo={catalogo}
-          items={items}
-          total={total}
-          onSelectArticulo={handleSelectArticulo}
-          onRowClick={requestDelete}
-        />
+        {/* Acordeón Detalle Pedido (selector + tabla) */}
+        <div className="rounded-2xl bg-white/5 border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,.25)] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setOpenAccArticulos((v) => !v)}
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4"
+          >
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/10 border border-white/30">
+                <TableIcon size={18} />
+              </span>
+              <span className="font-semibold text-sm sm:text-base tracking-wide">
+                Detalle Pedido
+              </span>
+            </div>
+            {openAccArticulos ? (
+              <ChevronDown size={18} className="text-white/80" />
+            ) : (
+              <ChevronRight size={18} className="text-white/80" />
+            )}
+          </button>
 
-        <Fotos
-          fotoUrl={fotoUrl}
-          inputRef={fotoInputRef}
-          onFileSelected={(file) => {
-            if (file) uploadFoto(file);
-          }}
-        />
+          {openAccArticulos && (
+            <div className="px-3 sm:px-4 pb-4 sm:pb-5">
+              <Articulos
+                catalogo={catalogo}
+                items={items}
+                total={total}
+                onSelectArticulo={handleSelectArticulo}
+                onRowClick={requestDelete}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Acordeón Foto del pedido */}
+        <div className="rounded-2xl bg-white/5 border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,.25)] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setOpenAccFotos((v) => !v)}
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4"
+          >
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/10 border border-white/30">
+                <Camera size={18} />
+              </span>
+              <span className="font-semibold text-sm sm:text-base tracking-wide">
+                Foto del pedido
+              </span>
+            </div>
+            {openAccFotos ? (
+              <ChevronDown size={18} className="text-white/80" />
+            ) : (
+              <ChevronRight size={18} className="text-white/80" />
+            )}
+          </button>
+
+          {openAccFotos && (
+            <div className="px-3 sm:px-4 pb-4 sm:pb-5">
+              <Fotos
+                fotoUrl={fotoUrl}
+                inputRef={fotoInputRef}
+                onFileSelected={(file) => {
+                  if (file) uploadFoto(file);
+                }}
+              />
+            </div>
+          )}
+        </div>
       </section>
 
-      {/* Botón guardar fijo abajo, como en tu mock */}
-      <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
+      {/* Botón Guardar fijo abajo */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-4 pt-2 bg-gradient-to-t from-violet-900/95 via-violet-900/80 to-transparent">
         <button
           onClick={guardarPedido}
           disabled={saving || !nextInfo}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-5 py-3 sm:py-3.5 text-sm sm:text-base font-semibold shadow-[0_10px_25px_rgba(0,0,0,0.35)] disabled:opacity-60"
         >
           {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
           Guardar Pedido
         </button>
-      </footer>
+      </nav>
 
       {/* Modales */}
       <NuevoClienteModal
@@ -824,6 +890,7 @@ export default function PedidoPage() {
         onCancel={cancelDelete}
       />
 
+      {/* estado de subida */}
       {subiendoFoto && (
         <div className="fixed bottom-20 right-4 z-50 rounded-xl bg-white/90 text-slate-900 px-3 py-2 shadow">
           Subiendo foto…
