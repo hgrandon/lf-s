@@ -73,65 +73,67 @@ export default function Articulos({
       </div>
 
       {/* Tabla detalle con fondo degradado estilo base */}
-      <div className="mt-2 -mx-4 sm:mx-0 overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
-        <table className="w-full text-sm">
-          <thead className="bg-white/10">
-            <tr>
-              <th className="text-left px-4 py-2 w-[45%]">Artículo</th>
-              <th className="text-center px-2 py-2 w-[10%]">Cant.</th>
-              <th className="text-right px-3 py-2 w-[15%]">Valor</th>
-              <th className="text-right px-3 py-2 w-[20%]">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/10">
-            {items.length === 0 && (
+      <div className="mt-2 -mx-6 sm:mx-0 w-screen sm:w-auto bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white rounded-none sm:rounded-xl">
+        <div className="max-h-72 overflow-y-auto sm:max-h-none">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10 bg-white/15">
+              <tr>
+                <th className="text-left px-4 py-2 w-[45%]">Artículo</th>
+                <th className="text-center px-2 py-2 w-[10%]">Cant.</th>
+                <th className="text-right px-3 py-2 w-[15%]">Valor</th>
+                <th className="text-right px-3 py-2 w-[20%]">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {items.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-4 text-center text-white/80"
+                  >
+                    Sin artículos todavía.
+                  </td>
+                </tr>
+              )}
+              {items.map((it, idx) => (
+                <tr
+                  key={`${idx}-${it.articulo}`}
+                  onClick={() => onRowClick(idx)}
+                  className="cursor-pointer hover:bg-white/10 transition-colors"
+                >
+                  <td
+                    className="px-4 py-2 max-w-[220px] truncate whitespace-nowrap"
+                    title={it.articulo}
+                  >
+                    {it.articulo.length > 18
+                      ? it.articulo.slice(0, 18) + '…'
+                      : it.articulo}
+                  </td>
+                  <td className="px-2 py-2 text-center">{it.qty}</td>
+                  <td className="px-3 py-2 text-right">
+                    {CLP.format(it.valor)}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {CLP.format(it.subtotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
               <tr>
                 <td
-                  colSpan={4}
-                  className="px-4 py-4 text-center text-white/80"
+                  colSpan={3}
+                  className="px-4 py-3 text-right font-bold"
                 >
-                  Sin artículos todavía.
+                  Total:
+                </td>
+                <td className="px-3 py-3 text-right font-extrabold">
+                  {CLP.format(total)}
                 </td>
               </tr>
-            )}
-            {items.map((it, idx) => (
-              <tr
-                key={`${idx}-${it.articulo}`}
-                onClick={() => onRowClick(idx)}
-                className="cursor-pointer hover:bg-white/10 transition-colors"
-              >
-                <td
-                  className="px-4 py-2 max-w-[200px] truncate whitespace-nowrap"
-                  title={it.articulo} // tooltip para ver el nombre completo
-                >
-                  {it.articulo.length > 18
-                    ? it.articulo.slice(0, 18) + '…'
-                    : it.articulo}
-                </td>
-                <td className="px-2 py-2 text-center">{it.qty}</td>
-                <td className="px-3 py-2 text-right">
-                  {CLP.format(it.valor)}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  {CLP.format(it.subtotal)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td
-                colSpan={3}
-                className="px-4 py-3 text-right font-bold"
-              >
-                Total:
-              </td>
-              <td className="px-3 py-3 text-right font-extrabold">
-                {CLP.format(total)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </>
   );
