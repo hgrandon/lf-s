@@ -8,7 +8,12 @@ export type Articulo = {
   activo: boolean;
 };
 
-export type Item = { articulo: string; qty: number; valor: number; subtotal: number };
+export type Item = {
+  articulo: string;
+  qty: number;
+  valor: number;
+  subtotal: number;
+};
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -76,14 +81,13 @@ export default function Articulos({
               <th className="text-center px-2 py-2 w-[10%]">Cant.</th>
               <th className="text-right px-3 py-2 w-[15%]">Valor</th>
               <th className="text-right px-3 py-2 w-[20%]">Subtotal</th>
-              <th className="text-center px-3 py-2 w-[10%]">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {items.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={4}
                   className="px-4 py-4 text-center text-white/80"
                 >
                   Sin artículos todavía.
@@ -97,11 +101,13 @@ export default function Articulos({
                 className="cursor-pointer hover:bg-white/10 transition-colors"
               >
                 <td
-                    className="px-4 py-2 max-w-[180px] truncate whitespace-nowrap"
-                    title={it.articulo}  // tooltip para ver el nombre completo si pasa el mouse
-                    >
-                    {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '…' : it.articulo}
-                    </td>
+                  className="px-4 py-2 max-w-[180px] truncate whitespace-nowrap"
+                  title={it.articulo} // tooltip para ver el nombre completo
+                >
+                  {it.articulo.length > 18
+                    ? it.articulo.slice(0, 18) + '…'
+                    : it.articulo}
+                </td>
                 <td className="px-2 py-2 text-center">{it.qty}</td>
                 <td className="px-3 py-2 text-right">
                   {CLP.format(it.valor)}
@@ -109,7 +115,6 @@ export default function Articulos({
                 <td className="px-3 py-2 text-right">
                   {CLP.format(it.subtotal)}
                 </td>
-                <td className="px-3 py-2 text-center">LAVAR</td>
               </tr>
             ))}
           </tbody>
@@ -124,7 +129,6 @@ export default function Articulos({
               <td className="px-3 py-3 text-right font-extrabold">
                 {CLP.format(total)}
               </td>
-              <td />
             </tr>
           </tfoot>
         </table>
