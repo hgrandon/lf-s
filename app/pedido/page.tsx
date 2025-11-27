@@ -194,7 +194,7 @@ function NuevoClienteModal({
   );
 }
 
-/** Modal de detalle artículo */
+/** Modal de detalle artículo (ajustado para móvil) */
 function DetalleArticuloModal({
   open,
   articulo,
@@ -230,37 +230,37 @@ function DetalleArticuloModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
-      <div className="w-[420px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 text-center font-extrabold text-violet-700 border-b">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
+      <div className="w-full max-w-sm rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 sm:py-4 text-center font-extrabold text-violet-700 border-b text-base sm:text-lg break-words">
           {articulo?.nombre ?? ''}
         </div>
 
-        <div className="px-5 py-4 grid gap-3">
+        <div className="px-4 sm:px-5 py-4 grid gap-3">
           <input
-            value={String(valor)}
+            value={valor ? String(valor) : ''}
             onChange={(e) => setValor(Number(e.target.value || 0))}
             inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-2 text-right outline-none focus:ring-2 focus:ring-violet-300"
+            className="w-full rounded-xl border px-3 py-2 sm:py-3 text-right outline-none focus:ring-2 focus:ring-violet-300 text-base"
             placeholder="Valor"
           />
           <input
-            value={String(qty)}
+            value={qty ? String(qty) : ''}
             onChange={(e) => setQty(Number(e.target.value || 0))}
             inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-2 text-right outline-none focus:ring-2 focus:ring-violet-300"
+            className="w-full rounded-xl border px-3 py-2 sm:py-3 text-right outline-none focus:ring-2 focus:ring-violet-300 text-base"
             placeholder="Cantidad"
           />
 
           <button
             onClick={handleAgregar}
-            className="mt-2 w-full rounded-xl bg-violet-700 py-2 text-white font-semibold hover:bg-violet-800"
+            className="mt-2 w-full rounded-xl bg-violet-700 py-2.5 sm:py-3 text-white font-semibold hover:bg-violet-800"
           >
             Agregar Detalle
           </button>
           <button
             onClick={onClose}
-            className="w-full rounded-xl bg-violet-100 py-2 text-violet-800 font-semibold hover:bg-violet-200"
+            className="w-full rounded-xl bg-violet-100 py-2.5 sm:py-3 text-violet-800 font-semibold hover:bg-violet-200"
           >
             Salir
           </button>
