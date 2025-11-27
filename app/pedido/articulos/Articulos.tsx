@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// app/pedido/articulos/Articulos.tsx
+import { useState } from 'react';
 
 export type Articulo = {
   id: number;
@@ -7,12 +8,7 @@ export type Articulo = {
   activo: boolean;
 };
 
-export type Item = {
-  articulo: string;
-  qty: number;
-  valor: number;
-  subtotal: number;
-};
+export type Item = { articulo: string; qty: number; valor: number; subtotal: number };
 
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
@@ -24,9 +20,7 @@ type Props = {
   catalogo: Articulo[];
   items: Item[];
   total: number;
-  // se llama cuando el usuario elige un artículo en el select
   onSelectArticulo: (nombre: string) => void;
-  // se llama cuando el usuario hace clic en una fila de la tabla
   onRowClick: (index: number) => void;
 };
 
@@ -45,8 +39,8 @@ export default function Articulos({
       setSel('');
       return;
     }
-    setSel(''); // vuelve a "SELECCIONAR…" después
-    onSelectArticulo(value); // dispara modal / lógica en el padre
+    setSel('');
+    onSelectArticulo(value);
   }
 
   return (
@@ -54,36 +48,33 @@ export default function Articulos({
       {/* Selector de artículo */}
       <div className="grid gap-2 mb-3">
         <label className="text-sm font-semibold">Seleccionar artículo</label>
-        <div className="flex gap-2 items-center">
-          <select
-            value={sel}
-            onChange={handleChangeSelect}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
-          >
-            <option value="">SELECCIONAR UN ARTÍCULO</option>
-            {catalogo.map((a) => (
-              <option key={a.id} value={a.nombre}>
-                {a.nombre}
-              </option>
-            ))}
-            <option value="__OTRO__">OTRO (+)</option>
-          </select>
-        </div>
+        <select
+          value={sel}
+          onChange={handleChangeSelect}
+          className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none"
+        >
+          <option value="">SELECCIONAR UN ARTÍCULO</option>
+          {catalogo.map((a) => (
+            <option key={a.id} value={a.nombre}>
+              {a.nombre}
+            </option>
+          ))}
+          <option value="__OTRO__">OTRO (+)</option>
+        </select>
       </div>
 
-      {/* Tabla detalle estilo app local (de borde a borde del contenedor) */}
-      <div className="mt-2 rounded-xl overflow-hidden bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs sm:text-sm text-white/95">
+      {/* Tabla con degradado, ocupando todo el ancho del card blanco */}
+      <div className="mt-3 -mx-4 sm:-mx-5">
+        <div className="overflow-hidden rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white">
+          <table className="w-full text-sm">
             <thead className="bg-white/10">
               <tr>
-                <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                <th className="text-center px-2 py-2 w-[12%]">Can.</th>
+                <th className="text-left px-4 py-2 w-[45%]">Artículo</th>
+                <th className="text-center px-2 py-2 w-[10%]">Can.</th>
                 <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                <th className="text-right px-3 py-2 w-[28%]">Subtotal</th>
+                <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
               </tr>
             </thead>
-
             <tbody className="divide-y divide-white/10">
               {items.length === 0 && (
                 <tr>
@@ -95,7 +86,6 @@ export default function Articulos({
                   </td>
                 </tr>
               )}
-
               {items.map((it, idx) => (
                 <tr
                   key={`${idx}-${it.articulo}`}
@@ -103,7 +93,7 @@ export default function Articulos({
                   className="cursor-pointer hover:bg-white/10 transition-colors"
                 >
                   <td
-                    className="px-3 py-2 max-w-[190px] truncate whitespace-nowrap"
+                    className="px-4 py-2 max-w-[200px] truncate whitespace-nowrap"
                     title={it.articulo}
                   >
                     {it.articulo.length > 18
@@ -120,18 +110,19 @@ export default function Articulos({
                 </tr>
               ))}
             </tbody>
-
-            {items.length > 0 && (
-              <tfoot>
-                <tr>
-                  <td colSpan={2} />
-                  <td className="px-3 py-3 text-right font-bold">Total:</td>
-                  <td className="px-3 py-3 text-right font-extrabold">
-                    {CLP.format(total)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
+            <tfoot>
+              <tr>
+                <td
+                  colSpan={3}
+                  className="px-4 py-3 text-right font-bold"
+                >
+                  Total:
+                </td>
+                <td className="px-3 py-3 text-right font-extrabold">
+                  {CLP.format(total)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>

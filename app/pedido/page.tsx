@@ -455,6 +455,7 @@ export default function PedidoPage() {
   // foto
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const fotoInputRef = useRef<HTMLInputElement | null>(null);
 
   const total = useMemo(
     () =>
@@ -744,6 +745,7 @@ export default function PedidoPage() {
           nro={nextInfo?.nro}
           fechaIngreso={nextInfo?.fechaIngresoISO}
           fechaEntrega={nextInfo?.fechaEntregaISO}
+          onClickCamara={() => fotoInputRef.current?.click()}
         />
         <Telefono
           telefono={telefono}
@@ -766,17 +768,18 @@ export default function PedidoPage() {
 
           <Fotos
             fotoUrl={fotoUrl}
+            inputRef={fotoInputRef}
             onFileSelected={(file) => {
               if (file) uploadFoto(file);
             }}
           />
 
           {/* Botón guardar */}
-          <div className="mt-4">
+          <div className="mt-4 flex justify-end">
             <button
               onClick={guardarPedido}
               disabled={saving || !nextInfo}
-              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 disabled:opacity-60"
             >
               {saving ? (
                 <Loader2 className="animate-spin" size={16} />
