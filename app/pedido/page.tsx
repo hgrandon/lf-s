@@ -2,8 +2,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Save, X } from 'lucide-react';
+
 
 import Correlativo from './correlativo/Correlativo';
 import Telefono, { Cliente } from './telefono/Telefono';
@@ -429,6 +431,8 @@ function NuevoArticuloModal({
 ========================= */
 
 export default function PedidoPage() {
+  const router = useRouter();
+
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
 
   // cliente
@@ -713,24 +717,17 @@ export default function PedidoPage() {
 
       alert(`Pedido #${nextInfo.nro} guardado correctamente`);
 
-      setItems([]);
-      setFotoUrl(null);
-      setTelefono('');
-      setCliente(null);
+      // Volver al menú principal después de guardar
+      router.push('/base');
+      return;
 
-      const hoy = new Date();
-      setNextInfo({
-        nro: nextInfo.nro + 1,
-        fechaIngresoISO: ymd(hoy),
-        fechaEntregaISO: ymd(addBusinessDays(hoy, 3)),
-      });
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'No se pudo guardar el pedido');
     } finally {
       setSaving(false);
     }
-  }
+  } 
 
   const articuloAEliminar =
     deleteIndex !== null && items[deleteIndex]
