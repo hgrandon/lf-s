@@ -1,3 +1,4 @@
+// app/pedido/articulos/Articulos.tsx
 'use client';
 
 import { useState, type ChangeEvent } from 'react';
