@@ -44,7 +44,6 @@ function readSession() {
 
 function normalizeTel(raw: string) {
   const d = (raw || '').replace(/\D/g, '');
-  // quita 56/056 si viene con código país
   return d.replace(/^0?56/, '');
 }
 
@@ -64,7 +63,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // estados para CREAR USUARIO
+  // crear usuario
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newTel, setNewTel] = useState('');
   const [newNombre, setNewNombre] = useState('');
@@ -75,7 +74,6 @@ export default function LoginPage() {
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createOk, setCreateOk] = useState<string | null>(null);
 
-  // si ya hay sesión válida, entra directo
   useEffect(() => {
     const s = readSession();
     if (s) router.replace(AFTER_LOGIN);
@@ -107,7 +105,6 @@ export default function LoginPage() {
         throw new Error('Clave incorrecta');
       }
 
-      // acceso total
       saveSession({ mode: 'clave', display: 'CLAVE', rol: 'ADMIN' });
       router.replace(AFTER_LOGIN);
     } catch (e: any) {
@@ -133,7 +130,7 @@ export default function LoginPage() {
       let ok: UsuarioLoginOK | null = null;
       let rpcErr: any = null;
 
-      // 1) Intentar RPC
+      // 1) RPC
       try {
         const { data, error } = await supabase.rpc('usuario_login', {
           p_telefono: telefono,
@@ -145,7 +142,7 @@ export default function LoginPage() {
         rpcErr = e;
       }
 
-      // 2) Fallback a SELECT directo sobre columna pin_hash
+      // 2) Fallback SELECT pin_hash
       if (!ok) {
         const { data: rows, error: selErr } = await supabase
           .from('usuario')
@@ -194,7 +191,6 @@ export default function LoginPage() {
     else loginUsuario();
   }
 
-  // crear usuario (solo admin con clave única)
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
     setCreateErr(null);
@@ -209,7 +205,6 @@ export default function LoginPage() {
       if (!newPin.trim()) throw new Error('Ingresa un PIN.');
       if (!adminClave.trim()) throw new Error('Ingresa la clave ADMIN para crear usuarios.');
 
-      // validar clave admin
       const { data, error } = await supabase
         .from('app_settings')
         .select('valor')
@@ -223,7 +218,6 @@ export default function LoginPage() {
         throw new Error('Clave ADMIN incorrecta.');
       }
 
-      // insertar en columna pin_hash (no existe columna pin)
       const { error: insErr } = await supabase.from('usuario').insert({
         telefono,
         nombre: newNombre.trim(),
@@ -291,7 +285,7 @@ export default function LoginPage() {
         <form
           onSubmit={handleSubmit}
           className="grid gap-3"
-          autoComplete="off"                {/* 🔒 desactiva autocomplete del form */}
+          autoComplete="off"
         >
           {mode === 'clave' ? (
             <>
@@ -301,8 +295,8 @@ export default function LoginPage() {
                   value={clave}
                   onChange={(e) => setClave(e.target.value)}
                   placeholder="Clave única…"
-                  name="appClave"            /* nombre raro para que el navegador no lo detecte */
-                  autoComplete="new-password" /* evita recordar esta clave */
+                  name="appClave"
+                  autoComplete="new-password"
                   className="w-full rounded-xl border px-3 py-3 pr-10 outline-none focus:ring-2 focus:ring-violet-300"
                   autoFocus
                 />
@@ -342,7 +336,7 @@ export default function LoginPage() {
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="PIN"
                   name="userPin"
-                  autoComplete="new-password"   /* también que no lo recuerde */
+                  autoComplete="new-password"
                   className="w-full rounded-xl border px-3 py-3 pr-10 outline-none focus:ring-2 focus:ring-violet-300"
                 />
                 <button
@@ -380,7 +374,7 @@ export default function LoginPage() {
             : 'Ingresa tu teléfono y PIN de usuario.'}
         </div>
 
-        {/* Crear usuario (solo admin) */}
+        {/* Crear usuario */}
         <div className="mt-5 border-t pt-3 text-xs text-slate-500">
           <button
             type="button"
@@ -394,7 +388,7 @@ export default function LoginPage() {
             <form
               onSubmit={handleCreateUser}
               className="grid gap-2 text-left text-xs"
-              autoComplete="off"  /* tampoco queremos que recuerde estos datos */
+              autoComplete="off"
             >
               <div className="grid gap-1">
                 <label className="font-semibold">Teléfono usuario</label>
