@@ -613,6 +613,7 @@ export default function PedidoPage() {
   }, [telefono]);
 
   /* === Lógica para selección de artículos (abre modal al elegir) === */
+  /* === Lógica para selección de artículos (abre modal al elegir) === */
   function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
@@ -625,7 +626,13 @@ export default function PedidoPage() {
       return;
     }
 
-    const found = catalogo.find((a) => a.nombre === nombreSel);
+    const nombreNormalizado = nombreSel.trim().toUpperCase();
+
+    // Buscamos el artículo en el catálogo normalizando nombre
+    const found = catalogo.find(
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+    );
+
     if (!found) {
       alert('Este artículo no existe en el listado. Usa "OTRO (+)" para crearlo.');
       return;
@@ -635,10 +642,42 @@ export default function PedidoPage() {
     setOpenDetalle(true);
   }
 
+
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
+    const nombreNormalizado = d.articulo.trim().toUpperCase();
+
+    // 1) Actualizar catálogo si cambió el precio
+    const artCatalogo = catalogo.find(
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+    );
+
+    if (artCatalogo && Number(artCatalogo.precio || 0) !== Number(d.valor || 0)) {
+      // Actualizamos en el estado local
+      setCatalogo((prev) =>
+        prev.map((a) =>
+          a.nombre.trim().toUpperCase() === nombreNormalizado
+            ? { ...a, precio: d.valor }
+            : a
+        )
+      );
+
+      // Actualizamos en Supabase (fire & forget)
+      (async () => {
+        try {
+          await supabase
+            .from('articulo')
+            .update({ precio: d.valor })
+            .eq('id', artCatalogo.id);
+        } catch (e) {
+          console.error('No se pudo actualizar el precio del artículo', e);
+        }
+      })();
+    }
+
+    // 2) Actualizar / agregar línea en el pedido
     setItems((prev) => {
       const index = prev.findIndex(
-        (x) => x.articulo === d.articulo && x.valor === d.valor,
+        (x) => x.articulo === d.articulo && x.valor === d.valor
       );
 
       if (index >= 0) {
@@ -663,6 +702,7 @@ export default function PedidoPage() {
       ];
     });
   }
+
 
   function requestDelete(idx: number) {
     setDeleteIndex(idx);
