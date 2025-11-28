@@ -697,6 +697,7 @@ export default function EditarPedidoPage() {
 
   /* === Lógica para selección de artículos (abre modal al elegir) === */
   /* === Lógica para selección de artículos (abre modal al elegir) === */
+  /* === Lógica para selección de artículos (abre modal al elegir) === */
   function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
@@ -709,17 +710,23 @@ export default function EditarPedidoPage() {
       return;
     }
 
-    // Buscamos el artículo en el catálogo
-    const base = catalogo.find((a) => a.nombre === nombreSel);
+    const nombreNormalizado = nombreSel.trim().toUpperCase();
+
+    // 1) Buscar el artículo en el catálogo
+    const base = catalogo.find(
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+    );
     if (!base) {
       alert('Este artículo no existe en el listado. Usa "OTRO (+)" para crearlo.');
       return;
     }
 
-    // 🔹 Buscamos si ya existe una línea de este artículo en el pedido cargado
-    const existingLine = items.find((it) => it.articulo === nombreSel);
+    // 2) Buscar si YA hay una línea de este artículo en el pedido
+    const existingLine = items.find(
+      (it) => it.articulo.trim().toUpperCase() === nombreNormalizado
+    );
 
-    // Si existe, usamos el valor de esa línea como "precio" para el modal
+    // 3) Si existe, usamos el valor de ESA línea como precio inicial del modal
     const found: Articulo = existingLine
       ? { ...base, precio: Number(existingLine.valor || 0) }
       : base;
@@ -727,6 +734,7 @@ export default function EditarPedidoPage() {
     setArticuloDetalle(found);
     setOpenDetalle(true);
   }
+
 
 
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
