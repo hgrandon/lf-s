@@ -36,7 +36,7 @@ export default function Telefono({
           inputMode="tel"
           autoComplete="tel"
           placeholder="9 dígitos..."
-          className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-xl text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
+          className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-2xl text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
         />
       </div>
       {cliente && (
