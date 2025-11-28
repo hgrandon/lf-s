@@ -127,7 +127,7 @@ export default function BasePage() {
     () => [
       { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: '/base/lavar' },
       { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
-      { title: 'Editar', key: 'GUARDAR' as EstadoKey, icon: Archive, href: '/base/editar' },
+      { title: 'Editar', key: null, icon: Archive, href: '/editar' },
       { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
       {
         title: 'Entregado',
@@ -188,7 +188,7 @@ export default function BasePage() {
             <Tile
               key={`${t.key}-${t.title}`}
               title={t.title}
-              count={loading ? null : t.key === 'GUARDAR' ? 0 : counts[t.key]}
+              count={loading || !t.key ? null : counts[t.key]}
               onClick={() => router.push(t.href)}
               Icon={t.icon}
               subtitle={t.subtitle}
