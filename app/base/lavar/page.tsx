@@ -16,6 +16,7 @@ import {
   Droplet,
   WashingMachine,
   CreditCard,
+  Archive,
   CheckCircle2,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -119,10 +120,10 @@ export default function LavarPage() {
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
-  const pedidoAbierto = useMemo(
-    () => pedidos.find((p) => p.id === openId) ?? null,
-    [pedidos, openId],
-  );
+  // NUEVO: timer para detectar la pulsación larga (3 segundos)
+  const longPressTimer = useRef<number | null>(null);
+
+  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,9 +174,7 @@ export default function LavarPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) =>
-          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
-        );
+        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -183,15 +182,8 @@ export default function LavarPage() {
           if (!pid) return;
 
           const label =
-            String(
-              l.articulo ??
-                l.nombre ??
-                l.descripcion ??
-                l.item ??
-                l.articulo_nombre ??
-                l.articulo_id ??
-                '',
-            ).trim() || 'SIN NOMBRE';
+            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
+              .trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -229,9 +221,7 @@ export default function LavarPage() {
 
           return {
             id: r.id,
-            cliente:
-              nombreByTel.get(String(r.telefono)) ??
-              String(r.telefono ?? 'SIN NOMBRE'),
+            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
@@ -378,61 +368,92 @@ export default function LavarPage() {
     }
   }
 
-  // ELIMINAR FOTO ACTUAL DEL PEDIDO (doble clic)
-  async function deleteFoto(pedidoId: number, url: string) {
+  // ------- NUEVO: borrado de foto por pulsación larga (3 segundos) -------
+  async function handleLongPressDelete(pedidoId: number, fotoUrl: string) {
+    if (!pedidoId || !fotoUrl) return;
+
     try {
-      // 1) eliminar fila en pedido_foto
-      await supabase
-        .from('pedido_foto')
-        .delete()
-        .eq('pedido_id', pedidoId)
-        .eq('url', url);
-
-      // 2) actualizar lista de fotos en pedido.foto_url
-      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
-      const fotosActuales =
-        pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
-      const nuevasFotos = fotosActuales.filter((u) => u !== url);
-
-      await supabase
-        .from('pedido')
-        .update({
-          foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null,
-        })
-        .eq('nro', pedidoId);
-
-      // 3) eliminar del storage (si se puede obtener el path)
+      // Intentar borrar del storage (si la URL es pública de Supabase)
       try {
-        const parts = url.split('/fotos/');
-        if (parts.length === 2) {
-          const path = decodeURIComponent(parts[1]);
-          await supabase.storage.from('fotos').remove([path]);
+        const urlObj = new URL(fotoUrl);
+        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
+        const marker = '/object/public/';
+        const idx = pathname.indexOf(marker);
+        if (idx >= 0) {
+          let path = pathname.substring(idx + marker.length); // fotos/...
+          if (path.startsWith('fotos/')) {
+            path = path.substring('fotos/'.length); // solo ruta interna
+          }
+          if (path) {
+            await supabase.storage.from('fotos').remove([path]);
+          }
         }
-      } catch {
-        // si falla la eliminación del archivo, no rompemos nada
+      } catch (e) {
+        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
       }
 
-      // 4) actualizar estado local
+      // Borrar de tabla pedido_foto
+      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: fotoUrl });
+
+      // Actualizar lista de fotos para el pedido
+      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
+      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const nuevasFotos = fotosActuales.filter((u) => u !== fotoUrl);
+
+      // Actualizar foto_url en pedido (JSON o null)
+      await supabase
+        .from('pedido')
+        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
+        .eq('nro', pedidoId);
+
+      // Actualizar estado local
       setPedidos((prev) =>
-        prev.map((p) => {
-          if (p.id !== pedidoId) return p;
-          const actuales =
-            p.fotos ?? allFotosFromMixed(p.foto_url ?? null);
-          const filtradas = actuales.filter((u) => u !== url);
-          return {
-            ...p,
-            fotos: filtradas,
-            foto_url: filtradas[0] ?? null,
-          };
-        }),
+        prev.map((p) =>
+          p.id === pedidoId
+            ? {
+                ...p,
+                fotos: nuevasFotos,
+                foto_url: nuevasFotos[0] ?? null,
+              }
+            : p,
+        ),
       );
 
-      setCurrentSlide((prev) => ({ ...prev, [pedidoId]: 0 }));
+      setCurrentSlide((prev) => {
+        const next = { ...prev };
+        if (!nuevasFotos.length) {
+          delete next[pedidoId];
+        } else {
+          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
+        }
+        return next;
+      });
+
       setImageError((prev) => ({ ...prev, [pedidoId]: false }));
+
       snack(`Foto eliminada del pedido #${pedidoId}`);
     } catch (err) {
       console.error(err);
       snack('No se pudo eliminar la foto.');
+    }
+  }
+
+  function startLongPress(pedidoId: number, fotoUrl: string | null) {
+    if (!fotoUrl) return;
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+    }
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      // Ejecutar borrado
+      void handleLongPressDelete(pedidoId, fotoUrl);
+    }, 3000); // 3 segundos
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
   }
 
@@ -470,10 +491,7 @@ export default function LavarPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
-        <button
-          onClick={() => router.push('/base')}
-          className="text-xs lg:text-sm text-white/90 hover:text-white"
-        >
+        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
         </button>
       </header>
@@ -481,7 +499,7 @@ export default function LavarPage() {
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
         <ErrorBoundary>
           {loading && (
-            <div className="flex items-center gap-2 text_WHITE/90">
+            <div className="flex items-center gap-2 text-white/90">
               <Loader2 className="animate-spin" size={18} />
               Cargando pedidos…
             </div>
@@ -505,12 +523,9 @@ export default function LavarPage() {
               const isOpen = openId === p.id;
               const detOpen = !!openDetail[p.id];
               const totalCalc =
-                Array.isArray(p.items) && p.items.length
-                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
-                  : p.total ?? 0;
+                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
-              const fotos =
-                p.fotos && p.fotos.length ? p.fotos : p.foto_url ? [p.foto_url] : [];
+              const fotos = p.fotos && p.fotos.length ? p.fotos : p.foto_url ? [p.foto_url] : [];
               const totalFotos = fotos.length;
               const slideIndex =
                 totalFotos > 0
@@ -544,30 +559,24 @@ export default function LavarPage() {
                       </span>
 
                       <div className="text-left">
-                        <div className="font-extrabold tracking-wide text-sm lg:text-base">
-                          N° {p.id}
-                        </div>
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
                           {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 lg:gap-4">
-                      <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                        {CLP.format(totalCalc)}
-                      </div>
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
                       {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
                   </button>
 
                   {isOpen && (
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                      <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                      <div className="rounded-xl bg.white/8 border border-white/15 p-2 lg:p-3 bg-white/8">
                         <button
-                          onClick={() =>
-                            setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
-                          }
-                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg_WHITE/5 border border_WHITE/10"
+                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                         >
                           <div className="flex items-center gap-2">
                             <Table size={16} />
@@ -578,14 +587,14 @@ export default function LavarPage() {
 
                         {detOpen && (
                           <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                            <div className="overflow-x-auto w-full max-w-4xl">
+                            <div className="overflow-x-auto w.full max-w-4xl">
                               <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
                                     <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                    <th className="text-right px-3 py-2 w_[15%]">Can.</th>
-                                    <th className="text-right px-3 py-2 w_[20%]">Valor</th>
-                                    <th className="text-right px-3 py-2 w_[25%]">Subtotal</th>
+                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/10">
@@ -593,25 +602,16 @@ export default function LavarPage() {
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
-                                          {it.articulo.length > 15
-                                            ? it.articulo.slice(0, 15) + '.'
-                                            : it.articulo}
+                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
                                         </td>
                                         <td className="px-3 py-2 text-right">{it.qty}</td>
-                                        <td className="px-3 py-2 text-right">
-                                          {CLP.format(it.valor)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                          {CLP.format(it.qty * it.valor)}
-                                        </td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
                                       </tr>
                                     ))
                                   ) : (
                                     <tr>
-                                      <td
-                                        className="px-3 py-4 text-center text-white/70"
-                                        colSpan={4}
-                                      >
+                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
                                         Sin artículos registrados.
                                       </td>
                                     </tr>
@@ -635,10 +635,14 @@ export default function LavarPage() {
                           {activeFoto && !imageError[p.id] ? (
                             <div
                               className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() =>
-                                activeFoto && deleteFoto(p.id, activeFoto)
-                              }
-                              title="Doble clic para eliminar la foto"
+                              onDoubleClick={() => openPickerFor(p.id)}
+                              title="Doble clic para cambiar/agregar imagen"
+                              onMouseDown={() => startLongPress(p.id, activeFoto)}
+                              onMouseUp={cancelLongPress}
+                              onMouseLeave={cancelLongPress}
+                              onTouchStart={() => startLongPress(p.id, activeFoto)}
+                              onTouchEnd={cancelLongPress}
+                              onTouchCancel={cancelLongPress}
                             >
                               <Image
                                 src={activeFoto}
@@ -646,15 +650,8 @@ export default function LavarPage() {
                                 width={0}
                                 height={0}
                                 sizes="100vw"
-                                style={{
-                                  width: '100%',
-                                  height: 'auto',
-                                  objectFit: 'contain',
-                                  maxHeight: '70vh',
-                                }}
-                                onError={() =>
-                                  setImageError((prev) => ({ ...prev, [p.id]: true }))
-                                }
+                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                                 priority={false}
                               />
 
@@ -664,6 +661,7 @@ export default function LavarPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      cancelLongPress();
                                       changeSlide(p.id, -1);
                                     }}
                                     className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
@@ -674,6 +672,7 @@ export default function LavarPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      cancelLongPress();
                                       changeSlide(p.id, 1);
                                     }}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
@@ -693,11 +692,7 @@ export default function LavarPage() {
                               title="Agregar imagen"
                             >
                               <ImagePlus size={18} />
-                              <span>
-                                {uploading[p.id]
-                                  ? 'Subiendo…'
-                                  : 'Sin imagen adjunta. Toca para agregar.'}
-                              </span>
+                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
                             </button>
                           )}
                         </div>
@@ -710,59 +705,49 @@ export default function LavarPage() {
         </ErrorBoundary>
       </section>
 
-      {/* Barra de acciones (Lavar) */}
+      {/* Barra de acciones (Lavar) - sin botón "Lavar" */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
             <IconBtn
               title="Lavando"
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')
-              }
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
             />
             <IconBtn
-              title="Guardado"
+              title="Guardardo"
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')
-              }
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
             />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')
-              }
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
             <IconBtn
               title="Entregado"
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')
-              }
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && togglePago(pedidoAbierto.id)
-              }
+              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
             />
           </div>
 
           {pedidoAbierto ? (
-            <div className="mt-2 text-center text-xs text-white/90">
+            <div className="mt-2 text-center text-xs text.white/90">
               Pedido seleccionado: <b>#{pedidoAbierto.id}</b>{' '}
               {saving && (
                 <span className="inline-flex items-center gap-1">
@@ -771,9 +756,7 @@ export default function LavarPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">
-              Abre un pedido para habilitar las acciones.
-            </div>
+            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
           )}
         </div>
       </nav>
@@ -796,17 +779,10 @@ export default function LavarPage() {
             className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-1">
-              Editar pedido #{askEditForId}
-            </h3>
-            <p className="text-sm text-black/70 mb-4">
-              ¿Desea editar este pedido?
-            </p>
+            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
+            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
             <div className="flex gap-2">
-              <button
-                onClick={goEdit}
-                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
-              >
+              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
                 Editar
               </button>
               <button
@@ -824,9 +800,7 @@ export default function LavarPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">
-              Agregar imagen al pedido #{pickerForPedido}
-            </h3>
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -842,10 +816,7 @@ export default function LavarPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button
-                onClick={() => setPickerForPedido(null)}
-                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
-              >
+              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
                 Cancelar
               </button>
             </div>
@@ -862,13 +833,7 @@ export default function LavarPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input
-        ref={inputFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onFileSelected}
-      />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
@@ -894,9 +859,7 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
