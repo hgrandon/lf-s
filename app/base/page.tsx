@@ -260,11 +260,13 @@ function Tile({
           </div>
         </div>
         <div className="text-right w-12 sm:w-14">
-          {count === null ? (
-            <span className="inline-block h-5 w-full rounded bg-white/20 animate-pulse" />
-          ) : (
-            <span className="block text-2xl sm:text-3xl font-extrabold leading-none tracking-tight">{count}</span>
-          )}
+            {count === null ? (
+              <span className="block w-0 h-0"></span>
+            ) : (
+              <span className="block text-2xl sm:text-3xl font-extrabold leading-none tracking-tight">
+                {count}
+              </span>
+            )}
         </div>
       </div>
     </button>
