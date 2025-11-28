@@ -203,6 +203,7 @@ function NuevoClienteModal({
 }
 
 /** Modal de detalle artículo (ajustado para móvil) */
+/** Modal de detalle artículo (ajustado para móvil y edición cómoda) */
 function DetalleArticuloModal({
   open,
   articulo,
@@ -214,26 +215,35 @@ function DetalleArticuloModal({
   onClose: () => void;
   onConfirm: (d: { articulo: string; qty: number; valor: number }) => void;
 }) {
-  const [qty, setQty] = useState(1);
-  const [valor, setValor] = useState<number>(0);
+  // los manejamos como STRING para que sea fácil editar 7000 -> 8000
+  const [qtyStr, setQtyStr] = useState('1');
+  const [valorStr, setValorStr] = useState('');
 
   useEffect(() => {
     if (open && articulo) {
-      setQty(1);
-      setValor(articulo.precio ?? 0);
+      setQtyStr('1');
+      setValorStr(
+        articulo.precio != null && !Number.isNaN(articulo.precio)
+          ? String(articulo.precio)
+          : ''
+      );
     }
   }, [open, articulo]);
 
   if (!open || !articulo) return null;
 
   function handleAgregar() {
-    if (!articulo) return;
-    const q = Math.max(1, Number(qty || 0));
-    const v = Math.max(0, Number(valor || 0));
+    // convertimos a número SOLO al confirmar
+    const qNum = Number(qtyStr.replace(/\D/g, '') || '0');
+    const vNum = Number(valorStr.replace(/\D/g, '') || '0');
+
+    const qty = Math.max(1, qNum);
+    const valor = Math.max(0, vNum);
+
     onConfirm({
       articulo: articulo?.nombre ?? '',
-      qty: q,
-      valor: v,
+      qty,
+      valor,
     });
   }
 
@@ -245,20 +255,31 @@ function DetalleArticuloModal({
         </div>
 
         <div className="px-4 sm:px-5 py-4 grid gap-3">
-          <input
-            value={valor ? String(valor) : ''}
-            onChange={(e) => setValor(Number(e.target.value || 0))}
-            inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-2 sm:py-3 text-right outline-none focus:ring-2 focus:ring-violet-300 text-base"
-            placeholder="Valor"
-          />
-          <input
-            value={qty ? String(qty) : ''}
-            onChange={(e) => setQty(Number(e.target.value || 0))}
-            inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-2 sm:py-3 text-right outline-none focus:ring-2 focus:ring-violet-300 text-base"
-            placeholder="Cantidad"
-          />
+          <div className="grid gap-1">
+            <label className="text-sm font-semibold text-left">Valor</label>
+            <input
+              value={valorStr}
+              onChange={(e) =>
+                setValorStr(e.target.value.replace(/[^0-9]/g, ''))
+              }
+              inputMode="numeric"
+              className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
+              placeholder="0"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label className="text-sm font-semibold text-left">Cantidad</label>
+            <input
+              value={qtyStr}
+              onChange={(e) =>
+                setQtyStr(e.target.value.replace(/[^0-9]/g, ''))
+              }
+              inputMode="numeric"
+              className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
+              placeholder="1"
+            />
+          </div>
 
           <button
             onClick={handleAgregar}
@@ -277,6 +298,7 @@ function DetalleArticuloModal({
     </div>
   );
 }
+
 
 /** Modal de confirmación para eliminar artículo */
 function DeleteItemModal({
@@ -803,13 +825,14 @@ export default function PedidoPage() {
           onRowClick={requestDelete}
         />
 
-        <Fotos
-          fotoUrl={fotoUrl}
-          inputRef={fotoInputRef}
-          onFileSelected={(file) => {
-            if (file) uploadFoto(file);
-          }}
-        />
+          <Fotos
+            fotoUrl={fotoUrl}
+            inputRef={fotoInputRef}
+            initialGaleria={fotos}   // 🔹 AQUÍ LE PASAMOS TODAS LAS FOTOS DEL PEDIDO
+            onFileSelected={(file) => {
+              if (file) uploadFoto(file);
+            }}
+          />
       </section>
 
       {/* Botón guardar fijo abajo, como en tu mock */}
