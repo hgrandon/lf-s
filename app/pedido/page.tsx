@@ -46,6 +46,15 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+
+// Formato solo para mostrar en pantalla: dd-mm-yyyy
+function formatFechaDisplay(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const [year, month, day] = iso.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+
 /* =========================
    Modales reutilizables
 ========================= */
@@ -774,8 +783,8 @@ export default function PedidoPage() {
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
         <Correlativo
           nro={nextInfo?.nro}
-          fechaIngreso={nextInfo?.fechaIngresoISO}
-          fechaEntrega={nextInfo?.fechaEntregaISO}
+          fechaIngreso={formatFechaDisplay(nextInfo?.fechaIngresoISO)}
+          fechaEntrega={formatFechaDisplay(nextInfo?.fechaEntregaISO)}
           onClickCamara={() => fotoInputRef.current?.click()}
         />
         <Telefono
