@@ -46,7 +46,6 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-
 // Formato solo para mostrar en pantalla: dd-mm-yyyy
 function formatFechaDisplay(iso: string | undefined): string | undefined {
   if (!iso) return undefined;
@@ -54,12 +53,11 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
   return `${day}-${month}-${year}`;
 }
 
-
 /* =========================
    Modales reutilizables
 ========================= */
 
-/** Modal para nuevo cliente */
+/** Modal para nuevo cliente (ajustado para móvil) */
 function NuevoClienteModal({
   open,
   telefono,
@@ -127,10 +125,10 @@ function NuevoClienteModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
-      <div className="w-[520px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div className="font-bold">Nuevo cliente</div>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-2 sm:px-4">
+      <div className="w-full max-w-md rounded-t-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <div className="font-bold text-sm sm:text-base">Nuevo cliente</div>
           <button
             onClick={onClose}
             className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
@@ -138,9 +136,9 @@ function NuevoClienteModal({
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 py-4 grid gap-3">
+        <div className="px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
           <div className="grid gap-1">
-            <label className="text-sm font-medium">Teléfono</label>
+            <label className="text-xs sm:text-sm font-medium">Teléfono</label>
             <input
               ref={refFirst}
               value={form.telefono}
@@ -151,49 +149,49 @@ function NuevoClienteModal({
                 }))
               }
               inputMode="tel"
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
               placeholder="9 dígitos…"
             />
           </div>
           <div className="grid gap-1">
-            <label className="text-sm font-medium">Nombre</label>
+            <label className="text-xs sm:text-sm font-medium">Nombre</label>
             <input
               value={form.nombre}
               onChange={(e) =>
                 setForm((p) => ({ ...p, nombre: e.target.value }))
               }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
               placeholder="NOMBRE Y APELLIDO"
             />
           </div>
           <div className="grid gap-1">
-            <label className="text-sm font-medium">Dirección</label>
+            <label className="text-xs sm:text-sm font-medium">Dirección</label>
             <input
               value={form.direccion}
               onChange={(e) =>
                 setForm((p) => ({ ...p, direccion: e.target.value }))
               }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
               placeholder="CALLE Y NÚMERO"
             />
           </div>
           {error && (
-            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
               {error}
             </div>
           )}
         </div>
-        <div className="px-5 py-4 border-t flex justify-end gap-2">
+        <div className="px-5 py-3 border-t flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-xl px-4 py-2 hover:bg-slate-50"
+            className="rounded-xl px-3 py-2 text-sm hover:bg-slate-50"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm disabled:opacity-60"
           >
             {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             Guardar
