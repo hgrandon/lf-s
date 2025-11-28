@@ -1,53 +1,62 @@
 'use client';
 
-import MenuTile from '@/app/components/MenuTile';
-import {
-  ClipboardList,
-  User,
-  PiggyBank,
-  Save,
-  PackageCheck,
-  Route as RouteIcon,
-  Home,
-  Settings,
-  Tag,
-  Database,
-  History,
-  LogOut,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
 
-// Solo tiles (nada de título, logo ni subtítulo)
-const tiles = [
-  { href: '/pedido',     title: 'Pedido',       icon: <ClipboardList size={22} /> },
-  { href: '/clientes',   title: 'Cliente',      icon: <User size={22} /> },
-  { href: '/base',       title: 'Base',          icon: <Database size={22} /> },
-  { href: '/historico',  title: 'Histórico',    icon: <History size={22} />,    disabled: true },
-  { href: '/finanzas',   title: 'Finanzas',     icon: <PiggyBank size={22} />,  disabled: true },
-  { href: '/guardar',    title: 'Guardar',      icon: <Save size={22} />,       disabled: true },
-  { href: '/entregar',   title: 'Entregar',     icon: <PackageCheck size={22} />,disabled: true },
-  { href: '/ruta',       title: 'Ruta',         icon: <RouteIcon size={22} />,  disabled: true },
-  { href: '/domicilio',  title: 'Domicilio',    icon: <Home size={22} />,       disabled: true },
-  { href: '/config',     title: 'Configuración',icon: <Settings size={22} /> },
-  { href: '/articulos',  title: 'Artículos',    icon: <Tag size={22} />,        disabled: true },
-  { href: '/logout',     title: 'Salir',        icon: <LogOut size={22} /> },
-];
+type MenuTileProps = {
+  href: string;
+  icon: ReactNode;
+  title: string;
+  subtitle?: ReactNode;
+  disabled?: boolean;
+};
 
-export default function MenuClient() {
+export default function MenuTile({
+  href,
+  icon,
+  title,
+  subtitle,
+  disabled = false,        // 👈 por defecto *NO* está deshabilitado
+}: MenuTileProps) {
+  const router = useRouter();
+
+  const handleClick = () => {
+    if (disabled) return;
+    if (!href || href === '#') return;
+    router.push(href);
+  };
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-      {tiles.map(({ href, icon, title, disabled }) => (
-        <MenuTile
-          key={href}
-          href={disabled ? '#' : href}
-          icon={icon}
-          title={title}
-          subtitle={disabled ? 'Próximamente' : undefined}
-          disabled={disabled}
-        />
-      ))}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled}
+      className={[
+        'group w-full rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md',
+        'shadow-[0_4px_16px_rgba(0,0,0,0.20)] transition p-4 text-left h-[6.25rem] active:scale-[.99]',
+        disabled
+          ? 'opacity-50 cursor-not-allowed'
+          : 'hover:bg-white/14 hover:shadow-[0_6px_22px_rgba(0,0,0,0.25)]',
+      ].join(' ')}
+      aria-label={title}
+    >
+      <div className="h-full flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 border border-white/20">
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <span className="block text-base sm:text-lg font-extrabold tracking-tight truncate">
+              {title}
+            </span>
+            {subtitle ? (
+              <span className="mt-0.5 block text-[0.8rem] text-white/80 truncate">
+                {subtitle}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }
-
-
-
