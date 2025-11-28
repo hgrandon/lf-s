@@ -6,24 +6,34 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Lock, User2, Eye, EyeOff } from 'lucide-react';
 
+/* =========================
+   Tipos y constantes
+========================= */
 type AuthMode = 'clave' | 'usuario';
+type Rol = 'ADMIN' | 'USER';
 
 type UsuarioLoginOK = {
   id: string | number;
   nombre: string;
-  rol: string | null;
+  rol: Rol | null;
 };
 
 const AFTER_LOGIN = '/menu';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const APP_PASSWORD_KEY = 'app_password';
 
-function saveSession(payload: { mode: AuthMode; display: string; rol?: string | null }) {
+/* =========================
+   Utilidades de sesión
+========================= */
+function saveSession(payload: { mode: AuthMode; display: string; rol?: Rol | null }) {
   try {
     localStorage.setItem(
       'lf_auth',
       JSON.stringify({ ...payload, ts: Date.now(), ttl: SESSION_TTL_MS })
     );
-  } catch {}
+  } catch {
+    // ignorar errores de localStorage
+  }
 }
 
 function readSession() {
@@ -42,11 +52,26 @@ function readSession() {
   }
 }
 
+/* =========================
+   Otras utilidades
+========================= */
 function normalizeTel(raw: string) {
   const d = (raw || '').replace(/\D/g, '');
   return d.replace(/^0?56/, '');
 }
 
+function getErrorMessage(e: any, fallback: string) {
+  return (
+    e?.message ||
+    e?.error_description ||
+    (typeof e === 'string' ? e : null) ||
+    fallback
+  );
+}
+
+/* =========================
+   Página de Login
+========================= */
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>('clave');
@@ -63,22 +88,39 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // crear usuario
+  // creación de usuario
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newTel, setNewTel] = useState('');
   const [newNombre, setNewNombre] = useState('');
   const [newPin, setNewPin] = useState('');
-  const [newRol, setNewRol] = useState<'ADMIN' | 'USER'>('USER');
+  const [newRol, setNewRol] = useState<Rol>('USER');
   const [adminClave, setAdminClave] = useState('');
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [createOk, setCreateOk] = useState<string | null>(null);
 
+  /* =========================
+     Efectos
+  ========================= */
   useEffect(() => {
     const s = readSession();
     if (s) router.replace(AFTER_LOGIN);
   }, [router]);
 
+  // cuando se cambia de pestaña, limpiamos errores y campos específicos
+  useEffect(() => {
+    setErr(null);
+    if (mode === 'clave') {
+      setTel('');
+      setPin('');
+    } else {
+      setClave('');
+    }
+  }, [mode]);
+
+  /* =========================
+     Validaciones
+  ========================= */
   const canSubmit = useMemo(() => {
     if (loading) return false;
     if (mode === 'clave') return Boolean(clave.trim());
@@ -86,14 +128,19 @@ export default function LoginPage() {
     return telefono.length >= 8 && Boolean(pin);
   }, [loading, mode, clave, tel, pin]);
 
+  /* =========================
+     Login por clave única
+  ========================= */
   async function loginClave() {
+    if (loading) return;
     setLoading(true);
     setErr(null);
+
     try {
       const { data, error } = await supabase
         .from('app_settings')
         .select('valor')
-        .eq('clave', 'app_password')
+        .eq('clave', APP_PASSWORD_KEY)
         .maybeSingle();
 
       if (error) throw error;
@@ -108,20 +155,20 @@ export default function LoginPage() {
       saveSession({ mode: 'clave', display: 'CLAVE', rol: 'ADMIN' });
       router.replace(AFTER_LOGIN);
     } catch (e: any) {
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        (typeof e === 'string' ? e : null) ||
-        'Error de conexión';
-      setErr(msg);
+      setErr(getErrorMessage(e, 'Error de conexión'));
     } finally {
       setLoading(false);
     }
   }
 
+  /* =========================
+     Login por usuario / PIN
+  ========================= */
   async function loginUsuario() {
+    if (loading) return;
     setLoading(true);
     setErr(null);
+
     try {
       const telefono = normalizeTel(tel);
       if (telefono.length < 8) throw new Error('Ingresa un teléfono válido (8-9 dígitos CL).');
@@ -162,7 +209,7 @@ export default function LoginPage() {
         ok = {
           id: row.id,
           nombre: row.nombre || telefono,
-          rol: row.rol ?? null,
+          rol: (row.rol as Rol) ?? null,
         };
       }
 
@@ -173,12 +220,7 @@ export default function LoginPage() {
       });
       router.replace(AFTER_LOGIN);
     } catch (e: any) {
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        (typeof e === 'string' ? e : null) ||
-        'Error de conexión';
-      setErr(msg);
+      setErr(getErrorMessage(e, 'Error de conexión'));
     } finally {
       setLoading(false);
     }
@@ -191,6 +233,9 @@ export default function LoginPage() {
     else loginUsuario();
   }
 
+  /* =========================
+     Crear usuario (solo ADMIN)
+  ========================= */
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
     setCreateErr(null);
@@ -208,7 +253,7 @@ export default function LoginPage() {
       const { data, error } = await supabase
         .from('app_settings')
         .select('valor')
-        .eq('clave', 'app_password')
+        .eq('clave', APP_PASSWORD_KEY)
         .maybeSingle();
 
       if (error) throw error;
@@ -235,17 +280,15 @@ export default function LoginPage() {
       setNewRol('USER');
       setAdminClave('');
     } catch (e: any) {
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        (typeof e === 'string' ? e : null) ||
-        'No se pudo crear el usuario';
-      setCreateErr(msg);
+      setCreateErr(getErrorMessage(e, 'No se pudo crear el usuario'));
     } finally {
       setCreating(false);
     }
   }
 
+  /* =========================
+     Render
+  ========================= */
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 grid place-items-center px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white/95 shadow-2xl p-6">
@@ -285,7 +328,7 @@ export default function LoginPage() {
         <form
           onSubmit={handleSubmit}
           className="grid gap-3"
-          autoComplete="off"
+          autoComplete="off" // desactiva autocompletado del formulario
         >
           {mode === 'clave' ? (
             <>
@@ -428,7 +471,7 @@ export default function LoginPage() {
                 <label className="font-semibold">Rol</label>
                 <select
                   value={newRol}
-                  onChange={(e) => setNewRol(e.target.value as 'ADMIN' | 'USER')}
+                  onChange={(e) => setNewRol(e.target.value as Rol)}
                   className="rounded-lg border px-2 py-2 outline-none focus:ring-2 focus:ring-violet-300"
                 >
                   <option value="USER">USER (solo operación)</option>
