@@ -49,7 +49,7 @@ function firstFotoFromMixed(input: unknown): string | null {
   return all[0] ?? null;
 }
 
-// NUEVO: SACA TODAS LAS FOTOS POSIBLES DESDE string | JSON | array
+// SACA TODAS LAS FOTOS POSIBLES DESDE string | JSON | array
 function allFotosFromMixed(input: unknown): string[] {
   if (!input) return [];
   if (Array.isArray(input)) {
@@ -108,8 +108,9 @@ export default function LavarPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Picker / upload
+  // Picker / upload / eliminar
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [pickerFotoUrl, setPickerFotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
@@ -298,8 +299,9 @@ export default function LavarPage() {
   }
 
   // ------- Subida de foto -------
-  function openPickerFor(pid: number) {
+  function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
+    setPickerFotoUrl(fotoUrl);
   }
 
   async function handlePick(kind: 'camera' | 'file') {
@@ -362,6 +364,84 @@ export default function LavarPage() {
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
       setPickerForPedido(null);
+      setPickerFotoUrl(null);
+    }
+  }
+
+  // ------- Eliminar foto (botón del modal) -------
+  async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
+    if (!pedidoId) return;
+
+    try {
+      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
+      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+
+      const targetUrl = fotoUrl || fotosActuales[0] || null;
+      if (!targetUrl) {
+        snack('No hay foto para eliminar.');
+        return;
+      }
+
+      // Intentar borrar del storage (si la URL es pública de Supabase)
+      try {
+        const urlObj = new URL(targetUrl);
+        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
+        const marker = '/object/public/';
+        const idx = pathname.indexOf(marker);
+        if (idx >= 0) {
+          let path = pathname.substring(idx + marker.length); // fotos/...
+          if (path.startsWith('fotos/')) {
+            path = path.substring('fotos/'.length); // solo ruta interna
+          }
+          if (path) {
+            await supabase.storage.from('fotos').remove([path]);
+          }
+        }
+      } catch (e) {
+        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
+      }
+
+      // Borrar de tabla pedido_foto
+      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: targetUrl });
+
+      // Actualizar lista de fotos para el pedido
+      const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
+
+      // Actualizar foto_url en pedido (JSON o null)
+      await supabase
+        .from('pedido')
+        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
+        .eq('nro', pedidoId);
+
+      // Actualizar estado local
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pedidoId
+            ? {
+                ...p,
+                fotos: nuevasFotos,
+                foto_url: nuevasFotos[0] ?? null,
+              }
+            : p,
+        ),
+      );
+
+      setCurrentSlide((prev) => {
+        const next = { ...prev };
+        if (!nuevasFotos.length) {
+          delete next[pedidoId];
+        } else {
+          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
+        }
+        return next;
+      });
+
+      setImageError((prev) => ({ ...prev, [pedidoId]: false }));
+
+      snack(`Foto eliminada del pedido #${pedidoId}`);
+    } catch (err) {
+      console.error(err);
+      snack('No se pudo eliminar la foto.');
     }
   }
 
@@ -543,8 +623,8 @@ export default function LavarPage() {
                           {activeFoto && !imageError[p.id] ? (
                             <div
                               className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() => openPickerFor(p.id)}
-                              title="Doble clic para cambiar/agregar imagen"
+                              onDoubleClick={() => openPickerFor(p.id, activeFoto)}
+                              title="Doble clic para opciones de imagen"
                             >
                               <Image
                                 src={activeFoto}
@@ -587,7 +667,7 @@ export default function LavarPage() {
                             </div>
                           ) : (
                             <button
-                              onClick={() => openPickerFor(p.id)}
+                              onClick={() => openPickerFor(p.id, null)}
                               className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
                               title="Agregar imagen"
                             >
@@ -696,11 +776,11 @@ export default function LavarPage() {
         </div>
       )}
 
-      {/* Modal para elegir cámara/archivo */}
+      {/* Modal para opciones de imagen: sacar / cargar / eliminar */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">Imagen del pedido #{pickerForPedido}</h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -714,9 +794,29 @@ export default function LavarPage() {
                 className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
               >
                 <ImagePlus size={18} />
-                Buscar en archivos
+                Cargar foto
               </button>
-              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+
+              {pickerFotoUrl && (
+                <button
+                  onClick={async () => {
+                    await handleDeleteFoto(pickerForPedido, pickerFotoUrl);
+                    setPickerForPedido(null);
+                    setPickerFotoUrl(null);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-red-100 text-red-700 px-4 py-3 hover:bg-red-200 mt-1"
+                >
+                  Eliminar foto actual
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setPickerForPedido(null);
+                  setPickerFotoUrl(null);
+                }}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
                 Cancelar
               </button>
             </div>
