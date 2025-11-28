@@ -120,9 +120,6 @@ export default function LavarPage() {
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
-  // NUEVO: timer para detectar la pulsación larga (3 segundos)
-  const longPressTimer = useRef<number | null>(null);
-
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
@@ -368,95 +365,6 @@ export default function LavarPage() {
     }
   }
 
-  // ------- NUEVO: borrado de foto por pulsación larga (3 segundos) -------
-  async function handleLongPressDelete(pedidoId: number, fotoUrl: string) {
-    if (!pedidoId || !fotoUrl) return;
-
-    try {
-      // Intentar borrar del storage (si la URL es pública de Supabase)
-      try {
-        const urlObj = new URL(fotoUrl);
-        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
-        const marker = '/object/public/';
-        const idx = pathname.indexOf(marker);
-        if (idx >= 0) {
-          let path = pathname.substring(idx + marker.length); // fotos/...
-          if (path.startsWith('fotos/')) {
-            path = path.substring('fotos/'.length); // solo ruta interna
-          }
-          if (path) {
-            await supabase.storage.from('fotos').remove([path]);
-          }
-        }
-      } catch (e) {
-        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
-      }
-
-      // Borrar de tabla pedido_foto
-      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: fotoUrl });
-
-      // Actualizar lista de fotos para el pedido
-      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
-      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
-      const nuevasFotos = fotosActuales.filter((u) => u !== fotoUrl);
-
-      // Actualizar foto_url en pedido (JSON o null)
-      await supabase
-        .from('pedido')
-        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
-        .eq('nro', pedidoId);
-
-      // Actualizar estado local
-      setPedidos((prev) =>
-        prev.map((p) =>
-          p.id === pedidoId
-            ? {
-                ...p,
-                fotos: nuevasFotos,
-                foto_url: nuevasFotos[0] ?? null,
-              }
-            : p,
-        ),
-      );
-
-      setCurrentSlide((prev) => {
-        const next = { ...prev };
-        if (!nuevasFotos.length) {
-          delete next[pedidoId];
-        } else {
-          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
-        }
-        return next;
-      });
-
-      setImageError((prev) => ({ ...prev, [pedidoId]: false }));
-
-      snack(`Foto eliminada del pedido #${pedidoId}`);
-    } catch (err) {
-      console.error(err);
-      snack('No se pudo eliminar la foto.');
-    }
-  }
-
-  function startLongPress(pedidoId: number, fotoUrl: string | null) {
-    if (!fotoUrl) return;
-    if (longPressTimer.current) {
-      window.clearTimeout(longPressTimer.current);
-    }
-    longPressTimer.current = window.setTimeout(() => {
-      longPressTimer.current = null;
-      // Ejecutar borrado
-      void handleLongPressDelete(pedidoId, fotoUrl);
-    }, 3000); // 3 segundos
-  }
-
-  function cancelLongPress() {
-    if (longPressTimer.current) {
-      window.clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }
-
   // Slider: cambiar de foto
   function changeSlide(pedidoId: number, direction: -1 | 1) {
     const pedido = pedidos.find((p) => p.id === pedidoId);
@@ -573,7 +481,7 @@ export default function LavarPage() {
 
                   {isOpen && (
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                      <div className="rounded-xl bg.white/8 border border-white/15 p-2 lg:p-3 bg-white/8">
+                      <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                         <button
                           onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                           className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
@@ -587,7 +495,7 @@ export default function LavarPage() {
 
                         {detOpen && (
                           <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                            <div className="overflow-x-auto w.full max-w-4xl">
+                            <div className="overflow-x-auto w-full max-w-4xl">
                               <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
@@ -637,12 +545,6 @@ export default function LavarPage() {
                               className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
                               onDoubleClick={() => openPickerFor(p.id)}
                               title="Doble clic para cambiar/agregar imagen"
-                              onMouseDown={() => startLongPress(p.id, activeFoto)}
-                              onMouseUp={cancelLongPress}
-                              onMouseLeave={cancelLongPress}
-                              onTouchStart={() => startLongPress(p.id, activeFoto)}
-                              onTouchEnd={cancelLongPress}
-                              onTouchCancel={cancelLongPress}
                             >
                               <Image
                                 src={activeFoto}
@@ -661,7 +563,6 @@ export default function LavarPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      cancelLongPress();
                                       changeSlide(p.id, -1);
                                     }}
                                     className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
@@ -672,7 +573,6 @@ export default function LavarPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      cancelLongPress();
                                       changeSlide(p.id, 1);
                                     }}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
@@ -747,7 +647,7 @@ export default function LavarPage() {
           </div>
 
           {pedidoAbierto ? (
-            <div className="mt-2 text-center text-xs text.white/90">
+            <div className="mt-2 text-center text-xs text-white/90">
               Pedido seleccionado: <b>#{pedidoAbierto.id}</b>{' '}
               {saving && (
                 <span className="inline-flex items-center gap-1">
