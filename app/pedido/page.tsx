@@ -750,10 +750,8 @@ export default function PedidoPage() {
         if (eF) throw eF;
       }
 
-      alert(`Pedido #${nextInfo.nro} guardado correctamente`);
-
       // Volver al menú principal después de guardar
-      router.push('/base');
+      router.push('/menu');
       return;
     } catch (e: any) {
       console.error(e);
