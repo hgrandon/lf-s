@@ -61,11 +61,13 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
 function NuevoClienteModal({
   open,
   telefono,
+  clienteActual,
   onClose,
   onSaved,
 }: {
   open: boolean;
   telefono: string;
+  clienteActual?: Cliente | null;
   onClose: () => void;
   onSaved: (c: Cliente) => void;
 }) {
@@ -80,12 +82,18 @@ function NuevoClienteModal({
 
   useEffect(() => {
     if (open) {
-      setForm({ telefono, nombre: '', direccion: '' });
+      const telBase =
+        (clienteActual?.telefono || telefono || '').replace(/\D/g, '');
+      setForm({
+        telefono: telBase,
+        nombre: (clienteActual?.nombre || '').toString(),
+        direccion: (clienteActual?.direccion || '').toString(),
+      });
       setError(null);
       const t = setTimeout(() => refFirst.current?.focus(), 60);
       return () => clearTimeout(t);
     }
-  }, [open, telefono]);
+  }, [open, telefono, clienteActual]);
 
   async function handleSave() {
     try {
@@ -847,12 +855,20 @@ export default function PedidoPage() {
           fechaEntrega={formatFechaDisplay(nextInfo?.fechaEntregaISO)}
           onClickCamara={() => fotoInputRef.current?.click()}
         />
-        <Telefono
-          telefono={telefono}
-          onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
-          checkingCli={checkingCli}
-          cliente={cliente}
-        />
+          <Telefono
+            telefono={telefono}
+            onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
+            checkingCli={checkingCli}
+            cliente={cliente}
+            onEditarCliente={() => {
+              const digits = (telefono || '').replace(/\D/g, '');
+              if (digits.length < 8) {
+                alert('Primero ingresa un teléfono válido.');
+                return;
+              }
+              setOpenCliModal(true);
+            }}
+          />
       </header>
 
       {/* Contenido: selector + tabla (Articulos) y foto */}
@@ -888,12 +904,16 @@ export default function PedidoPage() {
       </footer>
 
       {/* Modales */}
-      <NuevoClienteModal
-        open={openCliModal}
-        telefono={(telefono || '').replace(/\D/g, '')}
-        onClose={() => setOpenCliModal(false)}
-        onSaved={(c) => setCliente(c)}
-      />
+        <NuevoClienteModal
+          open={openCliModal}
+          telefono={(telefono || '').replace(/\D/g, '')}
+          clienteActual={cliente}
+          onClose={() => setOpenCliModal(false)}
+          onSaved={(c) => {
+            setCliente(c);
+            setTelefono(c.telefono); // por si cambiaste el número
+          }}
+        />
 
       <NuevoArticuloModal
         open={openArtModal}

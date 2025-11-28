@@ -1,5 +1,4 @@
-// app/pedido/telefono/Telefono.tsx
-import { Loader2, Phone } from 'lucide-react';
+import { Loader2, Phone, Pencil } from 'lucide-react';
 
 export type Cliente = { telefono: string; nombre: string; direccion: string };
 
@@ -8,6 +7,8 @@ type Props = {
   onTelefonoChange: (v: string) => void;
   checkingCli: boolean;
   cliente: Cliente | null;
+  /** Se llama cuando se quiere editar nombre/dirección del cliente */
+  onEditarCliente?: () => void;
 };
 
 export default function Telefono({
@@ -15,6 +16,7 @@ export default function Telefono({
   onTelefonoChange,
   checkingCli,
   cliente,
+  onEditarCliente,
 }: Props) {
   return (
     <div className="mt-4">
@@ -39,14 +41,28 @@ export default function Telefono({
           className="w-full rounded-xl bg-white/10 border border-white/20 pl-9 pr-3 py-3 text-2xl text-white placeholder-white/60 outline-none focus:ring-2 focus:ring-white/30"
         />
       </div>
+
       {cliente && (
-        <div className="mt-2 text-white/90 text-sm">
-          <div className="font-semibold uppercase">
-            {cliente.nombre || 'SIN NOMBRE'}
+        <div className="mt-2 flex items-start justify-between gap-2 text-white/90 text-sm">
+          <div>
+            <div className="font-semibold uppercase">
+              {cliente.nombre || 'SIN NOMBRE'}
+            </div>
+            <div className="uppercase">
+              {cliente.direccion || 'SIN DIRECCIÓN'}
+            </div>
           </div>
-          <div className="uppercase">
-            {cliente.direccion || 'SIN DIRECCIÓN'}
-          </div>
+
+          {onEditarCliente && (
+            <button
+              type="button"
+              onClick={onEditarCliente}
+              className="shrink-0 mt-1 rounded-full bg-white/15 hover:bg-white/25 p-2"
+              title="Editar cliente"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
         </div>
       )}
     </div>
