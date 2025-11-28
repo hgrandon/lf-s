@@ -1,3 +1,4 @@
+// app/pedido/fotos/Fotos.tsx
 'use client';
 
 import { useEffect, useState, type ChangeEvent } from 'react';
@@ -9,11 +10,30 @@ type Props = {
   inputRef: React.RefObject<HTMLInputElement>;
   /** Se llama por cada archivo seleccionado (puede venir más de uno) */
   onFileSelected: (file: File | null) => void;
+  /** Galería inicial (para modo EDITAR) */
+  initialGaleria?: string[];
 };
 
-export default function Fotos({ fotoUrl, inputRef, onFileSelected }: Props) {
+export default function Fotos({
+  fotoUrl,
+  inputRef,
+  onFileSelected,
+  initialGaleria = [],
+}: Props) {
   // Galería local de fotos del pedido
   const [galeria, setGaleria] = useState<string[]>([]);
+
+  // Cargar galería inicial (cuando viene desde editar)
+  useEffect(() => {
+    if (!initialGaleria || initialGaleria.length === 0) return;
+    setGaleria((prev) => {
+      const merged = [...prev];
+      for (const url of initialGaleria) {
+        if (!merged.includes(url)) merged.push(url);
+      }
+      return merged;
+    });
+  }, [initialGaleria]);
 
   // Cada vez que llega una nueva fotoUrl desde arriba la agregamos a la galería
   useEffect(() => {
