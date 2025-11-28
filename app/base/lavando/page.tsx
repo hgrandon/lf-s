@@ -31,7 +31,8 @@ type Pedido = {
   total: number | null;
   estado: PedidoEstado;
   detalle?: string | null;
-  foto_url?: string | null;
+  foto_url?: string | null; // puede ser string o JSON con varias URLs
+  fotos?: string[]; // lista de fotos para el slider
   pagado?: boolean | null;
   items?: Item[];
 };
@@ -42,24 +43,34 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
+// SACA SOLO LA PRIMERA FOTO (por compatibilidad con pantallas antiguas)
 function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
+  const all = allFotosFromMixed(input);
+  return all[0] ?? null;
+}
+
+// SACA TODAS LAS FOTOS POSIBLES DESDE string | JSON | array
+function allFotosFromMixed(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+  }
   if (typeof input === 'string') {
     const s = input.trim();
-    if (!s) return null;
+    if (!s) return [];
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
-        return null;
+        if (Array.isArray(arr)) {
+          return arr.filter((x: unknown): x is string => typeof x === 'string' && x.trim() !== '');
+        }
       } catch {
-        return null;
+        // si falla el JSON, lo tomamos como string simple
       }
     }
-    return s;
+    return [s];
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
-  return null;
+  return [];
 }
 
 /* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
@@ -97,14 +108,18 @@ export default function LavandoPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Picker / upload
+  // Picker / upload / eliminar
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [pickerFotoUrl, setPickerFotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
   // Modal “¿Desea editar?” al hacer doble clic en Total
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
+
+  // Índice de la foto actual por pedido (para el slider)
+  const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
@@ -115,6 +130,7 @@ export default function LavandoPage() {
         setLoading(true);
         setErrMsg(null);
 
+        // Pedidos en LAVANDO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
@@ -134,18 +150,21 @@ export default function LavandoPage() {
           return;
         }
 
+        // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
         if (e2) throw e2;
 
+        // Fotos (todas las filas de pedido_foto)
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
           .in('pedido_id', ids);
         if (e3) throw e3;
 
+        // Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -172,29 +191,47 @@ export default function LavandoPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        const fotoByPedido = new Map<number, string>();
-        (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.foto_url);
-          if (f) fotoByPedido.set(r.id, f);
-        });
+        // Agrupar fotos por pedido desde tabla pedido_foto
+        const fotosByPedido = new Map<number, string[]>();
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.pedido_id ?? f.nro);
-          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
-            fotoByPedido.set(pid, f.url);
-          }
+          const url = typeof f.url === 'string' ? f.url.trim() : '';
+          if (!pid || !url) return;
+          const arr = fotosByPedido.get(pid) ?? [];
+          arr.push(url);
+          fotosByPedido.set(pid, arr);
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
-          mapped.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          // fotos base que puedan venir en foto_url (string o JSON)
+          const baseFotos = allFotosFromMixed(r.foto_url);
+          const extra = fotosByPedido.get(r.id) ?? [];
+
+          const fotosArr: string[] = [];
+          baseFotos.forEach((u) => {
+            if (u && !fotosArr.includes(u)) fotosArr.push(u);
+          });
+          extra.forEach((u) => {
+            if (u && !fotosArr.includes(u)) fotosArr.push(u);
+          });
+
+          const principal = fotosArr[0] ?? firstFotoFromMixed(r.foto_url) ?? null;
+
+          return {
+            id: r.id,
+            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: principal,
+            fotos: fotosArr,
+            pagado: r.pagado ?? false,
+            items: itemsByPedido.get(r.id) ?? [],
+          };
+        });
+
+        mapped.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+
         if (!cancelled) {
           setPedidos(mapped);
           setLoading(false);
@@ -233,6 +270,7 @@ export default function LavandoPage() {
       return;
     }
 
+    // En Lavando, si pasa a otro estado lo sacamos de la lista
     if (next !== 'LAVANDO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -260,9 +298,10 @@ export default function LavandoPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto -------
-  function openPickerFor(pid: number) {
+  // ------- Subida de foto / abrir modal -------  
+  function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
+    setPickerFotoUrl(fotoUrl);
   }
 
   async function handlePick(kind: 'camera' | 'file') {
@@ -296,10 +335,28 @@ export default function LavandoPage() {
       const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+      // Obtener fotos actuales del pedido para actualizar JSON en foto_url
+      const pedidoActual = pedidos.find((p) => p.id === pid);
+      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const nuevasFotos = [...fotosActuales, publicUrl];
 
-      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      // Guardamos la lista completa en foto_url como JSON
+      await supabase.from('pedido').update({ foto_url: JSON.stringify(nuevasFotos) }).eq('nro', pid);
+
+      // Actualizar estado local
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pid
+            ? {
+                ...p,
+                foto_url: publicUrl,
+                fotos: nuevasFotos,
+              }
+            : p,
+        ),
+      );
       setImageError((prev) => ({ ...prev, [pid]: false }));
+      setCurrentSlide((prev) => ({ ...prev, [pid]: nuevasFotos.length - 1 }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
@@ -307,7 +364,99 @@ export default function LavandoPage() {
     } finally {
       setUploading((prev) => ({ ...prev, [pid!]: false }));
       setPickerForPedido(null);
+      setPickerFotoUrl(null);
     }
+  }
+
+  // ------- Eliminar foto (botón del modal) -------  
+  async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
+    if (!pedidoId) return;
+
+    try {
+      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
+      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+
+      const targetUrl = fotoUrl || fotosActuales[0] || null;
+      if (!targetUrl) {
+        snack('No hay foto para eliminar.');
+        return;
+      }
+
+      // Intentar borrar del storage (si la URL es pública de Supabase)
+      try {
+        const urlObj = new URL(targetUrl);
+        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
+        const marker = '/object/public/';
+        const idx = pathname.indexOf(marker);
+        if (idx >= 0) {
+          let path = pathname.substring(idx + marker.length); // fotos/...
+          if (path.startsWith('fotos/')) {
+            path = path.substring('fotos/'.length); // solo ruta interna
+          }
+          if (path) {
+            await supabase.storage.from('fotos').remove([path]);
+          }
+        }
+      } catch (e) {
+        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
+      }
+
+      // Borrar de tabla pedido_foto
+      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: targetUrl });
+
+      // Actualizar lista de fotos para el pedido
+      const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
+
+      // Actualizar foto_url en pedido (JSON o null)
+      await supabase
+        .from('pedido')
+        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
+        .eq('nro', pedidoId);
+
+      // Actualizar estado local
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pedidoId
+            ? {
+                ...p,
+                fotos: nuevasFotos,
+                foto_url: nuevasFotos[0] ?? null,
+              }
+            : p,
+        ),
+      );
+
+      setCurrentSlide((prev) => {
+        const next = { ...prev };
+        if (!nuevasFotos.length) {
+          delete next[pedidoId];
+        } else {
+          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
+        }
+        return next;
+      });
+
+      setImageError((prev) => ({ ...prev, [pedidoId]: false }));
+
+      snack(`Foto eliminada del pedido #${pedidoId}`);
+    } catch (err) {
+      console.error(err);
+      snack('No se pudo eliminar la foto.');
+    }
+  }
+
+  // Slider: cambiar de foto
+  function changeSlide(pedidoId: number, direction: -1 | 1) {
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    const fotos = pedido?.fotos ?? [];
+    const total = fotos.length;
+    if (!pedido || total <= 1) return;
+
+    setCurrentSlide((prev) => {
+      const current = prev[pedidoId] ?? 0;
+      const next = (current + direction + total) % total;
+      return { ...prev, [pedidoId]: next };
+    });
   }
 
   // Modal de edición
@@ -364,6 +513,14 @@ export default function LavandoPage() {
               const totalCalc =
                 Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
 
+              const fotos = p.fotos && p.fotos.length ? p.fotos : p.foto_url ? [p.foto_url] : [];
+              const totalFotos = fotos.length;
+              const slideIndex =
+                totalFotos > 0
+                  ? Math.min(currentSlide[p.id] ?? 0, totalFotos - 1)
+                  : 0;
+              const activeFoto = totalFotos > 0 ? fotos[slideIndex] : null;
+
               return (
                 <div
                   key={p.id}
@@ -377,19 +534,17 @@ export default function LavandoPage() {
                     className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                   >
                     <div className="flex items-center gap-3">
-
-                          <span
-                            className={[
-                              'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
-                              p.pagado
-                                ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
-                                : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
-                            ].join(' ')}
-                            aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
-                          >
-                            <User size={18} />
-                          </span>
-
+                      <span
+                        className={[
+                          'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                          p.pagado
+                            ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                            : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                        ].join(' ')}
+                        aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                      >
+                        <User size={18} />
+                      </span>
 
                       <div className="text-left">
                         <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
@@ -463,15 +618,16 @@ export default function LavandoPage() {
                           </div>
                         )}
 
+                        {/* Galería de fotos */}
                         <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                          {typeof p.foto_url === 'string' && p.foto_url && !imageError[p.id] ? (
+                          {activeFoto && !imageError[p.id] ? (
                             <div
-                              className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() => openPickerFor(p.id)}
-                              title="Doble clic para cambiar la imagen"
+                              className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                              onDoubleClick={() => openPickerFor(p.id, activeFoto)}
+                              title="Doble clic para opciones de imagen"
                             >
                               <Image
-                                src={p.foto_url}
+                                src={activeFoto}
                                 alt={`Foto pedido ${p.id}`}
                                 width={0}
                                 height={0}
@@ -480,10 +636,38 @@ export default function LavandoPage() {
                                 onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                                 priority={false}
                               />
+
+                              {totalFotos > 1 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      changeSlide(p.id, -1);
+                                    }}
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
+                                  >
+                                    ◀
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      changeSlide(p.id, 1);
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
+                                  >
+                                    ▶
+                                  </button>
+                                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[10px]">
+                                    {slideIndex + 1} / {totalFotos}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           ) : (
                             <button
-                              onClick={() => openPickerFor(p.id)}
+                              onClick={() => openPickerFor(p.id, null)}
                               className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
                               title="Agregar imagen"
                             >
@@ -501,13 +685,19 @@ export default function LavandoPage() {
         </ErrorBoundary>
       </section>
 
-      {/* Barra de acciones (Lavando) - solo iconos */}
+      {/* Barra de acciones (Lavando) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
-
             <IconBtn
-              title="Guardardo"
+              title="Lavando"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              active={pedidoAbierto?.estado === 'LAVANDO'}
+              Icon={WashingMachine}
+            />
+            <IconBtn
+              title="Guardado"
               disabled={!pedidoAbierto || saving}
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
               active={pedidoAbierto?.estado === 'GUARDADO'}
@@ -526,13 +716,6 @@ export default function LavandoPage() {
               onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
-            />
-            <IconBtn
-              title="Lavar"
-              disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
-              active={pedidoAbierto?.estado === 'LAVAR'}
-              Icon={Droplet}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
@@ -593,11 +776,11 @@ export default function LavandoPage() {
         </div>
       )}
 
-      {/* Modal para elegir cámara/archivo */}
+      {/* Modal para opciones de imagen: sacar / cargar / eliminar */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">Imagen del pedido #{pickerForPedido}</h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -611,9 +794,29 @@ export default function LavandoPage() {
                 className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
               >
                 <ImagePlus size={18} />
-                Buscar en archivos
+                Cargar foto
               </button>
-              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+
+              {pickerFotoUrl && (
+                <button
+                  onClick={async () => {
+                    await handleDeleteFoto(pickerForPedido, pickerFotoUrl);
+                    setPickerForPedido(null);
+                    setPickerFotoUrl(null);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-red-100 text-red-700 px-4 py-3 hover:bg-red-200 mt-1"
+                >
+                  Eliminar foto actual
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setPickerForPedido(null);
+                  setPickerFotoUrl(null);
+                }}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
                 Cancelar
               </button>
             </div>
