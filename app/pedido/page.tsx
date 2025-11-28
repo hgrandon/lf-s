@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Save, X } from 'lucide-react';
 
-
 import Correlativo from './correlativo/Correlativo';
 import Telefono, { Cliente } from './telefono/Telefono';
 import Articulos, { Articulo, Item } from './articulos/Articulos';
@@ -456,8 +455,9 @@ export default function PedidoPage() {
   // líneas
   const [items, setItems] = useState<Item[]>([]);
 
-  // foto
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  // fotos
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null); // última foto para mostrar
+  const [fotos, setFotos] = useState<string[]>([]);            // TODAS las fotos del pedido
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
   // ref para la cámara / archivo (se usa en Correlativo y Fotos)
@@ -654,19 +654,37 @@ export default function PedidoPage() {
 
   /* === Foto === */
   async function uploadFoto(file: File) {
+    if (!nextInfo) {
+      console.warn('No hay correlativo aún, no se puede subir la foto.');
+      return;
+    }
+
     try {
       setSubiendoFoto(true);
+
       const stamp = Date.now();
       const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `tmp_${stamp}.${ext}`;
+
+      // Misma estructura que en Lavar: carpeta por pedido
+      const nro = nextInfo.nro;
+      const path = `pedido-${nro}/${stamp}.${ext}`;
+
       const { data, error } = await supabase.storage
         .from('fotos')
-        .upload(fileName, file, {
+        .upload(path, file, {
+          cacheControl: '3600',
           upsert: false,
         });
       if (error) throw error;
-      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data.path);
-      setFotoUrl(pub.publicUrl);
+
+      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data!.path);
+      const publicUrl = pub.publicUrl;
+
+      // última foto para mostrar en el componente Fotos
+      setFotoUrl(publicUrl);
+
+      // acumulamos todas las fotos del pedido
+      setFotos((prev) => [...prev, publicUrl]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -677,71 +695,73 @@ export default function PedidoPage() {
   /* === Guardar pedido === */
   const [saving, setSaving] = useState(false);
 
-async function guardarPedido() {
-  if (!nextInfo) return;
-  if (!items.length) {
-    alert('Debes agregar al menos un artículo.');
-    return;
-  }
-
-  try {
-    setSaving(true);
-
-    // Si hay foto, la guardamos como arreglo JSON para ser compatible con el slider de Lavar
-    const fotosArray = fotoUrl ? [fotoUrl] : [];
-
-    const payload = {
-      nro: nextInfo.nro,
-      telefono: cliente?.telefono ?? null,
-      total,
-      estado: 'LAVAR',
-      pagado: false,
-      fecha_ingreso: nextInfo.fechaIngresoISO,
-      fecha_entrega: nextInfo.fechaEntregaISO,
-      // IMPORTANTE: ahora como JSON si hay foto
-      foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
-    };
-
-    // 1) Insertar pedido
-    const { error: eP } = await supabase.from('pedido').insert(payload);
-    if (eP) throw eP;
-
-    // 2) Insertar líneas
-    const lineas = items
-      .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
-      .map((it) => ({
-        pedido_id: nextInfo.nro,
-        articulo: it.articulo,
-        cantidad: it.qty,
-        valor: it.valor,
-      }));
-
-    if (lineas.length) {
-      const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
-      if (eL) throw eL;
+  async function guardarPedido() {
+    if (!nextInfo) return;
+    if (!items.length) {
+      alert('Debes agregar al menos un artículo.');
+      return;
     }
 
-    // 3) Insertar foto inicial en pedido_foto (si existe)
-    if (fotoUrl) {
-      const { error: eF } = await supabase
-        .from('pedido_foto')
-        .insert({ pedido_id: nextInfo.nro, url: fotoUrl });
-      if (eF) throw eF;
+    try {
+      setSaving(true);
+
+      // Todas las fotos tomadas en Pedido (si no hay, usamos la última suelta)
+      const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
+
+      const payload = {
+        nro: nextInfo.nro,
+        telefono: cliente?.telefono ?? null,
+        total,
+        estado: 'LAVAR',
+        pagado: false,
+        fecha_ingreso: nextInfo.fechaIngresoISO,
+        fecha_entrega: nextInfo.fechaEntregaISO,
+        // Guardamos como JSON para que Lavar pueda usar el slider
+        foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
+      };
+
+      // 1) Insertar pedido
+      const { error: eP } = await supabase.from('pedido').insert(payload);
+      if (eP) throw eP;
+
+      // 2) Insertar líneas
+      const lineas = items
+        .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
+        .map((it) => ({
+          pedido_id: nextInfo.nro,
+          articulo: it.articulo,
+          cantidad: it.qty,
+          valor: it.valor,
+        }));
+
+      if (lineas.length) {
+        const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
+        if (eL) throw eL;
+      }
+
+      // 3) Insertar todas las fotos en pedido_foto
+      if (fotosArray.length) {
+        const filasFotos = fotosArray.map((url) => ({
+          pedido_id: nextInfo.nro,
+          url,
+        }));
+
+        const { error: eF } = await supabase.from('pedido_foto').insert(filasFotos);
+        if (eF) throw eF;
+      }
+
+      alert(`Pedido #${nextInfo.nro} guardado correctamente`);
+
+      // Volver al menú principal después de guardar
+      router.push('/base');
+      return;
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? 'No se pudo guardar el pedido');
+    } finally {
+      setSaving(false);
     }
-
-    alert(`Pedido #${nextInfo.nro} guardado correctamente`);
-
-    // Volver al menú principal después de guardar
-    router.push('/base');
-    return;
-  } catch (e: any) {
-    console.error(e);
-    alert(e?.message ?? 'No se pudo guardar el pedido');
-  } finally {
-    setSaving(false);
   }
-}
-
 
   const articuloAEliminar =
     deleteIndex !== null && items[deleteIndex]
