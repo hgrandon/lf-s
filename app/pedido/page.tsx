@@ -4,7 +4,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Save, X, Home, CreditCard } from 'lucide-react';
+import {
+  Loader2,
+  Save,
+  X,
+  Home,
+  CreditCard,
+  Droplet,
+  WashingMachine,
+  Archive,
+  Truck,
+  PackageCheck,
+} from 'lucide-react';
 
 import Correlativo from './correlativo/Correlativo';
 import Telefono, { Cliente } from './telefono/Telefono';
@@ -25,6 +36,13 @@ type LineaHistorico = {
   articulo: string;
   cantidad: number | null;
 };
+
+type PedidoEstado =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDADO'
+  | 'ENTREGAR'
+  | 'ENTREGADO';
 
 /* =========================
    Utilidades
@@ -51,6 +69,50 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
   if (!iso) return undefined;
   const [year, month, day] = iso.split('-');
   return `${day}-${month}-${year}`;
+}
+
+/* =========================
+   Config estado (icono ciclo)
+========================= */
+
+const ESTADOS_ORDEN: PedidoEstado[] = [
+  'LAVAR',
+  'LAVANDO',
+  'GUARDADO',
+  'ENTREGAR',
+  'ENTREGADO',
+];
+
+function getEstadoConfig(e: PedidoEstado) {
+  switch (e) {
+    case 'LAVAR':
+      return { label: 'LAVAR', Icon: Droplet, className: 'text-sky-300 drop-shadow' };
+    case 'LAVANDO':
+      return {
+        label: 'LAVANDO',
+        Icon: WashingMachine,
+        className: 'text-sky-400 drop-shadow',
+      };
+    case 'GUARDADO':
+      return {
+        label: 'GUARDADO',
+        Icon: Archive,
+        className: 'text-amber-400 drop-shadow',
+      };
+    case 'ENTREGAR':
+      return {
+        label: 'ENTREGAR',
+        Icon: Truck,
+        className: 'text-fuchsia-300 drop-shadow',
+      };
+    case 'ENTREGADO':
+    default:
+      return {
+        label: 'ENTREGADO',
+        Icon: PackageCheck,
+        className: 'text-emerald-400 drop-shadow',
+      };
+  }
 }
 
 /* =========================
@@ -492,12 +554,15 @@ export default function PedidoPage() {
 
   // fotos
   const [fotoUrl, setFotoUrl] = useState<string | null>(null); // última foto para mostrar
-  const [fotos, setFotos] = useState<string[]>([]);            // TODAS las fotos del pedido
+  const [fotos, setFotos] = useState<string[]>([]); // TODAS las fotos del pedido
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
-  // estados de pago y tipo de entrega (TOMAN EL MISMO COMPORTAMIENTO QUE EN EDITAR)
+  // estados de pago y tipo de entrega
   const [pagado, setPagado] = useState<boolean>(false);
   const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
+
+  // estado del pedido (icono que cicla)
+  const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
 
   // ref para la cámara / archivo (se usa en Correlativo y Fotos)
   const fotoInputRef = useRef<HTMLInputElement>(null!);
@@ -788,7 +853,7 @@ export default function PedidoPage() {
         nro: nextInfo.nro,
         telefono: cliente?.telefono ?? null,
         total,
-        estado: 'LAVAR' as const,
+        estado,
         pagado,
         tipo_entrega: tipoEntrega,
         fecha_ingreso: nextInfo.fechaIngresoISO,
@@ -843,6 +908,8 @@ export default function PedidoPage() {
       ? items[deleteIndex].articulo
       : '';
 
+  const estadoConfig = getEstadoConfig(estado);
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
@@ -884,14 +951,14 @@ export default function PedidoPage() {
         <Fotos
           fotoUrl={fotoUrl}
           inputRef={fotoInputRef}
-          initialGaleria={fotos}   // todas las fotos del pedido
+          initialGaleria={fotos} // todas las fotos del pedido
           onFileSelected={(file) => {
             if (file) uploadFoto(file);
           }}
         />
       </section>
 
-      {/* Botón guardar fijo abajo + iconos de estado/tipo entrega (igual que EDITAR) */}
+      {/* Botón guardar fijo abajo + iconos de estado/tipo entrega */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           <button
@@ -904,6 +971,24 @@ export default function PedidoPage() {
           </button>
 
           <div className="flex items-center gap-4 ml-2">
+            {/* Estado: icono que avanza en el ciclo al hacer click */}
+            <button
+              type="button"
+              onClick={() =>
+                setEstado((prev) => {
+                  const idx = ESTADOS_ORDEN.indexOf(prev);
+                  const next = ESTADOS_ORDEN[(idx + 1) % ESTADOS_ORDEN.length];
+                  return next;
+                })
+              }
+              className="flex flex-col items-center text-xs focus:outline-none"
+            >
+              <estadoConfig.Icon size={32} className={estadoConfig.className} />
+              <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                {estadoConfig.label}
+              </span>
+            </button>
+
             {/* Casa: LOCAL rojo / DOMICILIO amarillo (toggle al hacer click) */}
             <button
               type="button"
@@ -934,9 +1019,7 @@ export default function PedidoPage() {
               <CreditCard
                 size={32}
                 className={
-                  pagado
-                    ? 'text-green-400 drop-shadow'
-                    : 'text-red-400 drop-shadow'
+                  pagado ? 'text-green-400 drop-shadow' : 'text-red-400 drop-shadow'
                 }
               />
               <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
