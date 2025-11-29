@@ -22,7 +22,7 @@ type PedidoDb = {
   tipo_entrega: string | null;
   fecha_ingreso: string | null;
   fecha_entrega: string | null;
-  bolsas: number | null; // <-- NUEVO
+  bolsas: number | null;
 };
 
 type ClienteDb = {
@@ -41,7 +41,13 @@ type PedidoRotulo = {
   tipoEntrega: 'LOCAL' | 'DOMICILIO' | null;
   fechaIngreso: string | null;
   fechaEntrega: string | null;
-  bolsas: number; // <-- NUEVO: cantidad de bolsas
+  bolsas: number;
+};
+
+type RotuloConBolsa = {
+  pedido: PedidoRotulo;
+  bolsaIndex: number; // 1, 2, 3…
+  bolsasTotal: number; // total de bolsas de ese pedido
 };
 
 const ESTADOS_VALIDOS: EstadoKey[] = [
@@ -69,7 +75,9 @@ export default function RotulosPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [pedidos, setPedidos] = useState<PedidoRotulo[]>([]);
+
+  // rótulos ya “explotados” por bolsas
+  const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -98,7 +106,7 @@ export default function RotulosPage() {
 
       const pedidosRaw = (pedData as PedidoDb[]) || [];
       if (!pedidosRaw.length) {
-        if (mountedRef.current) setPedidos([]);
+        if (mountedRef.current) setRotulos([]);
         return;
       }
 
@@ -127,16 +135,13 @@ export default function RotulosPage() {
       }
 
       // 3) Combinar pedidos + clientes
-      const list: PedidoRotulo[] = pedidosRaw
+      const pedidosBase: PedidoRotulo[] = pedidosRaw
         .map((p) => {
           const estadoNorm = normalizeEstado(p.estado);
           if (!estadoNorm) return null;
 
           const tel = (p.telefono || '').toString().trim();
           const cli = tel ? clientesMap.get(tel) : undefined;
-
-          const bolsasNum = Number(p.bolsas ?? 1);
-          const bolsas = bolsasNum > 0 ? bolsasNum : 1;
 
           return {
             nro: Number(p.nro),
@@ -152,13 +157,26 @@ export default function RotulosPage() {
               : null,
             fechaIngreso: p.fecha_ingreso,
             fechaEntrega: p.fecha_entrega,
-            bolsas,
+            bolsas: Math.max(1, Number(p.bolsas || 1)), // mínimo 1
           } as PedidoRotulo;
         })
         .filter((x): x is PedidoRotulo => x !== null)
         .sort((a, b) => a.nro - b.nro);
 
-      if (mountedRef.current) setPedidos(list);
+      // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
+      const rotulosLista: RotuloConBolsa[] = [];
+      for (const ped of pedidosBase) {
+        const totalBolsas = ped.bolsas || 1;
+        for (let i = 1; i <= totalBolsas; i++) {
+          rotulosLista.push({
+            pedido: ped,
+            bolsaIndex: i,
+            bolsasTotal: totalBolsas,
+          });
+        }
+      }
+
+      if (mountedRef.current) setRotulos(rotulosLista);
     } catch (e: any) {
       console.error('Error cargando rótulos', e);
       if (mountedRef.current) {
@@ -173,25 +191,10 @@ export default function RotulosPage() {
     fetchRotulos();
   }, []);
 
-  // Expandimos pedidos en "tarjetas" por bolsa: 1/3, 2/3, 3/3...
-  const tarjetas = useMemo(
-    () =>
-      pedidos.flatMap((p) => {
-        const totalBolsas = p.bolsas || 1;
-        return Array.from({ length: totalBolsas }, (_, idx) => ({
-          key: `${p.nro}-b${idx + 1}`,
-          pedido: p,
-          bolsaIndex: idx + 1,
-          bolsasTotal: totalBolsas,
-        }));
-      }),
-    [pedidos]
-  );
-
-  const cantidad = tarjetas.length;
+  const cantidad = useMemo(() => rotulos.length, [rotulos]);
 
   function handlePrint() {
-    if (!tarjetas.length) {
+    if (!rotulos.length) {
       alert('No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.');
       return;
     }
@@ -288,7 +291,7 @@ export default function RotulosPage() {
           </div>
         )}
 
-        {!loading && !tarjetas.length && (
+        {!loading && !rotulos.length && (
           <div className="mt-10 text-center text-sm print:hidden">
             No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.
           </div>
@@ -301,12 +304,12 @@ export default function RotulosPage() {
             print:grid-cols-2 print:gap-2
           "
         >
-          {tarjetas.map((t) => (
+          {rotulos.map((r) => (
             <RotuloCard
-              key={t.key}
-              pedido={t.pedido}
-              bolsaIndex={t.bolsaIndex}
-              bolsasTotal={t.bolsasTotal}
+              key={`${r.pedido.nro}-${r.bolsaIndex}`}
+              pedido={r.pedido}
+              bolsaIndex={r.bolsaIndex}
+              bolsasTotal={r.bolsasTotal}
             />
           ))}
         </div>
@@ -317,7 +320,7 @@ export default function RotulosPage() {
 
 /* =========================
    Tarjeta de Rótulo TIPO ETIQUETA
-   (con indicador 1/3, 2/3, 3/3)
+   Tamaño: 8.5 x 2.5 cm
 ========================= */
 
 function RotuloCard({
@@ -334,45 +337,52 @@ function RotuloCard({
       ? 'LAVANDERÍA FABIOLA'
       : pedido.direccion.toUpperCase();
 
+  // Mostrar fracción SOLO si hay más de 1 bolsa (no mostrar 1/1)
+  const fraccionTexto = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
+
   return (
     <div
       className="
-        bg-white text-slate-900 border border-slate-900
+        bg-white text-slate-900 border border-violet-700
         flex flex-col justify-center items-center gap-1
         break-inside-avoid
-        print:border-black
+        print:border-violet-700
       "
       style={{
-        width: '9.5cm',
+        width: '8.5cm', // <--- NUEVO TAMAÑO
         height: '2.5cm',
         padding: '0.2cm',
       }}
     >
-      {/* Logo + Nombre + #Servicio + BOLSA 1/3 */}
-      <div className="flex items-center justify-start gap-2 w-full">
-        {/* LOGO — grande */}
-        <img
-          src="/logo.png"
-          alt="LF"
-          style={{ width: '1.8cm', height: '1.8cm', objectFit: 'contain' }}
-        />
+      {/* LOGO + NOMBRE + NRO + FRACCIÓN */}
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-2">
+          {/* LOGO grande */}
+          <img
+            src="/logo.png"
+            alt="LF"
+            style={{ width: '1.7cm', height: '1.7cm', objectFit: 'contain' }}
+          />
 
-        <div className="flex flex-col leading-tight">
-          {/* Nombre */}
-          <span className="text-[0.75rem] font-bold text-violet-700 uppercase tracking-tight">
-            {pedido.clienteNombre || 'SIN NOMBRE'}
-          </span>
+          <div className="flex flex-col leading-tight">
+            {/* Nombre */}
+            <span className="text-[0.75rem] font-bold text-violet-700 uppercase tracking-tight">
+              {pedido.clienteNombre || 'SIN NOMBRE'}
+            </span>
 
-          {/* Número de servicio — grande */}
-          <span className="text-[1.8rem] text-violet-700 font-black leading-none">
-            {pedido.nro}
-          </span>
-
-          {/* Indicador de bolsa: 1/3, 2/3, 3/3... */}
-          <span className="text-[0.7rem] font-semibold text-violet-500 mt-0.5">
-            {bolsaIndex}/{bolsasTotal}
-          </span>
+            {/* Número de servicio ENORME */}
+            <span className="text-[2.0rem] leading-none text-violet-700 font-black">
+              {pedido.nro}
+            </span>
+          </div>
         </div>
+
+        {/* Fracción grande a la derecha (solo si >1 bolsa) */}
+        {fraccionTexto && (
+          <div className="pl-3 pr-1 text-violet-700 font-black text-[1.4rem] whitespace-nowrap">
+            {fraccionTexto}
+          </div>
+        )}
       </div>
 
       {/* Monto + Dirección */}
