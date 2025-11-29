@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Save, X, Search } from 'lucide-react';
+import { Loader2, Save, X, Search, Home, CreditCard } from 'lucide-react';
 
 import Correlativo from '../pedido/correlativo/Correlativo';
 import Telefono, { Cliente } from '../pedido/telefono/Telefono';
@@ -62,7 +62,7 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
 }
 
 /* =========================
-   Modales reutilizables (copiados de pedido)
+   Modales reutilizables
 ========================= */
 
 function NuevoClienteModal({
@@ -304,7 +304,6 @@ function DetalleArticuloModal({
   );
 }
 
-
 function DeleteItemModal({
   open,
   articulo,
@@ -471,6 +470,8 @@ export default function EditarPedidoPage() {
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
   const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
   const [pagadoOriginal, setPagadoOriginal] = useState<boolean | null>(null);
+  const [tipoEntregaOriginal, setTipoEntregaOriginal] =
+    useState<'LOCAL' | 'DOMICILIO' | null>(null);
 
   // cliente
   const [telefono, setTelefono] = useState('');
@@ -608,7 +609,7 @@ export default function EditarPedidoPage() {
       const { data: ped, error: eP } = await supabase
         .from('pedido')
         .select(
-          'nro, telefono, total, estado, pagado, fecha_ingreso, fecha_entrega, foto_url',
+          'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url',
         )
         .eq('nro', nro)
         .maybeSingle();
@@ -623,9 +624,7 @@ export default function EditarPedidoPage() {
         return;
       }
 
-      // Info base
-      const ingresoISO: string =
-        ped.fecha_ingreso || ymd(new Date());
+      const ingresoISO: string = ped.fecha_ingreso || ymd(new Date());
       const entregaISO: string =
         ped.fecha_entrega ||
         ymd(addBusinessDays(new Date(ingresoISO), 3));
@@ -637,8 +636,15 @@ export default function EditarPedidoPage() {
       });
       setEstadoOriginal(ped.estado as PedidoEstado);
       setPagadoOriginal(ped.pagado ?? null);
+      setTipoEntregaOriginal(
+        ped.tipo_entrega
+          ? (String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
+              ? 'DOMICILIO'
+              : 'LOCAL')
+          : null,
+      );
 
-      // Teléfono y cliente
+      // Teléfono
       setTelefono(ped.telefono ?? '');
 
       // Líneas
@@ -696,8 +702,6 @@ export default function EditarPedidoPage() {
   }
 
   /* === Lógica para selección de artículos (abre modal al elegir) === */
-  /* === Lógica para selección de artículos (abre modal al elegir) === */
-  /* === Lógica para selección de artículos (abre modal al elegir) === */
   function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
@@ -734,8 +738,6 @@ export default function EditarPedidoPage() {
     setArticuloDetalle(found);
     setOpenDetalle(true);
   }
-
-
 
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
     setItems((prev) => {
@@ -989,16 +991,52 @@ export default function EditarPedidoPage() {
         </section>
       )}
 
-      {/* Botón guardar cambios fijo abajo */}
+      {/* Botón guardar + iconos de estado */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
-        <button
-          onClick={guardarCambios}
-          disabled={saving || !hayPedidoCargado}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
-        >
-          {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-          Guardar cambios
-        </button>
+        <div className="mx-auto max-w-6xl flex items-center gap-4">
+          <button
+            onClick={guardarCambios}
+            disabled={saving || !hayPedidoCargado}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+          >
+            {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+            Guardar cambios
+          </button>
+
+          {hayPedidoCargado && (
+            <div className="flex items-center gap-4 ml-2">
+              {/* Casa: LOCAL rojo / DOMICILIO amarillo */}
+              <div className="flex flex-col items-center text-xs">
+                <Home
+                  size={32}
+                  className={
+                    tipoEntregaOriginal === 'DOMICILIO'
+                      ? 'text-yellow-300 drop-shadow'
+                      : 'text-red-500 drop-shadow'
+                  }
+                />
+                <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                  {tipoEntregaOriginal === 'DOMICILIO' ? 'DOMICILIO' : 'LOCAL'}
+                </span>
+              </div>
+
+              {/* Tarjeta: pagado verde / pendiente rojo */}
+              <div className="flex flex-col items-center text-xs">
+                <CreditCard
+                  size={32}
+                  className={
+                    pagadoOriginal
+                      ? 'text-green-400 drop-shadow'
+                      : 'text-red-400 drop-shadow'
+                  }
+                />
+                <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                  {pagadoOriginal ? 'PAGADO' : 'PENDIENTE'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </footer>
 
       {/* Modales */}
