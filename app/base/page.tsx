@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
+  Printer,          // 👈 NUEVO ICONO
 } from 'lucide-react';
 
 /* =========================
@@ -137,6 +138,9 @@ export default function BasePage() {
         subtitle: `P. pago ${pendingEntregado}`,
       },
       { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
+
+      // 🔹 NUEVO TILE: Imp Rotulo (sin contador)
+      { title: 'Imp Rótulo', key: null, icon: Printer, href: '/rotulos' },
     ],
     [pendingEntregado]
   );
@@ -186,7 +190,7 @@ export default function BasePage() {
         <div className="grid grid-cols-2 gap-4 sm:gap-5 [grid-auto-rows:5.5rem] sm:[grid-auto-rows:6rem]">
           {tiles.map((t) => (
             <Tile
-              key={`${t.key}-${t.title}`}
+              key={`${t.title}-${t.href}`}
               title={t.title}
               count={loading || !t.key ? null : counts[t.key]}
               onClick={() => router.push(t.href)}
@@ -260,13 +264,13 @@ function Tile({
           </div>
         </div>
         <div className="text-right w-12 sm:w-14">
-            {count === null ? (
-              <span className="block w-0 h-0"></span>
-            ) : (
-              <span className="block text-2xl sm:text-3xl font-extrabold leading-none tracking-tight">
-                {count}
-              </span>
-            )}
+          {count === null ? (
+            <span className="block w-0 h-0" />
+          ) : (
+            <span className="block text-2xl sm:text-3xl font-extrabold leading-none tracking-tight">
+              {count}
+            </span>
+          )}
         </div>
       </div>
     </button>
