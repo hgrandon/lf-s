@@ -22,6 +22,7 @@ type PedidoDb = {
   tipo_entrega: string | null;
   fecha_ingreso: string | null;
   fecha_entrega: string | null;
+  bolsas: number | null; // <-- NUEVO
 };
 
 type ClienteDb = {
@@ -40,6 +41,7 @@ type PedidoRotulo = {
   tipoEntrega: 'LOCAL' | 'DOMICILIO' | null;
   fechaIngreso: string | null;
   fechaEntrega: string | null;
+  bolsas: number; // <-- NUEVO: cantidad de bolsas
 };
 
 const ESTADOS_VALIDOS: EstadoKey[] = [
@@ -87,7 +89,7 @@ export default function RotulosPage() {
       const { data: pedData, error: pedErr } = await supabase
         .from('pedido')
         .select(
-          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega'
+          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas'
         )
         .in('estado', ['LAVAR', 'LAVANDO'])
         .order('nro', { ascending: true });
@@ -133,6 +135,9 @@ export default function RotulosPage() {
           const tel = (p.telefono || '').toString().trim();
           const cli = tel ? clientesMap.get(tel) : undefined;
 
+          const bolsasNum = Number(p.bolsas ?? 1);
+          const bolsas = bolsasNum > 0 ? bolsasNum : 1;
+
           return {
             nro: Number(p.nro),
             telefono: tel || '',
@@ -147,6 +152,7 @@ export default function RotulosPage() {
               : null,
             fechaIngreso: p.fecha_ingreso,
             fechaEntrega: p.fecha_entrega,
+            bolsas,
           } as PedidoRotulo;
         })
         .filter((x): x is PedidoRotulo => x !== null)
@@ -167,10 +173,25 @@ export default function RotulosPage() {
     fetchRotulos();
   }, []);
 
-  const cantidad = useMemo(() => pedidos.length, [pedidos]);
+  // Expandimos pedidos en "tarjetas" por bolsa: 1/3, 2/3, 3/3...
+  const tarjetas = useMemo(
+    () =>
+      pedidos.flatMap((p) => {
+        const totalBolsas = p.bolsas || 1;
+        return Array.from({ length: totalBolsas }, (_, idx) => ({
+          key: `${p.nro}-b${idx + 1}`,
+          pedido: p,
+          bolsaIndex: idx + 1,
+          bolsasTotal: totalBolsas,
+        }));
+      }),
+    [pedidos]
+  );
+
+  const cantidad = tarjetas.length;
 
   function handlePrint() {
-    if (!pedidos.length) {
+    if (!tarjetas.length) {
       alert('No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.');
       return;
     }
@@ -267,7 +288,7 @@ export default function RotulosPage() {
           </div>
         )}
 
-        {!loading && !pedidos.length && (
+        {!loading && !tarjetas.length && (
           <div className="mt-10 text-center text-sm print:hidden">
             No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.
           </div>
@@ -280,8 +301,13 @@ export default function RotulosPage() {
             print:grid-cols-2 print:gap-2
           "
         >
-          {pedidos.map((p) => (
-            <RotuloCard key={p.nro} pedido={p} />
+          {tarjetas.map((t) => (
+            <RotuloCard
+              key={t.key}
+              pedido={t.pedido}
+              bolsaIndex={t.bolsaIndex}
+              bolsasTotal={t.bolsasTotal}
+            />
           ))}
         </div>
       </section>
@@ -291,9 +317,18 @@ export default function RotulosPage() {
 
 /* =========================
    Tarjeta de Rótulo TIPO ETIQUETA
+   (con indicador 1/3, 2/3, 3/3)
 ========================= */
 
-function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
+function RotuloCard({
+  pedido,
+  bolsaIndex,
+  bolsasTotal,
+}: {
+  pedido: PedidoRotulo;
+  bolsaIndex: number;
+  bolsasTotal: number;
+}) {
   const direccionLimpia =
     !pedido.direccion || pedido.direccion?.trim().toUpperCase() === 'LOCAL'
       ? 'LAVANDERÍA FABIOLA'
@@ -313,9 +348,9 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
         padding: '0.2cm',
       }}
     >
-      {/* Logo + Nombre + #Servicio */}
+      {/* Logo + Nombre + #Servicio + BOLSA 1/3 */}
       <div className="flex items-center justify-start gap-2 w-full">
-        {/* LOGO — más grande */}
+        {/* LOGO — grande */}
         <img
           src="/logo.png"
           alt="LF"
@@ -328,9 +363,14 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
             {pedido.clienteNombre || 'SIN NOMBRE'}
           </span>
 
-          {/* Número de servicio — MÁS GRANDE (antes 1.45rem) */}
+          {/* Número de servicio — grande */}
           <span className="text-[1.8rem] text-violet-700 font-black leading-none">
             {pedido.nro}
+          </span>
+
+          {/* Indicador de bolsa: 1/3, 2/3, 3/3... */}
+          <span className="text-[0.7rem] font-semibold text-violet-500 mt-0.5">
+            BOLSA {bolsaIndex}/{bolsasTotal}
           </span>
         </div>
       </div>
@@ -341,12 +381,7 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
         style={{ marginTop: '-2px' }}
       >
         <span className="text-[0.8rem] font-bold text-violet-700 shrink-0">
-          ${' '}
-          {pedido.total
-            ? new Intl.NumberFormat('es-CL', {
-                maximumFractionDigits: 0,
-              }).format(pedido.total)
-            : '0'}
+          {pedido.total != null ? CLP.format(pedido.total) : '$ 0'}
         </span>
 
         <span className="flex-1 text-[0.65rem] font-semibold text-violet-700 uppercase tracking-tight text-left">
