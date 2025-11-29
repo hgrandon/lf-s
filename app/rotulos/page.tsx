@@ -1,180 +1,232 @@
 // app/rotulos/page.tsx
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, AlertTriangle, Printer } from 'lucide-react';
-import Image from 'next/image';
+import { Printer, RefreshCw, ArrowLeft, AlertTriangle } from 'lucide-react';
 
-type EstadoKey = 'LAVAR' | 'LAVANDO';
+type EstadoKey =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
 
-type PedidoDB = {
+type PedidoDb = {
   nro: number;
+  telefono: string | null;
   total: number | null;
   estado: string | null;
-  telefono: string | null;
+  tipo_entrega: string | null;
+  fecha_ingreso: string | null;
+  fecha_entrega: string | null;
 };
 
-type ClienteDB = {
+type ClienteDb = {
   telefono: string;
   nombre: string | null;
+  direccion: string | null;
 };
 
-type RotuloPedido = {
+type PedidoRotulo = {
   nro: number;
-  total: number;
-  estado: EstadoKey;
   telefono: string;
-  nombre: string;
+  clienteNombre: string;
+  direccion: string;
+  total: number | null;
+  estado: EstadoKey;
+  tipoEntrega: 'LOCAL' | 'DOMICILIO' | null;
+  fechaIngreso: string | null;
+  fechaEntrega: string | null;
 };
+
+const ESTADOS_VALIDOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
+
+function normalizeEstado(v: string | null): EstadoKey | null {
+  if (!v) return null;
+  const key = v.trim().toUpperCase();
+  return ESTADOS_VALIDOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
+}
+
+function formatFechaDisplay(iso: string | null): string {
+  if (!iso) return '';
+  const [year, month, day] = iso.split('-');
+  if (!year || !month || !day) return iso;
+  return `${day}-${month}-${year}`;
+}
+
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 export default function RotulosPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [pedidos, setPedidos] = useState<RotuloPedido[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoRotulo[]>([]);
 
+  const mountedRef = useRef(true);
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-
-        // 1) Pedidos en LAVAR / LAVANDO
-        const { data: pedData, error: pedErr } = await supabase
-          .from('pedido')
-          .select('nro,total,estado,telefono')
-          .in('estado', ['LAVAR', 'LAVANDO'])
-          .order('nro', { ascending: true });
-
-        if (pedErr) throw pedErr;
-
-        const pedidosRaw = (pedData as PedidoDB[]) || [];
-        if (!pedidosRaw.length) {
-          setPedidos([]);
-          return;
-        }
-
-        // 2) Buscar nombres de clientes por teléfono en un solo query
-        const telefonos = Array.from(
-          new Set(
-            pedidosRaw
-              .map((p) => (p.telefono || '').replace(/\D/g, ''))
-              .filter((t) => t.length)
-          )
-        );
-
-        let mapaClientes: Record<string, string> = {};
-        if (telefonos.length) {
-          const { data: cliData, error: cliErr } = await supabase
-            .from('clientes')
-            .select('telefono,nombre')
-            .in('telefono', telefonos);
-
-          if (cliErr) throw cliErr;
-
-          mapaClientes = (cliData as ClienteDB[]).reduce(
-            (acc, c) => {
-              const tel = (c.telefono || '').replace(/\D/g, '');
-              if (tel) acc[tel] = (c.nombre || '').toString().toUpperCase();
-              return acc;
-            },
-            {} as Record<string, string>
-          );
-        }
-
-        const normalizados: RotuloPedido[] = pedidosRaw
-          .map((p) => {
-            const estado = (p.estado || '').trim().toUpperCase() as EstadoKey;
-            if (estado !== 'LAVAR' && estado !== 'LAVANDO') return null;
-
-            const tel = (p.telefono || '').replace(/\D/g, '');
-            const nombre = mapaClientes[tel] || 'SIN NOMBRE';
-
-            return {
-              nro: Number(p.nro),
-              total: Number(p.total || 0),
-              estado,
-              telefono: tel,
-              nombre,
-            };
-          })
-          .filter(Boolean) as RotuloPedido[];
-
-        setPedidos(normalizados);
-      } catch (e: any) {
-        console.error(e);
-        setErr(e?.message ?? 'No se pudieron cargar los rótulos');
-      } finally {
-        setLoading(false);
-      }
-    })();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
-  const totalPedidos = useMemo(() => pedidos.length, [pedidos]);
+  async function fetchRotulos() {
+    if (!mountedRef.current) return;
+    setLoading(true);
+    setErr(null);
 
-  const handlePrint = () => {
+    try {
+      // 1) Traer pedidos en estados LAVAR / LAVANDO
+      const { data: pedData, error: pedErr } = await supabase
+        .from('pedido')
+        .select(
+          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega',
+        )
+        .in('estado', ['LAVAR', 'LAVANDO'])
+        .order('nro', { ascending: true });
+
+      if (pedErr) throw pedErr;
+
+      const pedidosRaw = (pedData as PedidoDb[]) || [];
+      if (!pedidosRaw.length) {
+        if (mountedRef.current) {
+          setPedidos([]);
+        }
+        return;
+      }
+
+      // 2) Telefonos únicos para buscar clientes
+      const telefonos = Array.from(
+        new Set(
+          pedidosRaw
+            .map((p) => (p.telefono || '').toString().trim())
+            .filter((t) => t.length > 0),
+        ),
+      );
+
+      let clientesMap = new Map<string, ClienteDb>();
+
+      if (telefonos.length) {
+        const { data: cliData, error: cliErr } = await supabase
+          .from('clientes')
+          .select('telefono,nombre,direccion')
+          .in('telefono', telefonos);
+
+        if (cliErr) throw cliErr;
+
+        (cliData as ClienteDb[]).forEach((c) => {
+          clientesMap.set((c.telefono || '').toString().trim(), c);
+        });
+      }
+
+      // 3) Combinar pedidos + cliente
+      const list: PedidoRotulo[] = pedidosRaw
+        .map((p) => {
+          const estadoNorm = normalizeEstado(p.estado);
+          if (!estadoNorm) return null;
+
+          const tel = (p.telefono || '').toString().trim();
+          const cli = tel ? clientesMap.get(tel) : undefined;
+
+          return {
+            nro: Number(p.nro),
+            telefono: tel || '',
+            clienteNombre: (cli?.nombre || '').toString().toUpperCase(),
+            direccion: (cli?.direccion || '').toString().toUpperCase(),
+            total: p.total,
+            estado: estadoNorm,
+            tipoEntrega: p.tipo_entrega
+              ? (p.tipo_entrega.toString().toUpperCase() === 'DOMICILIO'
+                  ? 'DOMICILIO'
+                  : 'LOCAL')
+              : null,
+            fechaIngreso: p.fecha_ingreso,
+            fechaEntrega: p.fecha_entrega,
+          } as PedidoRotulo;
+        })
+        .filter((x): x is PedidoRotulo => x !== null)
+        .sort((a, b) => a.nro - b.nro);
+
+      if (mountedRef.current) {
+        setPedidos(list);
+      }
+    } catch (e: any) {
+      console.error('Error cargando rótulos', e);
+      if (mountedRef.current) {
+        setErr(e?.message ?? 'No se pudieron cargar los rótulos.');
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchRotulos();
+  }, []);
+
+  const cantidad = useMemo(() => pedidos.length, [pedidos]);
+
+  function handlePrint() {
     if (!pedidos.length) {
-      alert('No hay pedidos en LAVAR o LAVANDO para imprimir.');
+      alert('No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.');
       return;
     }
     window.print();
-  };
+  }
 
   return (
-    <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-24">
-      {/* Estilos especiales para impresión: sólo rótulos blancos, tamaño similar a ejemplo */}
-      <style jsx global>{`
-        @media print {
-          body {
-            background: #ffffff !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          .rotulos-wrapper {
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-          .rotulo-item {
-            page-break-inside: avoid;
-          }
-        }
-      `}</style>
-
+    <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-28">
+      {/* Fondo suave */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* HEADER (no se imprime) */}
-      <header className="no-print relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
-        <div>
-          <h1 className="font-bold text-xl sm:text-2xl">Rótulos de Lavandería</h1>
-          <p className="text-sm text-white/80">
-            Pedidos en estado <span className="font-semibold">LAVAR</span> o{' '}
-            <span className="font-semibold">LAVANDO</span>
-          </p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={handlePrint}
-            disabled={loading || !pedidos.length}
-            className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-800 px-3 py-2 text-sm font-semibold shadow hover:bg-violet-50 disabled:opacity-60"
-          >
-            <Printer size={16} />
-            Imp. Rótulos
-          </button>
+      {/* HEADER (oculto en impresión) */}
+      <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto print:hidden">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/base')}
-            className="text-sm text-white/90 hover:text-white"
+            className="inline-flex items-center gap-1 rounded-xl bg-white/10 border border-white/15 px-2 py-1 text-xs sm:text-sm hover:bg-white/15"
           >
-            ← Volver
+            <ArrowLeft size={14} />
+            Base
+          </button>
+          <div>
+            <h1 className="font-bold text-xl sm:text-2xl">Rótulos</h1>
+            <p className="text-xs sm:text-sm text-white/80">
+              Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={fetchRotulos}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-xs sm:text-sm hover:bg-white/15 disabled:opacity-60 print:hidden"
+          >
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+            {loading ? 'Actualizando…' : 'Actualizar'}
+          </button>
+
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-800 px-3 py-2 text-xs sm:text-sm font-semibold shadow hover:bg-violet-50 print:hidden"
+          >
+            <Printer size={16} />
+            Imp Rotulo
           </button>
         </div>
       </header>
 
-      {/* ERRORES (no se imprime) */}
+      {/* MENSAJE DE ERROR (no se imprime) */}
       {err && (
-        <div className="no-print relative z-10 mx-auto max-w-6xl px-4">
+        <div className="relative z-10 mx-auto max-w-6xl px-4 print:hidden">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
             <span>{err}</span>
@@ -182,107 +234,177 @@ export default function RotulosPage() {
         </div>
       )}
 
-      {/* CONTENIDO: LISTA DE RÓTULOS */}
-      <section className="relative z-10 mx-auto max-w-6xl px-4 rotulos-wrapper">
+      {/* INFO ARRIBA (oculta en impresión) */}
+      <section className="relative z-10 mx-auto max-w-6xl px-4 mb-2 print:hidden">
+        <p className="text-xs sm:text-sm text-white/85">
+          Total rótulos a imprimir:{' '}
+          <span className="font-bold text-yellow-200">{cantidad}</span>
+        </p>
+        <p className="text-[0.7rem] sm:text-xs text-white/70 mt-1">
+          En el cuadro de impresión puedes elegir &quot;Guardar como PDF&quot; para generar el archivo.
+        </p>
+      </section>
+
+      {/* CONTENIDO IMPRIMIBLE */}
+      <section className="relative z-10 mx-auto max-w-6xl px-2 sm:px-4 pb-8">
         {loading && (
-          <div className="no-print mt-10 flex items-center justify-center gap-2 text-sm">
-            <Loader2 className="animate-spin" size={18} />
-            Cargando pedidos…
+          <div className="mt-10 text-center text-sm print:hidden">
+            Cargando pedidos para rótulos…
           </div>
         )}
 
         {!loading && !pedidos.length && (
-          <div className="no-print mt-10 text-center text-sm">
-            No hay pedidos en LAVAR o LAVANDO.
+          <div className="mt-10 text-center text-sm print:hidden">
+            No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.
           </div>
         )}
 
-        {/* Cada rótulo: diseño lo más parecido a la imagen de ejemplo */}
-        <div className="mt-6 flex flex-col items-center gap-4">
-          {pedidos.map((p, idx) => {
-            // Por ahora siempre 1/1 (más adelante lo cambiaremos con el modal de bolsas)
-            const numeroFraccion = `1/1`;
-
-            return (
-              <div
-                key={p.nro + '-' + idx}
-                className="
-                  rotulo-item
-                  relative
-                  bg-white
-                  text-violet-800
-                  border-[2px]
-                  border-black
-                  rounded-sm
-                  px-4
-                  py-2
-                  w-full
-                  max-w-3xl
-                  shadow-sm
-                  print:shadow-none
-                "
-              >
-                {/* Contenido principal: logo + nombre + nro + fracción */}
-                <div className="flex items-center gap-3">
-                  {/* LOGO IZQUIERDO */}
-                  <div className="flex-shrink-0 flex flex-col items-center justify-center">
-                    <div className="w-14 h-10 relative">
-                      <Image
-                        src="/logo.png" // ajusta al nombre real de tu logo
-                        alt="Lavandería Fabiola"
-                        fill
-                        style={{ objectFit: 'contain' }}
-                      />
-                    </div>
-                    <span className="mt-1 text-[0.55rem] tracking-[0.12em] font-semibold uppercase">
-                      LAVANDERÍA
-                    </span>
-                  </div>
-
-                  {/* CENTRO: NOMBRE + NRO */}
-                  <div className="flex-1 text-center">
-                    <div className="text-sm font-extrabold tracking-[0.18em] uppercase">
-                      {p.nombre || 'SIN NOMBRE'}
-                    </div>
-                    <div className="leading-none mt-1">
-                      <span className="text-4xl sm:text-5xl font-extrabold tracking-tight">
-                        {p.nro}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* DERECHA: fracción (por ahora 1/1) */}
-                  <div className="flex-shrink-0 text-right">
-                    <div className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                      {numeroFraccion}
-                    </div>
-                  </div>
-                </div>
-
-                {/* LÍNEA INFERIOR: monto + texto lavandería */}
-                <div className="mt-2 border-t border-black pt-1 flex items-center justify-between">
-                  <div className="text-xs flex items-center gap-1">
-                    <span className="font-semibold">$</span>
-                    <span className="font-semibold">
-                      {p.total.toLocaleString('es-CL')}
-                    </span>
-                  </div>
-                  <div className="text-[0.65rem] tracking-[0.18em] font-extrabold uppercase">
-                    LAVANDERÍA FABIOLA
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        {/* GRID de rótulos (en impresión se ve en blanco/negro según impresora) */}
+        <div
+          className="
+            grid gap-3 sm:gap-4
+            grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+            print:grid-cols-2 print:gap-2
+          "
+        >
+          {pedidos.map((p) => (
+            <RotuloCard key={p.nro} pedido={p} />
+          ))}
         </div>
-
-        {/* pequeño resumen (no-print) */}
-        {totalPedidos > 0 && (
-          <p className="no-print mt-4 text-center text-xs text-white/80">
-            Se muestran {totalPedidos} rótulo(s) listos para imprimir.
-          </p>
-        )}
       </section>
     </main>
+  );
+}
+
+/* =========================
+   Tarjeta de Rótulo
+========================= */
+
+function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
+  const estadoColor = (() => {
+    switch (pedido.estado) {
+      case 'LAVAR':
+        return 'bg-red-500';
+      case 'LAVANDO':
+        return 'bg-orange-500';
+      case 'GUARDADO':
+        return 'bg-emerald-500';
+      case 'ENTREGAR':
+        return 'bg-blue-500';
+      case 'ENTREGADO':
+        return 'bg-slate-500';
+      default:
+        return 'bg-violet-500';
+    }
+  })();
+
+  const tipoEntrega = pedido.tipoEntrega || 'LOCAL';
+
+  return (
+    <div
+      className="
+        bg-white text-slate-900 rounded-xl border border-slate-300 shadow-sm
+        p-3 sm:p-4
+        break-inside-avoid
+        print:shadow-none print:rounded-none print:border-black
+      "
+      style={{
+        // aprox tamaño tipo etiqueta
+        minHeight: '8.5cm',
+      }}
+    >
+      {/* Header: logo + nro + estado */}
+      <div className="flex items-start justify-between mb-2 border-b border-slate-300 pb-1.5">
+        <div className="flex flex-col">
+          <span className="text-[0.7rem] font-semibold text-slate-600">
+            LAVANDERÍA
+          </span>
+          <span className="text-[0.95rem] font-extrabold tracking-wide">
+            FABIOLA
+          </span>
+          <span className="text-[0.65rem] text-slate-500">
+            SERVICIO DE LAVADO
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="text-[0.7rem] text-slate-600">SERVICIO</div>
+          <div className="text-[1.1rem] font-black leading-tight">
+            #{pedido.nro}
+          </div>
+          <div
+            className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[0.6rem] font-bold text-white ${estadoColor}`}
+          >
+            {pedido.estado}
+          </div>
+        </div>
+      </div>
+
+      {/* Cliente / Teléfono / Dirección */}
+      <div className="mb-1.5">
+        <div className="text-[0.7rem] font-semibold text-slate-600">
+          CLIENTE
+        </div>
+        <div className="text-[0.9rem] font-bold uppercase">
+          {pedido.clienteNombre || 'SIN NOMBRE'}
+        </div>
+      </div>
+      <div className="mb-1">
+        <span className="text-[0.7rem] font-semibold text-slate-600">
+          TEL:
+        </span>{' '}
+        <span className="text-[0.85rem] font-semibold">
+          {pedido.telefono || '-'}
+        </span>
+      </div>
+      <div className="mb-2">
+        <div className="text-[0.7rem] font-semibold text-slate-600">
+          DIRECCIÓN
+        </div>
+        <div className="text-[0.75rem] uppercase">
+          {pedido.direccion || 'SIN DIRECCIÓN REGISTRADA'}
+        </div>
+      </div>
+
+      {/* Fechas + Tipo entrega + Total */}
+      <div className="grid grid-cols-2 gap-2 mb-2 text-[0.7rem]">
+        <div>
+          <div className="font-semibold text-slate-600">INGRESO</div>
+          <div className="font-bold text-[0.8rem]">
+            {pedido.fechaIngreso ? formatFechaDisplay(pedido.fechaIngreso) : '-'}
+          </div>
+        </div>
+        <div>
+          <div className="font-semibold text-slate-600">ENTREGA</div>
+          <div className="font-bold text-[0.8rem]">
+            {pedido.fechaEntrega ? formatFechaDisplay(pedido.fechaEntrega) : '-'}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2 text-[0.7rem]">
+        <div>
+          <div className="font-semibold text-slate-600">TIPO ENTREGA</div>
+          <div className="font-bold text-[0.8rem]">
+            {tipoEntrega}
+          </div>
+        </div>
+        <div>
+          <div className="font-semibold text-slate-600">TOTAL APROX.</div>
+          <div className="font-bold text-[0.8rem]">
+            {pedido.total != null ? CLP.format(pedido.total) : '-'}
+          </div>
+        </div>
+      </div>
+
+      {/* NOTA */}
+      <div className="mt-1 pt-1 border-t border-dashed border-slate-300 text-[0.6rem] leading-snug">
+        <div className="font-semibold text-slate-700">
+          IMPORTANTE
+        </div>
+        <p className="text-slate-600">
+          Revise su ropa al retirar. No se responde por objetos dejados en los bolsillos.
+        </p>
+      </div>
+    </div>
   );
 }
