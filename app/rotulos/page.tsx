@@ -370,7 +370,7 @@ function RotuloCard({
 
           {/* Indicador de bolsa: 1/3, 2/3, 3/3... */}
           <span className="text-[0.7rem] font-semibold text-violet-500 mt-0.5">
-            BOLSA {bolsaIndex}/{bolsasTotal}
+            {bolsaIndex}/{bolsasTotal}
           </span>
         </div>
       </div>
