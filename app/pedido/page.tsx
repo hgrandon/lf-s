@@ -522,6 +522,85 @@ function NuevoArticuloModal({
   );
 }
 
+/** Modal para preguntar cantidad de bolsas */
+function BolsasModal({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (nBolsas: number) => void;
+}) {
+  const [valorStr, setValorStr] = useState('1');
+
+  useEffect(() => {
+    if (open) {
+      setValorStr('1');
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  function handleConfirm() {
+    const n = Number(valorStr.replace(/\D/g, '') || '0');
+    const bolsas = Math.max(1, n);
+    onConfirm(bolsas);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h2 className="font-bold text-sm sm:text-base">
+            Número de bolsas para este pedido
+          </h2>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 grid gap-3">
+          <div className="grid gap-1">
+            <label className="text-sm font-medium">Cantidad de bolsas</label>
+            <input
+              value={valorStr}
+              onChange={(e) =>
+                setValorStr(e.target.value.replace(/[^0-9]/g, ''))
+              }
+              inputMode="numeric"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-base text-center"
+              placeholder="1"
+            />
+            <p className="text-xs text-slate-600 mt-1">
+              Este número se usará para generar los rótulos (1/N, 2/N, 3/N…).
+            </p>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm"
+          >
+            <Save size={16} />
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* =========================
    Página principal
 ========================= */
@@ -563,6 +642,9 @@ export default function PedidoPage() {
 
   // estado del pedido (icono que cicla)
   const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
+
+  // bolsas (solo para flujo / debugging, se guarda en DB en guardarPedido)
+  const [bolsasModalOpen, setBolsasModalOpen] = useState(false);
 
   // ref para la cámara / archivo (se usa en Correlativo y Fotos)
   const fotoInputRef = useRef<HTMLInputElement>(null!);
@@ -806,7 +888,7 @@ export default function PedidoPage() {
       const stamp = Date.now();
       const ext = file.name.split('.').pop() || 'jpg';
 
-      // Misma estructura que en Lavar: carpeta por pedido
+      // carpeta por pedido
       const nro = nextInfo.nro;
       const path = `pedido-${nro}/${stamp}.${ext}`;
 
@@ -833,10 +915,10 @@ export default function PedidoPage() {
     }
   }
 
-  /* === Guardar pedido === */
+  /* === Guardar pedido (recibe n° de bolsas) === */
   const [saving, setSaving] = useState(false);
 
-  async function guardarPedido() {
+  async function guardarPedido(numBolsas: number) {
     if (!nextInfo) return;
     if (!items.length) {
       alert('Debes agregar al menos un artículo.');
@@ -858,6 +940,7 @@ export default function PedidoPage() {
         tipo_entrega: tipoEntrega,
         fecha_ingreso: nextInfo.fechaIngresoISO,
         fecha_entrega: nextInfo.fechaEntregaISO,
+        bolsas: numBolsas, // <-- NUEVO: número de bolsas
         // Guardamos como JSON para que otras vistas puedan usar el slider
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
       };
@@ -909,6 +992,16 @@ export default function PedidoPage() {
       : '';
 
   const estadoConfig = getEstadoConfig(estado);
+
+  function handleClickGuardar() {
+    if (!nextInfo) return;
+    if (!items.length) {
+      alert('Debes agregar al menos un artículo.');
+      return;
+    }
+    // Abrimos el modal de bolsas
+    setBolsasModalOpen(true);
+  }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
@@ -962,7 +1055,7 @@ export default function PedidoPage() {
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           <button
-            onClick={guardarPedido}
+            onClick={handleClickGuardar}
             disabled={saving || !nextInfo}
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
           >
@@ -1068,6 +1161,15 @@ export default function PedidoPage() {
         articulo={articuloAEliminar}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
+      />
+
+      <BolsasModal
+        open={bolsasModalOpen}
+        onClose={() => setBolsasModalOpen(false)}
+        onConfirm={(nBolsas) => {
+          setBolsasModalOpen(false);
+          guardarPedido(nBolsas);
+        }}
       />
 
       {subiendoFoto && (
