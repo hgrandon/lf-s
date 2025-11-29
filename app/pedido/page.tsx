@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Save, X } from 'lucide-react';
+import { Loader2, Save, X, Home, CreditCard } from 'lucide-react';
 
 import Correlativo from './correlativo/Correlativo';
 import Telefono, { Cliente } from './telefono/Telefono';
@@ -210,7 +210,6 @@ function NuevoClienteModal({
   );
 }
 
-/** Modal de detalle artículo (ajustado para móvil) */
 /** Modal de detalle artículo (ajustado para móvil y edición cómoda) */
 function DetalleArticuloModal({
   open,
@@ -306,7 +305,6 @@ function DetalleArticuloModal({
     </div>
   );
 }
-
 
 /** Modal de confirmación para eliminar artículo */
 function DeleteItemModal({
@@ -497,6 +495,10 @@ export default function PedidoPage() {
   const [fotos, setFotos] = useState<string[]>([]);            // TODAS las fotos del pedido
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
+  // estados de pago y tipo de entrega (TOMAN EL MISMO COMPORTAMIENTO QUE EN EDITAR)
+  const [pagado, setPagado] = useState<boolean>(false);
+  const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
+
   // ref para la cámara / archivo (se usa en Correlativo y Fotos)
   const fotoInputRef = useRef<HTMLInputElement>(null!);
 
@@ -621,7 +623,6 @@ export default function PedidoPage() {
   }, [telefono]);
 
   /* === Lógica para selección de artículos (abre modal al elegir) === */
-  /* === Lógica para selección de artículos (abre modal al elegir) === */
   function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
@@ -649,7 +650,6 @@ export default function PedidoPage() {
     setArticuloDetalle(found);
     setOpenDetalle(true);
   }
-
 
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
     const nombreNormalizado = d.articulo.trim().toUpperCase();
@@ -710,7 +710,6 @@ export default function PedidoPage() {
       ];
     });
   }
-
 
   function requestDelete(idx: number) {
     setDeleteIndex(idx);
@@ -789,11 +788,12 @@ export default function PedidoPage() {
         nro: nextInfo.nro,
         telefono: cliente?.telefono ?? null,
         total,
-        estado: 'LAVAR',
-        pagado: false,
+        estado: 'LAVAR' as const,
+        pagado,
+        tipo_entrega: tipoEntrega,
         fecha_ingreso: nextInfo.fechaIngresoISO,
         fecha_entrega: nextInfo.fechaEntregaISO,
-        // Guardamos como JSON para que Lavar pueda usar el slider
+        // Guardamos como JSON para que otras vistas puedan usar el slider
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
       };
 
@@ -855,20 +855,20 @@ export default function PedidoPage() {
           fechaEntrega={formatFechaDisplay(nextInfo?.fechaEntregaISO)}
           onClickCamara={() => fotoInputRef.current?.click()}
         />
-          <Telefono
-            telefono={telefono}
-            onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
-            checkingCli={checkingCli}
-            cliente={cliente}
-            onEditarCliente={() => {
-              const digits = (telefono || '').replace(/\D/g, '');
-              if (digits.length < 8) {
-                alert('Primero ingresa un teléfono válido.');
-                return;
-              }
-              setOpenCliModal(true);
-            }}
-          />
+        <Telefono
+          telefono={telefono}
+          onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
+          checkingCli={checkingCli}
+          cliente={cliente}
+          onEditarCliente={() => {
+            const digits = (telefono || '').replace(/\D/g, '');
+            if (digits.length < 8) {
+              alert('Primero ingresa un teléfono válido.');
+              return;
+            }
+            setOpenCliModal(true);
+          }}
+        />
       </header>
 
       {/* Contenido: selector + tabla (Articulos) y foto */}
@@ -881,39 +881,83 @@ export default function PedidoPage() {
           onRowClick={requestDelete}
         />
 
-          <Fotos
-            fotoUrl={fotoUrl}
-            inputRef={fotoInputRef}
-            initialGaleria={fotos}   // 🔹 AQUÍ LE PASAMOS TODAS LAS FOTOS DEL PEDIDO
-            onFileSelected={(file) => {
-              if (file) uploadFoto(file);
-            }}
-          />
+        <Fotos
+          fotoUrl={fotoUrl}
+          inputRef={fotoInputRef}
+          initialGaleria={fotos}   // todas las fotos del pedido
+          onFileSelected={(file) => {
+            if (file) uploadFoto(file);
+          }}
+        />
       </section>
 
-      {/* Botón guardar fijo abajo, como en tu mock */}
+      {/* Botón guardar fijo abajo + iconos de estado/tipo entrega (igual que EDITAR) */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
-        <button
-          onClick={guardarPedido}
-          disabled={saving || !nextInfo}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
-        >
-          {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-          Guardar Pedido
-        </button>
+        <div className="mx-auto max-w-6xl flex items-center gap-4">
+          <button
+            onClick={guardarPedido}
+            disabled={saving || !nextInfo}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+          >
+            {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+            Guardar Pedido
+          </button>
+
+          <div className="flex items-center gap-4 ml-2">
+            {/* Casa: LOCAL rojo / DOMICILIO amarillo (toggle al hacer click) */}
+            <button
+              type="button"
+              onClick={() =>
+                setTipoEntrega((prev) => (prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO'))
+              }
+              className="flex flex-col items-center text-xs focus:outline-none"
+            >
+              <Home
+                size={32}
+                className={
+                  tipoEntrega === 'DOMICILIO'
+                    ? 'text-yellow-300 drop-shadow'
+                    : 'text-red-500 drop-shadow'
+                }
+              />
+              <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                {tipoEntrega}
+              </span>
+            </button>
+
+            {/* Tarjeta: pagado verde / pendiente rojo (toggle al hacer click) */}
+            <button
+              type="button"
+              onClick={() => setPagado((prev) => !prev)}
+              className="flex flex-col items-center text-xs focus:outline-none"
+            >
+              <CreditCard
+                size={32}
+                className={
+                  pagado
+                    ? 'text-green-400 drop-shadow'
+                    : 'text-red-400 drop-shadow'
+                }
+              />
+              <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                {pagado ? 'PAGADO' : 'PENDIENTE'}
+              </span>
+            </button>
+          </div>
+        </div>
       </footer>
 
       {/* Modales */}
-        <NuevoClienteModal
-          open={openCliModal}
-          telefono={(telefono || '').replace(/\D/g, '')}
-          clienteActual={cliente}
-          onClose={() => setOpenCliModal(false)}
-          onSaved={(c) => {
-            setCliente(c);
-            setTelefono(c.telefono); // por si cambiaste el número
-          }}
-        />
+      <NuevoClienteModal
+        open={openCliModal}
+        telefono={(telefono || '').replace(/\D/g, '')}
+        clienteActual={cliente}
+        onClose={() => setOpenCliModal(false)}
+        onSaved={(c) => {
+          setCliente(c);
+          setTelefono(c.telefono); // por si cambiaste el número
+        }}
+      />
 
       <NuevoArticuloModal
         open={openArtModal}
