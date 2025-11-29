@@ -529,6 +529,11 @@ export default function EditarPedidoPage() {
   const [tipoEntrega, setTipoEntrega] =
     useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
 
+  // bolsas
+  const [bolsas, setBolsas] = useState<number | null>(null);
+  const [bolsasModalOpen, setBolsasModalOpen] = useState(false);
+  const [bolsasInput, setBolsasInput] = useState('');
+
   // originales (por si después quieres comparar)
   const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
   const [pagadoOriginal, setPagadoOriginal] = useState<boolean | null>(null);
@@ -671,7 +676,7 @@ export default function EditarPedidoPage() {
       const { data: ped, error: eP } = await supabase
         .from('pedido')
         .select(
-          'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url',
+          'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url, bolsas',
         )
         .eq('nro', nro)
         .maybeSingle();
@@ -696,9 +701,9 @@ export default function EditarPedidoPage() {
         fechaEntregaISO: entregaISO,
       });
 
-        const estadoRaw = (ped.estado as string) || 'LAVAR';
-        const estadoPed: PedidoEstado =
-         estadoRaw === 'GUARDAR' ? 'GUARDADO' : (estadoRaw as PedidoEstado);
+      const estadoRaw = (ped.estado as string) || 'LAVAR';
+      const estadoPed: PedidoEstado =
+        estadoRaw === 'GUARDAR' ? 'GUARDADO' : (estadoRaw as PedidoEstado);
       const pagadoPed: boolean = !!ped.pagado;
       const tipoPed: 'LOCAL' | 'DOMICILIO' =
         ped.tipo_entrega && String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
@@ -712,6 +717,13 @@ export default function EditarPedidoPage() {
       setEstadoOriginal(estadoPed);
       setPagadoOriginal(pagadoPed);
       setTipoEntregaOriginal(tipoPed);
+
+      // bolsas
+      const bolsasPed =
+        typeof ped.bolsas === 'number' && !Number.isNaN(ped.bolsas)
+          ? ped.bolsas
+          : null;
+      setBolsas(bolsasPed);
 
       // Teléfono
       setTelefono(ped.telefono ?? '');
@@ -890,10 +902,33 @@ export default function EditarPedidoPage() {
     }
   }
 
-  /* === Guardar cambios de pedido === */
+  /* =========================
+     Guardar cambios + bolsas
+  ========================== */
+
   const [saving, setSaving] = useState(false);
 
-  async function guardarCambios() {
+  function handleClickGuardar() {
+    if (!nextInfo) {
+      alert('Primero debes cargar un pedido.');
+      return;
+    }
+    if (!items.length) {
+      alert('Debes agregar al menos un artículo.');
+      return;
+    }
+
+    // Prellenar con bolsas actuales (si existen)
+    if (bolsas != null && !Number.isNaN(bolsas) && bolsas > 0) {
+      setBolsasInput(String(bolsas));
+    } else {
+      setBolsasInput('');
+    }
+
+    setBolsasModalOpen(true);
+  }
+
+  async function guardarCambiosConBolsas(numBolsas: number) {
     if (!nextInfo) {
       alert('Primero debes cargar un pedido.');
       return;
@@ -918,6 +953,7 @@ export default function EditarPedidoPage() {
           estado,
           pagado,
           tipo_entrega: tipoEntrega,
+          bolsas: numBolsas,
         })
         .eq('nro', nextInfo.nro);
 
@@ -972,6 +1008,17 @@ export default function EditarPedidoPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleConfirmBolsas() {
+    const n = Number(bolsasInput.replace(/\D/g, '') || '0');
+    if (!n || Number.isNaN(n) || n <= 0) {
+      alert('Ingresa un número de bolsas válido.');
+      return;
+    }
+    setBolsas(n);
+    setBolsasModalOpen(false);
+    void guardarCambiosConBolsas(n);
   }
 
   const articuloAEliminar =
@@ -1083,7 +1130,7 @@ export default function EditarPedidoPage() {
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           <button
-            onClick={guardarCambios}
+            onClick={handleClickGuardar}
             disabled={saving || !hayPedidoCargado}
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
           >
@@ -1145,7 +1192,59 @@ export default function EditarPedidoPage() {
         </div>
       </footer>
 
-      {/* Modales */}
+      {/* Modal bolsas */}
+      {bolsasModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div className="font-bold text-sm sm:text-base">
+                Número de bolsas
+              </div>
+              <button
+                onClick={() => setBolsasModalOpen(false)}
+                className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 grid gap-3">
+              <div className="grid gap-1">
+                <label className="text-xs sm:text-sm font-medium">
+                  ¿Cuántas bolsas tiene este pedido?
+                </label>
+                <input
+                  value={bolsasInput}
+                  onChange={(e) =>
+                    setBolsasInput(e.target.value.replace(/[^0-9]/g, ''))
+                  }
+                  inputMode="numeric"
+                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-base text-center"
+                  placeholder="Ej: 3"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t flex justify-end gap-2">
+              <button
+                onClick={() => setBolsasModalOpen(false)}
+                className="rounded-xl px-4 py-2 text-sm hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmBolsas}
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm"
+              >
+                <Save size={16} />
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modales secundarios */}
       <NuevoClienteModal
         open={openCliModal}
         telefono={(telefono || '').replace(/\D/g, '')}
