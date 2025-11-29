@@ -562,16 +562,37 @@ export default function LavarPage() {
                   {isOpen && (
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                       <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
-                        <button
-                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Table size={16} />
-                            <span className="font-semibold">Detalle Pedido</span>
-                          </div>
-                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </button>
+                          <button
+                            onClick={() =>
+                              setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                            }
+                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                          >
+                            {/* Lado izquierdo: título */}
+                            <div className="flex items-center gap-2">
+                              <Table size={16} />
+                              <span className="font-semibold">Detalle Pedido</span>
+                            </div>
+
+                            {/* Lado derecho: botón Editar + flecha */}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(ev) => {
+                                  ev.stopPropagation(); // para que NO abra/cierre el acordeón
+                                  router.push(`/pedido/editar/${p.id}`);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                          bg-violet-600 hover:bg-violet-700 text-white shadow"
+                              >
+                                ✏️
+                                <span>Editar</span>
+                              </button>
+
+                              {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </div>
+                          </button>
+
 
                         {detOpen && (
                           <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
