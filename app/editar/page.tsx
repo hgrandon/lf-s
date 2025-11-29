@@ -30,7 +30,6 @@ import Fotos from '../pedido/fotos/Fotos';
 type PedidoEstado =
   | 'LAVAR'
   | 'LAVANDO'
-  | 'GUARDAR'
   | 'GUARDADO'
   | 'ENTREGADO'
   | 'ENTREGAR';
@@ -80,7 +79,6 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
 const ESTADOS_ORDEN: PedidoEstado[] = [
   'LAVAR',
   'LAVANDO',
-  'GUARDAR',
   'GUARDADO',
   'ENTREGAR',
   'ENTREGADO',
@@ -103,8 +101,6 @@ function getEstadoConfig(e: PedidoEstado) {
         Icon: WashingMachine,
         className: 'text-sky-400 drop-shadow',
       };
-    case 'GUARDAR':
-      return { label: 'GUARDAR', Icon: Archive, className: 'text-amber-300 drop-shadow' };
     case 'GUARDADO':
       return { label: 'GUARDADO', Icon: Archive, className: 'text-amber-400 drop-shadow' };
     case 'ENTREGAR':
@@ -700,8 +696,9 @@ export default function EditarPedidoPage() {
         fechaEntregaISO: entregaISO,
       });
 
-      const estadoPed: PedidoEstado =
-        (ped.estado as PedidoEstado) || 'LAVAR';
+        const estadoRaw = (ped.estado as string) || 'LAVAR';
+        const estadoPed: PedidoEstado =
+         estadoRaw === 'GUARDAR' ? 'GUARDADO' : (estadoRaw as PedidoEstado);
       const pagadoPed: boolean = !!ped.pagado;
       const tipoPed: 'LOCAL' | 'DOMICILIO' =
         ped.tipo_entrega && String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
