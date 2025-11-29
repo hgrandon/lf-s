@@ -1088,7 +1088,7 @@ export default function EditarPedidoPage() {
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
           >
             {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-            Guardar cambios
+            Guardar
           </button>
 
           {hayPedidoCargado && (

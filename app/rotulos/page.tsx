@@ -174,7 +174,24 @@ export default function RotulosPage() {
       alert('No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.');
       return;
     }
-    window.print();
+
+    if (typeof window === 'undefined' || typeof window.print !== 'function') {
+      alert(
+        'La opción de impresión solo funciona en un navegador de escritorio. ' +
+          'Abre la app en el PC para generar el PDF.'
+      );
+      return;
+    }
+
+    console.log('Enviando comando window.print()…');
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch (e) {
+        console.error('Error al llamar a window.print()', e);
+        alert('No se pudo abrir el cuadro de impresión en este navegador.');
+      }
+    }, 50);
   }
 
   return (
@@ -210,6 +227,7 @@ export default function RotulosPage() {
           </button>
 
           <button
+            type="button"
             onClick={handlePrint}
             className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-800 px-3 py-2 text-xs sm:text-sm font-semibold shadow hover:bg-violet-50 print:hidden"
           >
@@ -297,7 +315,6 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
     >
       {/* Logo + Nombre + #Servicio */}
       <div className="flex items-center justify-start gap-2 w-full">
-
         {/* LOGO — más grande */}
         <img
           src="/logo.png"
@@ -311,8 +328,8 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
             {pedido.clienteNombre || 'SIN NOMBRE'}
           </span>
 
-          {/* Número de servicio — más grande */}
-          <span className="text-[1.45rem] text-violet-700 font-black leading-none">
+          {/* Número de servicio — MÁS GRANDE (antes 1.45rem) */}
+          <span className="text-[1.8rem] text-violet-700 font-black leading-none">
             {pedido.nro}
           </span>
         </div>
@@ -320,10 +337,10 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
 
       {/* Monto + Dirección */}
       <div
-        className="flex justify-between items-center w-full text-[0.65rem] font-medium"
+        className="flex w-full items-baseline justify-between gap-3 font-medium"
         style={{ marginTop: '-2px' }}
       >
-        <span className="text-[0.8rem] font-bold text-violet-700">
+        <span className="text-[0.8rem] font-bold text-violet-700 shrink-0">
           ${' '}
           {pedido.total
             ? new Intl.NumberFormat('es-CL', {
@@ -332,11 +349,10 @@ function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
             : '0'}
         </span>
 
-        <span className="text-[0.6rem] font-semibold text-violet-700 uppercase tracking-tight">
+        <span className="flex-1 text-[0.65rem] font-semibold text-violet-700 uppercase tracking-tight text-left">
           {direccionLimpia}
         </span>
       </div>
     </div>
   );
 }
-
