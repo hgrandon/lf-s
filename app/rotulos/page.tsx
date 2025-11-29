@@ -276,73 +276,67 @@ export default function RotulosPage() {
 ========================= */
 
 function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
-  // Dirección para mostrar: si viene vacía o LOCAL -> LAVANDERIA FABIOLA
-  const rawDir = (pedido.direccion || '').trim().toUpperCase();
-  const displayDireccion =
-    !rawDir || rawDir === 'LOCAL' ? 'LAVANDERIA FABIOLA' : rawDir;
-
-  const monto =
-    pedido.total != null
-      ? CLP.format(pedido.total) // ej: $20.000
-      : '';
+  const direccionLimpia =
+    !pedido.direccion || pedido.direccion?.trim().toUpperCase() === 'LOCAL'
+      ? 'LAVANDERÍA FABIOLA'
+      : pedido.direccion.toUpperCase();
 
   return (
     <div
       className="
-        bg-white text-slate-900
-        border border-black
-        shadow-none
-        rounded-none
-        px-4 py-2
-        flex items-center gap-4
+        bg-white text-slate-900 border border-slate-900
+        flex flex-col justify-center items-center gap-1
         break-inside-avoid
-        print:shadow-none print:border-black
+        print:border-black
       "
       style={{
-        minHeight: '3cm',
+        width: '9.5cm',
+        height: '2.5cm',
+        padding: '0.2cm',
       }}
     >
-      {/* BLOQUE IZQUIERDO: LOGO */}
-      <div className="flex flex-col items-center justify-center pr-4 border-r border-black h-full">
+      {/* Logo + Nombre + #Servicio */}
+      <div className="flex items-center justify-start gap-2 w-full">
+
+        {/* LOGO — más grande */}
         <img
           src="/logo.png"
-          alt="Lavandería Fabiola"
-          className="h-10 w-auto mb-1"
+          alt="LF"
+          style={{ width: '1.8cm', height: '1.8cm', objectFit: 'contain' }}
         />
-        <span className="text-[0.6rem] font-semibold text-violet-700 tracking-wide">
-          LAVANDERIA FABIOLA
-        </span>
+
+        <div className="flex flex-col leading-tight">
+          {/* Nombre */}
+          <span className="text-[0.75rem] font-bold text-violet-700 uppercase tracking-tight">
+            {pedido.clienteNombre || 'SIN NOMBRE'}
+          </span>
+
+          {/* Número de servicio — más grande */}
+          <span className="text-[1.45rem] text-violet-700 font-black leading-none">
+            {pedido.nro}
+          </span>
+        </div>
       </div>
 
-      {/* BLOQUE DERECHO: NOMBRE + NRO + DIRECCIÓN + MONTO */}
-      <div className="flex-1 flex flex-col justify-between h-full">
-        {/* Nombre */}
-        <div className="text-[0.8rem] sm:text-[0.9rem] font-extrabold text-violet-800 tracking-wide uppercase">
-          {pedido.clienteNombre || 'SIN NOMBRE'}
-        </div>
+      {/* Monto + Dirección */}
+      <div
+        className="flex justify-between items-center w-full text-[0.65rem] font-medium"
+        style={{ marginTop: '-2px' }}
+      >
+        <span className="text-[0.8rem] font-bold text-violet-700">
+          ${' '}
+          {pedido.total
+            ? new Intl.NumberFormat('es-CL', {
+                maximumFractionDigits: 0,
+              }).format(pedido.total)
+            : '0'}
+        </span>
 
-        {/* Número de servicio */}
-        <div className="mt-1 text-[1.7rem] sm:text-[2rem] font-black text-violet-700 leading-none">
-          {pedido.nro}
-        </div>
-
-        {/* Dirección / texto inferior + monto a la izquierda */}
-        <div className="mt-1 flex items-center justify-between text-[0.7rem] sm:text-[0.75rem]">
-          <div className="flex items-center gap-1">
-            {monto && (
-              <>
-                <span className="text-slate-800 font-semibold mr-1">$</span>
-                <span className="font-semibold text-slate-900">
-                  {monto.replace('$', '').trim()}
-                </span>
-              </>
-            )}
-          </div>
-          <div className="text-violet-700 font-semibold tracking-wide uppercase text-right">
-            {displayDireccion}
-          </div>
-        </div>
+        <span className="text-[0.6rem] font-semibold text-violet-700 uppercase tracking-tight">
+          {direccionLimpia}
+        </span>
       </div>
     </div>
   );
 }
+
