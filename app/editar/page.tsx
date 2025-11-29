@@ -4,7 +4,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Save, X, Search, Home, CreditCard } from 'lucide-react';
+import {
+  Loader2,
+  Save,
+  X,
+  Search,
+  Home,
+  CreditCard,
+  Droplet,
+  WashingMachine,
+  Archive,
+  Truck,
+  PackageCheck,
+} from 'lucide-react';
 
 import Correlativo from '../pedido/correlativo/Correlativo';
 import Telefono, { Cliente } from '../pedido/telefono/Telefono';
@@ -59,6 +71,52 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
   if (!iso) return undefined;
   const [year, month, day] = iso.split('-');
   return `${day}-${month}-${year}`;
+}
+
+/* =========================
+   Config estado (icono + color)
+========================= */
+
+const ESTADOS_ORDEN: PedidoEstado[] = [
+  'LAVAR',
+  'LAVANDO',
+  'GUARDAR',
+  'GUARDADO',
+  'ENTREGAR',
+  'ENTREGADO',
+];
+
+function nextEstado(actual: PedidoEstado | null): PedidoEstado {
+  if (!actual) return 'LAVAR';
+  const idx = ESTADOS_ORDEN.indexOf(actual);
+  if (idx === -1 || idx === ESTADOS_ORDEN.length - 1) return ESTADOS_ORDEN[0];
+  return ESTADOS_ORDEN[idx + 1];
+}
+
+function getEstadoConfig(e: PedidoEstado) {
+  switch (e) {
+    case 'LAVAR':
+      return { label: 'LAVAR', Icon: Droplet, className: 'text-sky-300 drop-shadow' };
+    case 'LAVANDO':
+      return {
+        label: 'LAVANDO',
+        Icon: WashingMachine,
+        className: 'text-sky-400 drop-shadow',
+      };
+    case 'GUARDAR':
+      return { label: 'GUARDAR', Icon: Archive, className: 'text-amber-300 drop-shadow' };
+    case 'GUARDADO':
+      return { label: 'GUARDADO', Icon: Archive, className: 'text-amber-400 drop-shadow' };
+    case 'ENTREGAR':
+      return { label: 'ENTREGAR', Icon: Truck, className: 'text-fuchsia-300 drop-shadow' };
+    case 'ENTREGADO':
+    default:
+      return {
+        label: 'ENTREGADO',
+        Icon: PackageCheck,
+        className: 'text-emerald-400 drop-shadow',
+      };
+  }
 }
 
 /* =========================
@@ -230,7 +288,7 @@ function DetalleArticuloModal({
       setValorStr(
         articulo.precio != null && !Number.isNaN(articulo.precio)
           ? String(articulo.precio)
-          : ''
+          : '',
       );
     }
   }, [open, articulo]);
@@ -468,11 +526,18 @@ export default function EditarPedidoPage() {
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-  const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
 
-  // ahora son estados EDITABLES
+  // estado / pagado / tipo entrega (EDITABLES)
+  const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
   const [pagado, setPagado] = useState<boolean>(false);
-  const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
+  const [tipoEntrega, setTipoEntrega] =
+    useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
+
+  // originales (por si después quieres comparar)
+  const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
+  const [pagadoOriginal, setPagadoOriginal] = useState<boolean | null>(null);
+  const [tipoEntregaOriginal, setTipoEntregaOriginal] =
+    useState<'LOCAL' | 'DOMICILIO' | null>(null);
 
   // cliente
   const [telefono, setTelefono] = useState('');
@@ -627,24 +692,29 @@ export default function EditarPedidoPage() {
 
       const ingresoISO: string = ped.fecha_ingreso || ymd(new Date());
       const entregaISO: string =
-        ped.fecha_entrega ||
-        ymd(addBusinessDays(new Date(ingresoISO), 3));
+        ped.fecha_entrega || ymd(addBusinessDays(new Date(ingresoISO), 3));
 
       setNextInfo({
         nro: ped.nro,
         fechaIngresoISO: ingresoISO,
         fechaEntregaISO: entregaISO,
       });
-      setEstadoOriginal(ped.estado as PedidoEstado);
 
-      // estados editables
-      setPagado(!!ped.pagado);
-      setTipoEntrega(
-        ped.tipo_entrega &&
-        String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
+      const estadoPed: PedidoEstado =
+        (ped.estado as PedidoEstado) || 'LAVAR';
+      const pagadoPed: boolean = !!ped.pagado;
+      const tipoPed: 'LOCAL' | 'DOMICILIO' =
+        ped.tipo_entrega && String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
           ? 'DOMICILIO'
-          : 'LOCAL',
-      );
+          : 'LOCAL';
+
+      setEstado(estadoPed);
+      setPagado(pagadoPed);
+      setTipoEntrega(tipoPed);
+
+      setEstadoOriginal(estadoPed);
+      setPagadoOriginal(pagadoPed);
+      setTipoEntregaOriginal(tipoPed);
 
       // Teléfono
       setTelefono(ped.telefono ?? '');
@@ -720,7 +790,7 @@ export default function EditarPedidoPage() {
 
     // 1) Buscar el artículo en el catálogo
     const base = catalogo.find(
-      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado,
     );
     if (!base) {
       alert('Este artículo no existe en el listado. Usa "OTRO (+)" para crearlo.');
@@ -729,7 +799,7 @@ export default function EditarPedidoPage() {
 
     // 2) Buscar si YA hay una línea de este artículo en el pedido
     const existingLine = items.find(
-      (it) => it.articulo.trim().toUpperCase() === nombreNormalizado
+      (it) => it.articulo.trim().toUpperCase() === nombreNormalizado,
     );
 
     // 3) Si existe, usamos el valor de ESA línea como precio inicial del modal
@@ -841,7 +911,6 @@ export default function EditarPedidoPage() {
 
       const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
 
-      // Actualiza datos editables, incluye pagado + tipo_entrega
       const { error: eP } = await supabase
         .from('pedido')
         .update({
@@ -849,6 +918,7 @@ export default function EditarPedidoPage() {
           total,
           fecha_entrega: nextInfo.fechaEntregaISO,
           foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
+          estado,
           pagado,
           tipo_entrega: tipoEntrega,
         })
@@ -913,6 +983,23 @@ export default function EditarPedidoPage() {
       : '';
 
   const hayPedidoCargado = !!nextInfo;
+  const estadoCfg = getEstadoConfig(estado);
+
+  // toggles de iconos
+  function toggleTipoEntrega() {
+    if (!hayPedidoCargado) return;
+    setTipoEntrega((prev) => (prev === 'LOCAL' ? 'DOMICILIO' : 'LOCAL'));
+  }
+
+  function togglePagado() {
+    if (!hayPedidoCargado) return;
+    setPagado((prev) => !prev);
+  }
+
+  function toggleEstado() {
+    if (!hayPedidoCargado) return;
+    setEstado((prev) => nextEstado(prev));
+  }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
@@ -995,7 +1082,7 @@ export default function EditarPedidoPage() {
         </section>
       )}
 
-      {/* Botón guardar + iconos de estado (clickeables) */}
+      {/* Botón guardar + iconos de estado */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           <button
@@ -1009,13 +1096,11 @@ export default function EditarPedidoPage() {
 
           {hayPedidoCargado && (
             <div className="flex items-center gap-4 ml-2">
-              {/* Casa: LOCAL rojo / DOMICILIO amarillo (toggle al hacer click) */}
+              {/* Tipo entrega: LOCAL rojo / DOMICILIO amarillo */}
               <button
                 type="button"
-                onClick={() =>
-                  setTipoEntrega((prev) => (prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO'))
-                }
-                className="flex flex-col items-center text-xs focus:outline-none"
+                onClick={toggleTipoEntrega}
+                className="flex flex-col items-center text-xs cursor-pointer active:scale-95 transition-transform"
               >
                 <Home
                   size={32}
@@ -1030,22 +1115,32 @@ export default function EditarPedidoPage() {
                 </span>
               </button>
 
-              {/* Tarjeta: pagado verde / pendiente rojo (toggle al hacer click) */}
+              {/* Estado de pago: pagado verde / pendiente rojo */}
               <button
                 type="button"
-                onClick={() => setPagado((prev) => !prev)}
-                className="flex flex-col items-center text-xs focus:outline-none"
+                onClick={togglePagado}
+                className="flex flex-col items-center text-xs cursor-pointer active:scale-95 transition-transform"
               >
                 <CreditCard
                   size={32}
                   className={
-                    pagado
-                      ? 'text-green-400 drop-shadow'
-                      : 'text-red-400 drop-shadow'
+                    pagado ? 'text-green-400 drop-shadow' : 'text-red-400 drop-shadow'
                   }
                 />
                 <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
                   {pagado ? 'PAGADO' : 'PENDIENTE'}
+                </span>
+              </button>
+
+              {/* Estado del pedido: va ciclando por todos los estados */}
+              <button
+                type="button"
+                onClick={toggleEstado}
+                className="flex flex-col items-center text-xs cursor-pointer active:scale-95 transition-transform"
+              >
+                <estadoCfg.Icon size={32} className={estadoCfg.className} />
+                <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
+                  {estadoCfg.label}
                 </span>
               </button>
             </div>
