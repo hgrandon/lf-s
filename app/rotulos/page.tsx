@@ -42,19 +42,19 @@ type PedidoRotulo = {
   fechaEntrega: string | null;
 };
 
-const ESTADOS_VALIDOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
+const ESTADOS_VALIDOS: EstadoKey[] = [
+  'LAVAR',
+  'LAVANDO',
+  'GUARDAR',
+  'GUARDADO',
+  'ENTREGADO',
+  'ENTREGAR',
+];
 
 function normalizeEstado(v: string | null): EstadoKey | null {
   if (!v) return null;
   const key = v.trim().toUpperCase();
   return ESTADOS_VALIDOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
-}
-
-function formatFechaDisplay(iso: string | null): string {
-  if (!iso) return '';
-  const [year, month, day] = iso.split('-');
-  if (!year || !month || !day) return iso;
-  return `${day}-${month}-${year}`;
 }
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -83,11 +83,11 @@ export default function RotulosPage() {
     setErr(null);
 
     try {
-      // 1) Traer pedidos en estados LAVAR / LAVANDO
+      // 1) Pedidos en LAVAR / LAVANDO
       const { data: pedData, error: pedErr } = await supabase
         .from('pedido')
         .select(
-          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega',
+          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega'
         )
         .in('estado', ['LAVAR', 'LAVANDO'])
         .order('nro', { ascending: true });
@@ -96,22 +96,20 @@ export default function RotulosPage() {
 
       const pedidosRaw = (pedData as PedidoDb[]) || [];
       if (!pedidosRaw.length) {
-        if (mountedRef.current) {
-          setPedidos([]);
-        }
+        if (mountedRef.current) setPedidos([]);
         return;
       }
 
-      // 2) Telefonos únicos para buscar clientes
+      // 2) Teléfonos únicos -> clientes
       const telefonos = Array.from(
         new Set(
           pedidosRaw
             .map((p) => (p.telefono || '').toString().trim())
-            .filter((t) => t.length > 0),
-        ),
+            .filter((t) => t.length > 0)
+        )
       );
 
-      let clientesMap = new Map<string, ClienteDb>();
+      const clientesMap = new Map<string, ClienteDb>();
 
       if (telefonos.length) {
         const { data: cliData, error: cliErr } = await supabase
@@ -126,7 +124,7 @@ export default function RotulosPage() {
         });
       }
 
-      // 3) Combinar pedidos + cliente
+      // 3) Combinar pedidos + clientes
       const list: PedidoRotulo[] = pedidosRaw
         .map((p) => {
           const estadoNorm = normalizeEstado(p.estado);
@@ -143,9 +141,9 @@ export default function RotulosPage() {
             total: p.total,
             estado: estadoNorm,
             tipoEntrega: p.tipo_entrega
-              ? (p.tipo_entrega.toString().toUpperCase() === 'DOMICILIO'
-                  ? 'DOMICILIO'
-                  : 'LOCAL')
+              ? p.tipo_entrega.toString().toUpperCase() === 'DOMICILIO'
+                ? 'DOMICILIO'
+                : 'LOCAL'
               : null,
             fechaIngreso: p.fecha_ingreso,
             fechaEntrega: p.fecha_entrega,
@@ -154,9 +152,7 @@ export default function RotulosPage() {
         .filter((x): x is PedidoRotulo => x !== null)
         .sort((a, b) => a.nro - b.nro);
 
-      if (mountedRef.current) {
-        setPedidos(list);
-      }
+      if (mountedRef.current) setPedidos(list);
     } catch (e: any) {
       console.error('Error cargando rótulos', e);
       if (mountedRef.current) {
@@ -183,10 +179,9 @@ export default function RotulosPage() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-28">
-      {/* Fondo suave */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* HEADER (oculto en impresión) */}
+      {/* HEADER (no se imprime) */}
       <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto print:hidden">
         <div className="flex items-center gap-3">
           <button
@@ -224,7 +219,7 @@ export default function RotulosPage() {
         </div>
       </header>
 
-      {/* MENSAJE DE ERROR (no se imprime) */}
+      {/* ERROR (no se imprime) */}
       {err && (
         <div className="relative z-10 mx-auto max-w-6xl px-4 print:hidden">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
@@ -234,14 +229,15 @@ export default function RotulosPage() {
         </div>
       )}
 
-      {/* INFO ARRIBA (oculta en impresión) */}
+      {/* INFO ARRIBA (no se imprime) */}
       <section className="relative z-10 mx-auto max-w-6xl px-4 mb-2 print:hidden">
         <p className="text-xs sm:text-sm text-white/85">
           Total rótulos a imprimir:{' '}
           <span className="font-bold text-yellow-200">{cantidad}</span>
         </p>
         <p className="text-[0.7rem] sm:text-xs text-white/70 mt-1">
-          En el cuadro de impresión puedes elegir &quot;Guardar como PDF&quot; para generar el archivo.
+          En el cuadro de impresión puedes elegir &quot;Guardar como PDF&quot; para
+          generar el archivo.
         </p>
       </section>
 
@@ -259,11 +255,10 @@ export default function RotulosPage() {
           </div>
         )}
 
-        {/* GRID de rótulos (en impresión se ve en blanco/negro según impresora) */}
         <div
           className="
-            grid gap-3 sm:gap-4
-            grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+            grid gap-3 sm:gap-3
+            grid-cols-1 sm:grid-cols-2
             print:grid-cols-2 print:gap-2
           "
         >
@@ -277,133 +272,76 @@ export default function RotulosPage() {
 }
 
 /* =========================
-   Tarjeta de Rótulo
+   Tarjeta de Rótulo TIPO ETIQUETA
 ========================= */
 
 function RotuloCard({ pedido }: { pedido: PedidoRotulo }) {
-  const estadoColor = (() => {
-    switch (pedido.estado) {
-      case 'LAVAR':
-        return 'bg-red-500';
-      case 'LAVANDO':
-        return 'bg-orange-500';
-      case 'GUARDADO':
-        return 'bg-emerald-500';
-      case 'ENTREGAR':
-        return 'bg-blue-500';
-      case 'ENTREGADO':
-        return 'bg-slate-500';
-      default:
-        return 'bg-violet-500';
-    }
-  })();
+  // Dirección para mostrar: si viene vacía o LOCAL -> LAVANDERIA FABIOLA
+  const rawDir = (pedido.direccion || '').trim().toUpperCase();
+  const displayDireccion =
+    !rawDir || rawDir === 'LOCAL' ? 'LAVANDERIA FABIOLA' : rawDir;
 
-  const tipoEntrega = pedido.tipoEntrega || 'LOCAL';
+  const monto =
+    pedido.total != null
+      ? CLP.format(pedido.total) // ej: $20.000
+      : '';
 
   return (
     <div
       className="
-        bg-white text-slate-900 rounded-xl border border-slate-300 shadow-sm
-        p-3 sm:p-4
+        bg-white text-slate-900
+        border border-black
+        shadow-none
+        rounded-none
+        px-4 py-2
+        flex items-center gap-4
         break-inside-avoid
-        print:shadow-none print:rounded-none print:border-black
+        print:shadow-none print:border-black
       "
       style={{
-        // aprox tamaño tipo etiqueta
-        minHeight: '8.5cm',
+        minHeight: '3cm',
       }}
     >
-      {/* Header: logo + nro + estado */}
-      <div className="flex items-start justify-between mb-2 border-b border-slate-300 pb-1.5">
-        <div className="flex flex-col">
-          <span className="text-[0.7rem] font-semibold text-slate-600">
-            LAVANDERÍA
-          </span>
-          <span className="text-[0.95rem] font-extrabold tracking-wide">
-            FABIOLA
-          </span>
-          <span className="text-[0.65rem] text-slate-500">
-            SERVICIO DE LAVADO
-          </span>
-        </div>
-        <div className="text-right">
-          <div className="text-[0.7rem] text-slate-600">SERVICIO</div>
-          <div className="text-[1.1rem] font-black leading-tight">
-            #{pedido.nro}
-          </div>
-          <div
-            className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[0.6rem] font-bold text-white ${estadoColor}`}
-          >
-            {pedido.estado}
-          </div>
-        </div>
-      </div>
-
-      {/* Cliente / Teléfono / Dirección */}
-      <div className="mb-1.5">
-        <div className="text-[0.7rem] font-semibold text-slate-600">
-          CLIENTE
-        </div>
-        <div className="text-[0.9rem] font-bold uppercase">
-          {pedido.clienteNombre || 'SIN NOMBRE'}
-        </div>
-      </div>
-      <div className="mb-1">
-        <span className="text-[0.7rem] font-semibold text-slate-600">
-          TEL:
-        </span>{' '}
-        <span className="text-[0.85rem] font-semibold">
-          {pedido.telefono || '-'}
+      {/* BLOQUE IZQUIERDO: LOGO */}
+      <div className="flex flex-col items-center justify-center pr-4 border-r border-black h-full">
+        <img
+          src="/logo.png"
+          alt="Lavandería Fabiola"
+          className="h-10 w-auto mb-1"
+        />
+        <span className="text-[0.6rem] font-semibold text-violet-700 tracking-wide">
+          LAVANDERIA FABIOLA
         </span>
       </div>
-      <div className="mb-2">
-        <div className="text-[0.7rem] font-semibold text-slate-600">
-          DIRECCIÓN
-        </div>
-        <div className="text-[0.75rem] uppercase">
-          {pedido.direccion || 'SIN DIRECCIÓN REGISTRADA'}
-        </div>
-      </div>
 
-      {/* Fechas + Tipo entrega + Total */}
-      <div className="grid grid-cols-2 gap-2 mb-2 text-[0.7rem]">
-        <div>
-          <div className="font-semibold text-slate-600">INGRESO</div>
-          <div className="font-bold text-[0.8rem]">
-            {pedido.fechaIngreso ? formatFechaDisplay(pedido.fechaIngreso) : '-'}
-          </div>
+      {/* BLOQUE DERECHO: NOMBRE + NRO + DIRECCIÓN + MONTO */}
+      <div className="flex-1 flex flex-col justify-between h-full">
+        {/* Nombre */}
+        <div className="text-[0.8rem] sm:text-[0.9rem] font-extrabold text-violet-800 tracking-wide uppercase">
+          {pedido.clienteNombre || 'SIN NOMBRE'}
         </div>
-        <div>
-          <div className="font-semibold text-slate-600">ENTREGA</div>
-          <div className="font-bold text-[0.8rem]">
-            {pedido.fechaEntrega ? formatFechaDisplay(pedido.fechaEntrega) : '-'}
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-2 text-[0.7rem]">
-        <div>
-          <div className="font-semibold text-slate-600">TIPO ENTREGA</div>
-          <div className="font-bold text-[0.8rem]">
-            {tipoEntrega}
-          </div>
+        {/* Número de servicio */}
+        <div className="mt-1 text-[1.7rem] sm:text-[2rem] font-black text-violet-700 leading-none">
+          {pedido.nro}
         </div>
-        <div>
-          <div className="font-semibold text-slate-600">TOTAL APROX.</div>
-          <div className="font-bold text-[0.8rem]">
-            {pedido.total != null ? CLP.format(pedido.total) : '-'}
-          </div>
-        </div>
-      </div>
 
-      {/* NOTA */}
-      <div className="mt-1 pt-1 border-t border-dashed border-slate-300 text-[0.6rem] leading-snug">
-        <div className="font-semibold text-slate-700">
-          IMPORTANTE
+        {/* Dirección / texto inferior + monto a la izquierda */}
+        <div className="mt-1 flex items-center justify-between text-[0.7rem] sm:text-[0.75rem]">
+          <div className="flex items-center gap-1">
+            {monto && (
+              <>
+                <span className="text-slate-800 font-semibold mr-1">$</span>
+                <span className="font-semibold text-slate-900">
+                  {monto.replace('$', '').trim()}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="text-violet-700 font-semibold tracking-wide uppercase text-right">
+            {displayDireccion}
+          </div>
         </div>
-        <p className="text-slate-600">
-          Revise su ropa al retirar. No se responde por objetos dejados en los bolsillos.
-        </p>
       </div>
     </div>
   );
