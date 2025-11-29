@@ -469,9 +469,10 @@ export default function EditarPedidoPage() {
 
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
   const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
-  const [pagadoOriginal, setPagadoOriginal] = useState<boolean | null>(null);
-  const [tipoEntregaOriginal, setTipoEntregaOriginal] =
-    useState<'LOCAL' | 'DOMICILIO' | null>(null);
+
+  // ahora son estados EDITABLES
+  const [pagado, setPagado] = useState<boolean>(false);
+  const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
 
   // cliente
   const [telefono, setTelefono] = useState('');
@@ -635,13 +636,14 @@ export default function EditarPedidoPage() {
         fechaEntregaISO: entregaISO,
       });
       setEstadoOriginal(ped.estado as PedidoEstado);
-      setPagadoOriginal(ped.pagado ?? null);
-      setTipoEntregaOriginal(
-        ped.tipo_entrega
-          ? (String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
-              ? 'DOMICILIO'
-              : 'LOCAL')
-          : null,
+
+      // estados editables
+      setPagado(!!ped.pagado);
+      setTipoEntrega(
+        ped.tipo_entrega &&
+        String(ped.tipo_entrega).toUpperCase() === 'DOMICILIO'
+          ? 'DOMICILIO'
+          : 'LOCAL',
       );
 
       // Teléfono
@@ -839,7 +841,7 @@ export default function EditarPedidoPage() {
 
       const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
 
-      // Actualiza sólo datos editables (NO tocamos estado, pagado ni fecha_ingreso)
+      // Actualiza datos editables, incluye pagado + tipo_entrega
       const { error: eP } = await supabase
         .from('pedido')
         .update({
@@ -847,6 +849,8 @@ export default function EditarPedidoPage() {
           total,
           fecha_entrega: nextInfo.fechaEntregaISO,
           foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
+          pagado,
+          tipo_entrega: tipoEntrega,
         })
         .eq('nro', nextInfo.nro);
 
@@ -991,7 +995,7 @@ export default function EditarPedidoPage() {
         </section>
       )}
 
-      {/* Botón guardar + iconos de estado */}
+      {/* Botón guardar + iconos de estado (clickeables) */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           <button
@@ -1005,35 +1009,45 @@ export default function EditarPedidoPage() {
 
           {hayPedidoCargado && (
             <div className="flex items-center gap-4 ml-2">
-              {/* Casa: LOCAL rojo / DOMICILIO amarillo */}
-              <div className="flex flex-col items-center text-xs">
+              {/* Casa: LOCAL rojo / DOMICILIO amarillo (toggle al hacer click) */}
+              <button
+                type="button"
+                onClick={() =>
+                  setTipoEntrega((prev) => (prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO'))
+                }
+                className="flex flex-col items-center text-xs focus:outline-none"
+              >
                 <Home
                   size={32}
                   className={
-                    tipoEntregaOriginal === 'DOMICILIO'
+                    tipoEntrega === 'DOMICILIO'
                       ? 'text-yellow-300 drop-shadow'
                       : 'text-red-500 drop-shadow'
                   }
                 />
                 <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
-                  {tipoEntregaOriginal === 'DOMICILIO' ? 'DOMICILIO' : 'LOCAL'}
+                  {tipoEntrega}
                 </span>
-              </div>
+              </button>
 
-              {/* Tarjeta: pagado verde / pendiente rojo */}
-              <div className="flex flex-col items-center text-xs">
+              {/* Tarjeta: pagado verde / pendiente rojo (toggle al hacer click) */}
+              <button
+                type="button"
+                onClick={() => setPagado((prev) => !prev)}
+                className="flex flex-col items-center text-xs focus:outline-none"
+              >
                 <CreditCard
                   size={32}
                   className={
-                    pagadoOriginal
+                    pagado
                       ? 'text-green-400 drop-shadow'
                       : 'text-red-400 drop-shadow'
                   }
                 />
                 <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
-                  {pagadoOriginal ? 'PAGADO' : 'PENDIENTE'}
+                  {pagado ? 'PAGADO' : 'PENDIENTE'}
                 </span>
-              </div>
+              </button>
             </div>
           )}
         </div>
