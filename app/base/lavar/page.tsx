@@ -121,7 +121,10 @@ export default function LavarPage() {
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
-  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +175,9 @@ export default function LavarPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -180,8 +185,15 @@ export default function LavarPage() {
           if (!pid) return;
 
           const label =
-            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
-              .trim() || 'SIN NOMBRE';
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                '',
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -219,7 +231,9 @@ export default function LavarPage() {
 
           return {
             id: r.id,
-            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+            cliente:
+              nombreByTel.get(String(r.telefono)) ??
+              String(r.telefono ?? 'SIN NOMBRE'),
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
@@ -286,7 +300,10 @@ export default function LavarPage() {
     const actual = prev.find((p) => p.id === id)?.pagado ?? false;
     setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
+    const { error } = await supabase
+      .from('pedido')
+      .update({ pagado: !actual })
+      .eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
@@ -323,25 +340,34 @@ export default function LavarPage() {
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
 
-      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+      const { data: up, error: upErr } = await supabase.storage
+        .from('fotos')
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
       if (upErr) throw upErr;
 
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
+      const { error: insErr } = await supabase
+        .from('pedido_foto')
+        .insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
       // Obtener fotos actuales del pedido para actualizar JSON en foto_url
       const pedidoActual = pedidos.find((p) => p.id === pid);
-      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
       const nuevasFotos = [...fotosActuales, publicUrl];
 
       // Guardamos la lista completa en foto_url como JSON
-      await supabase.from('pedido').update({ foto_url: JSON.stringify(nuevasFotos) }).eq('nro', pid);
+      await supabase
+        .from('pedido')
+        .update({ foto_url: JSON.stringify(nuevasFotos) })
+        .eq('nro', pid);
 
       // Actualizar estado local
       setPedidos((prev) =>
@@ -356,7 +382,10 @@ export default function LavarPage() {
         ),
       );
       setImageError((prev) => ({ ...prev, [pid]: false }));
-      setCurrentSlide((prev) => ({ ...prev, [pid]: nuevasFotos.length - 1 }));
+      setCurrentSlide((prev) => ({
+        ...prev,
+        [pid]: nuevasFotos.length - 1,
+      }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
       console.error(err);
@@ -374,7 +403,9 @@ export default function LavarPage() {
 
     try {
       const pedidoActual = pedidos.find((p) => p.id === pedidoId);
-      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
 
       const targetUrl = fotoUrl || fotosActuales[0] || null;
       if (!targetUrl) {
@@ -398,11 +429,17 @@ export default function LavarPage() {
           }
         }
       } catch (e) {
-        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
+        console.warn(
+          'No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).',
+          e,
+        );
       }
 
       // Borrar de tabla pedido_foto
-      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: targetUrl });
+      await supabase
+        .from('pedido_foto')
+        .delete()
+        .match({ pedido_id: pedidoId, url: targetUrl });
 
       // Actualizar lista de fotos para el pedido
       const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
@@ -410,7 +447,9 @@ export default function LavarPage() {
       // Actualizar foto_url en pedido (JSON o null)
       await supabase
         .from('pedido')
-        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
+        .update({
+          foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null,
+        })
         .eq('nro', pedidoId);
 
       // Actualizar estado local
@@ -431,7 +470,10 @@ export default function LavarPage() {
         if (!nuevasFotos.length) {
           delete next[pedidoId];
         } else {
-          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
+          next[pedidoId] = Math.min(
+            prev[pedidoId] ?? 0,
+            nuevasFotos.length - 1,
+          );
         }
         return next;
       });
@@ -463,17 +505,23 @@ export default function LavarPage() {
   function askEdit(id: number) {
     setAskEditForId(id);
   }
+
   function closeAskEdit() {
     setAskEditForId(null);
   }
-function goEdit() {
-  const id = askEditForId;
-  if (!id) return;
-  setAskEditForId(null);
 
-  // Enviamos el nro como querystring a /editar
-  router.push(`/editar?nro=${id}`);
-}
+  // Mejorado: acepta opcionalmente un id directo (para el botón dentro del header de Detalle)
+  function goEdit(idFromButton?: number) {
+    const targetId = idFromButton ?? askEditForId;
+    if (!targetId) return;
+
+    if (!idFromButton) {
+      setAskEditForId(null);
+    }
+
+    // Navegamos a /editar?nro=ID
+    router.push(`/editar?nro=${targetId}`);
+  }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -481,7 +529,10 @@ function goEdit() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Lavar</h1>
-        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
+        <button
+          onClick={() => router.push('/base')}
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
+        >
           ← Volver
         </button>
       </header>
@@ -502,9 +553,13 @@ function goEdit() {
             </div>
           )}
 
-          {!loading && !errMsg && (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
-            <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
-          )}
+          {!loading &&
+            !errMsg &&
+            (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
+              <div className="text-white/80">
+                No hay pedidos en estado LAVAR.
+              </div>
+            )}
 
           {!loading &&
             !errMsg &&
@@ -513,15 +568,26 @@ function goEdit() {
               const isOpen = openId === p.id;
               const detOpen = !!openDetail[p.id];
               const totalCalc =
-                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+                Array.isArray(p.items) && p.items.length
+                  ? p.items.reduce(
+                      (a, it) => a + it.qty * it.valor,
+                      0,
+                    )
+                  : p.total ?? 0;
 
-              const fotos = p.fotos && p.fotos.length ? p.fotos : p.foto_url ? [p.foto_url] : [];
+              const fotos =
+                p.fotos && p.fotos.length
+                  ? p.fotos
+                  : p.foto_url
+                  ? [p.foto_url]
+                  : [];
               const totalFotos = fotos.length;
               const slideIndex =
                 totalFotos > 0
                   ? Math.min(currentSlide[p.id] ?? 0, totalFotos - 1)
                   : 0;
-              const activeFoto = totalFotos > 0 ? fotos[slideIndex] : null;
+              const activeFoto =
+                totalFotos > 0 ? fotos[slideIndex] : null;
 
               return (
                 <div
@@ -549,52 +615,69 @@ function goEdit() {
                       </span>
 
                       <div className="text-left">
-                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">
+                          N° {p.id}
+                        </div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                          {p.cliente}{' '}
+                          {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 lg:gap-4">
-                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
-                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                        {CLP.format(totalCalc)}
+                      </div>
+                      {isOpen ? (
+                        <ChevronDown size={18} />
+                      ) : (
+                        <ChevronRight size={18} />
+                      )}
                     </div>
                   </button>
 
                   {isOpen && (
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                       <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
-                          <button
-                            onClick={() =>
-                              setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
-                            }
-                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
-                          >
-                            {/* Lado izquierdo: título */}
-                            <div className="flex items-center gap-2">
-                              <Table size={16} />
-                              <span className="font-semibold">Detalle Pedido</span>
-                            </div>
+                        <button
+                          onClick={() =>
+                            setOpenDetail((prev) => ({
+                              ...prev,
+                              [p.id]: !prev[p.id],
+                            }))
+                          }
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        >
+                          {/* Lado izquierdo: título */}
+                          <div className="flex items-center gap-2">
+                            <Table size={16} />
+                            <span className="font-semibold">
+                              Detalle Pedido
+                            </span>
+                          </div>
 
-                            {/* Lado derecho: botón Editar + flecha */}
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={(ev) => {
-                                  ev.stopPropagation(); // para que NO abra/cierre el acordeón
-                                  router.push(`/pedido/editar/${p.id}`);
-                                }}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
-                                          bg-violet-600 hover:bg-violet-700 text-white shadow"
-                              >
-                                ✏️
-                                <span>Editar</span>
-                              </button>
+                          {/* Lado derecho: botón Editar + flecha */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation(); // no abre/cierra el acordeón
+                                goEdit(p.id); // usa la misma lógica /editar?nro=ID
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
+                            >
+                              <Archive size={14} className="text-violet-50" />
+                              <span>Editar</span>
+                            </button>
 
-                              {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </div>
-                          </button>
-
+                            {detOpen ? (
+                              <ChevronDown size={16} />
+                            ) : (
+                              <ChevronRight size={16} />
+                            )}
+                          </div>
+                        </button>
 
                         {detOpen && (
                           <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
@@ -602,27 +685,49 @@ function goEdit() {
                               <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
-                                    <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
+                                    <th className="text-left px-3 py-2 w-[40%]">
+                                      Artículo
+                                    </th>
+                                    <th className="text-right px-3 py-2 w-[15%]">
+                                      Can.
+                                    </th>
+                                    <th className="text-right px-3 py-2 w-[20%]">
+                                      Valor
+                                    </th>
+                                    <th className="text-right px-3 py-2 w-[25%]">
+                                      Subtotal
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/10">
-                                  {Array.isArray(p.items) && p.items.length ? (
+                                  {Array.isArray(p.items) &&
+                                  p.items.length ? (
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
-                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                          {it.articulo.length > 15
+                                            ? it.articulo.slice(0, 15) + '.'
+                                            : it.articulo}
                                         </td>
-                                        <td className="px-3 py-2 text-right">{it.qty}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {it.qty}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(it.valor)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(
+                                            it.qty * it.valor,
+                                          )}
+                                        </td>
                                       </tr>
                                     ))
                                   ) : (
                                     <tr>
-                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                      <td
+                                        className="px-3 py-4 text-center text-white/70"
+                                        colSpan={4}
+                                      >
                                         Sin artículos registrados.
                                       </td>
                                     </tr>
@@ -646,7 +751,9 @@ function goEdit() {
                           {activeFoto && !imageError[p.id] ? (
                             <div
                               className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() => openPickerFor(p.id, activeFoto)}
+                              onDoubleClick={() =>
+                                openPickerFor(p.id, activeFoto)
+                              }
                               title="Doble clic para opciones de imagen"
                             >
                               <Image
@@ -655,8 +762,18 @@ function goEdit() {
                                 width={0}
                                 height={0}
                                 sizes="100vw"
-                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                style={{
+                                  width: '100%',
+                                  height: 'auto',
+                                  objectFit: 'contain',
+                                  maxHeight: '70vh',
+                                }}
+                                onError={() =>
+                                  setImageError((prev) => ({
+                                    ...prev,
+                                    [p.id]: true,
+                                  }))
+                                }
                                 priority={false}
                               />
 
@@ -695,7 +812,11 @@ function goEdit() {
                               title="Agregar imagen"
                             >
                               <ImagePlus size={18} />
-                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                              <span>
+                                {(uploading[p.id] ?? false)
+                                  ? 'Subiendo…'
+                                  : 'Sin imagen adjunta. Toca para agregar.'}
+                              </span>
                             </button>
                           )}
                         </div>
@@ -715,35 +836,49 @@ function goEdit() {
             <IconBtn
               title="Lavando"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'LAVANDO')
+              }
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
             />
             <IconBtn
               title="Guardardo"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'GUARDADO')
+              }
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
             />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'ENTREGAR')
+              }
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
             <IconBtn
               title="Entregado"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'ENTREGADO')
+              }
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
+              onClick={() =>
+                pedidoAbierto && togglePago(pedidoAbierto.id)
+              }
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
             />
@@ -759,7 +894,9 @@ function goEdit() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -782,10 +919,17 @@ function goEdit() {
             className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
-            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <h3 className="text-lg font-semibold mb-1">
+              Editar pedido #{askEditForId}
+            </h3>
+            <p className="text-sm text-black/70 mb-4">
+              ¿Desea editar este pedido?
+            </p>
             <div className="flex gap-2">
-              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+              <button
+                onClick={() => goEdit()}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
                 Editar
               </button>
               <button
@@ -803,7 +947,9 @@ function goEdit() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Imagen del pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Imagen del pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -856,7 +1002,13 @@ function goEdit() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
@@ -882,7 +1034,9 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
