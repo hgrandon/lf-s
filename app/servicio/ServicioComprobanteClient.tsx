@@ -2,7 +2,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 /* =========================
@@ -249,16 +248,14 @@ export default function ServicioPage() {
 
           <div className="mt-3 text-sm font-semibold text-slate-800">
             Hola {nombreCli.split(' ')[0]}, tu servicio está{' '}
-            {esPagado ? (
+            {pedido.estado === 'GUARDADO' ? (
+              <span className="text-emerald-600">LISTO</span>
+            ) : esPagado ? (
               <span className="text-emerald-600">PAGADO</span>
             ) : (
               <span className="text-amber-600">PENDIENTE</span>
             )}
             .
-          </div>
-          <div className="mt-1 text-xs text-slate-600">
-            Necesitamos que pases a retirar tu ropa. Atención de Lunes a
-            Viernes de 10:00 a 20:00 hrs.
           </div>
         </div>
 
