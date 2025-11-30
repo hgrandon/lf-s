@@ -17,6 +17,7 @@ import {
   WashingMachine,
   CreditCard,
   MessageCircle,
+  Archive,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -66,17 +67,16 @@ function firstFotoFromMixed(input: unknown): string | null {
 function toE164CL(raw?: string | null): string | null {
   const digits = String(raw ?? '').replace(/\D/g, '');
   if (!digits) return null;
-  if (digits.length === 9) return `56${digits}`;                 // ej: 9XXXXXXXX -> 569XXXXXXXX
-  if (digits.length === 11 && digits.startsWith('56')) return digits; // ej: 569XXXXXXXX
+  if (digits.length === 9) return `56${digits}`;
+  if (digits.length === 11 && digits.startsWith('56')) return digits;
   if (digits.length === 13 && digits.startsWith('0056')) return digits.slice(2);
-  if (digits.startsWith('56')) return digits;                     // largo raro pero con 56
-  return `56${digits}`;                                          // último recurso
+  if (digits.startsWith('56')) return digits;
+  return `56${digits}`;
 }
 
 /** Base URL robusta (cliente/servidor) */
 function getBaseUrl() {
   if (typeof window !== 'undefined') return window.location.origin;
-  // Configurar en Vercel: NEXT_PUBLIC_SITE_URL = https://tu-dominio.com
   return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 }
 
@@ -101,7 +101,10 @@ export default function GuardadoPage() {
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -148,7 +151,9 @@ export default function GuardadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? ''));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? ''),
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -156,8 +161,15 @@ export default function GuardadoPage() {
           if (!pid) return;
 
           const label =
-            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
-              .trim() || 'SIN NOMBRE';
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                '',
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -181,7 +193,7 @@ export default function GuardadoPage() {
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => {
           const tel = r.telefono ? String(r.telefono) : null;
-          const nombre = tel ? (nombreByTel.get(tel) || '') : '';
+          const nombre = tel ? nombreByTel.get(tel) || '' : '';
           return {
             id: r.id,
             cliente: nombre || tel || 'SIN NOMBRE',
@@ -264,7 +276,6 @@ export default function GuardadoPage() {
     if (!p) return;
 
     const base = getBaseUrl();
-    // Si tu resumen está en /comprobante/[nro], cambia por esa ruta:
     const link = `${base}/servicio/${p.id}?popup=1`;
 
     const texto = [
@@ -287,7 +298,6 @@ export default function GuardadoPage() {
     const waUrl = `https://wa.me/${telE164}?text=${encoded}`;
     const w = window.open(waUrl, '_blank');
 
-    // Fallback para navegadores que bloquean popups
     if (!w || w.closed || typeof w.closed === 'undefined') {
       const apiUrl = `https://api.whatsapp.com/send?phone=${telE164}&text=${encoded}`;
       const w2 = window.open(apiUrl, '_blank');
@@ -361,11 +371,13 @@ export default function GuardadoPage() {
   function closeAskEdit() {
     setAskEditForId(null);
   }
-  function goEdit() {
-    const id = askEditForId;
-    if (!id) return;
-    setAskEditForId(null);
-    router.push(`/pedido/editar/${id}`);
+  function goEdit(idFromButton?: number) {
+    const targetId = idFromButton ?? askEditForId;
+    if (!targetId) return;
+    if (!idFromButton) {
+      setAskEditForId(null);
+    }
+    router.push(`/editar?nro=${targetId}`);
   }
 
   return (
@@ -455,7 +467,22 @@ export default function GuardadoPage() {
                           <Table size={16} />
                           <span className="font-semibold">Detalle Pedido</span>
                         </div>
-                        {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              goEdit(p.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                              bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
+                          >
+                            <Archive size={14} className="text-violet-50" />
+                            <span>Editar</span>
+                          </button>
+                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </div>
                       </button>
 
                       {detOpen && (
@@ -626,7 +653,7 @@ export default function GuardadoPage() {
             <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
             <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
             <div className="flex gap-2">
-              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+              <button onClick={() => goEdit()} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
                 Editar
               </button>
               <button
