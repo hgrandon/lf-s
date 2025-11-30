@@ -35,6 +35,7 @@ type Pedido = {
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
+  token_servicio?: string | null; // 👈 NUEVO
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -113,11 +114,11 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-        const { data: rows, error: e1 } = await supabase
-          .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
-          .eq('estado', 'GUARDADO')
-          .order('nro', { ascending: false });
+            const { data: rows, error: e1 } = await supabase
+              .from('pedido')
+              .select('id:nro, telefono, total, estado, detalle, pagado, foto_url, token_servicio')
+              .eq('estado', 'GUARDADO')
+              .order('nro', { ascending: false });
 
         if (e1) throw e1;
 
@@ -191,21 +192,22 @@ export default function GuardadoPage() {
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-          const tel = r.telefono ? String(r.telefono) : null;
-          const nombre = tel ? nombreByTel.get(tel) || '' : '';
-          return {
-            id: r.id,
-            cliente: nombre || tel || 'SIN NOMBRE',
-            telefono: tel,
-            total: r.total ?? null,
-            estado: r.estado,
-            detalle: r.detalle ?? null,
-            foto_url: fotoByPedido.get(r.id) ?? null,
-            pagado: r.pagado ?? false,
-            items: itemsByPedido.get(r.id) ?? [],
-          };
-        });
+          const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+            const tel = r.telefono ? String(r.telefono) : null;
+            const nombre = tel ? nombreByTel.get(tel) || '' : '';
+            return {
+              id: r.id,
+              cliente: nombre || tel || 'SIN NOMBRE',
+              telefono: tel,
+              total: r.total ?? null,
+              estado: r.estado,
+              detalle: r.detalle ?? null,
+              foto_url: fotoByPedido.get(r.id) ?? null,
+              pagado: r.pagado ?? false,
+              items: itemsByPedido.get(r.id) ?? [],
+              token_servicio: r.token_servicio ?? null, // 👈 NUEVO
+            };
+          });
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -271,12 +273,44 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-  /** Enviar link del servicio/comprobante por WhatsApp (robusto con fallback) */
-  function sendComprobanteLink(p?: Pedido | null) {
-    if (!p) return;
+/** Genera (si hace falta) y devuelve un token UUID seguro para el pedido */
+async function ensureServicioToken(p: Pedido): Promise<string | null> {
+  if (p.token_servicio) return p.token_servicio;
+
+  const newToken =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${p.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const { error } = await supabase
+    .from('pedido')
+    .update({ token_servicio: newToken })
+    .eq('nro', p.id);
+
+  if (error) {
+    console.error('No se pudo guardar token_servicio:', error);
+    snack('No se pudo generar un link seguro para este pedido.');
+    return null;
+  }
+
+  setPedidos((prev) =>
+    prev.map((x) => (x.id === p.id ? { ...x, token_servicio: newToken } : x)),
+  );
+
+  return newToken;
+}
+
+/** Enviar link del servicio/comprobante por WhatsApp usando token UUID seguro */
+async function sendComprobanteLink(p?: Pedido | null) {
+  if (!p) return;
+
+  setSaving(true);
+  try {
+    const token = await ensureServicioToken(p);
+    if (!token) return;
 
     const base = getBaseUrl();
-    const link = `${base}/servicio?nro=${p.id}&popup=1`;
+    const link = `${base}/servicio?token=${encodeURIComponent(token)}`;
 
     const texto = [
       '🧾 *Lavandería Fabiola*',
@@ -306,7 +340,11 @@ export default function GuardadoPage() {
         alert('No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.');
       }
     }
+  } finally {
+    setSaving(false);
   }
+}
+
 
   // ------- Cargar/Adjuntar foto -------
   function openPickerFor(pid: number) {
