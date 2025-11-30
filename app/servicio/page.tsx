@@ -229,9 +229,23 @@ export default function ServicioPage() {
           <div className="text-[11px] tracking-[0.25em] text-violet-500 mb-1">
             TU N° SERVICIO
           </div>
-          <div className="text-6xl font-extrabold text-violet-700 leading-tight">
-            {pedido.nro}
-          </div>
+                <div
+                className="
+                    text-7xl 
+                    font-black 
+                    leading-tight 
+                    bg-gradient-to-b 
+                    from-violet-400 
+                    via-violet-600 
+                    to-violet-900 
+                    text-transparent 
+                    bg-clip-text 
+                    drop-shadow-[0_3px_3px_rgba(0,0,0,0.35)]
+                    tracking-widest
+                "
+                >
+                {pedido.nro}
+                </div>
 
           {/* Texto dinámico */}
           <div className="mt-4 text-sm font-semibold text-slate-800">
