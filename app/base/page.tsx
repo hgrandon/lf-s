@@ -18,25 +18,16 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
-  Printer,
+  Printer, // 👈 NUEVO ICONO
 } from 'lucide-react';
 
-type EstadoKey =
-  | 'LAVAR'
-  | 'LAVANDO'
-  | 'GUARDAR'
-  | 'GUARDADO'
-  | 'ENTREGADO'
-  | 'ENTREGAR';
+/* =========================
+   Tipos y constantes
+========================= */
+type EstadoKey = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type PedidoRow = { estado: string | null };
 
-const ESTADOS: EstadoKey[] = [
-  'LAVAR',
-  'LAVANDO',
-  'GUARDAR',
-  'GUARDADO',
-  'ENTREGADO',
-  'ENTREGAR',
-];
+const ESTADOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
 
 const EMPTY_COUNTS: Record<EstadoKey, number> = {
   LAVAR: 0,
@@ -47,6 +38,9 @@ const EMPTY_COUNTS: Record<EstadoKey, number> = {
   ENTREGAR: 0,
 };
 
+/* =========================
+   Página principal Base
+========================= */
 export default function BasePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -68,69 +62,96 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
+  /** Carga de conteo (RPC o fallback SELECT) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
     try {
-      const { data: rpcData } = await supabase.rpc('get_pedido_counts');
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_pedido_counts');
       const next = { ...EMPTY_COUNTS };
 
-      if (Array.isArray(rpcData)) {
-        rpcData.forEach((row: any) => {
-          const key = normalizeEstado(row.estado);
-          if (key) next[key] = Number(row.n) || 0;
+      if (!rpcError && Array.isArray(rpcData)) {
+        (rpcData as { estado: string; n: number }[]).forEach((row) => {
+          const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
+          if (key && key in next) next[key] = Number(row.n) || 0;
+        });
+        // seguimos forzando GUARDAR en 0 si así lo quieres
+        next.GUARDAR = 0;
+        if (mountedRef.current) setCounts(next);
+      } else {
+        const { data, error } = await supabase.from('pedido').select('estado');
+        if (error) throw error;
+        (data as PedidoRow[]).forEach((row) => {
+          const estado = normalizeEstado(row.estado);
+          if (estado && estado in next) next[estado] += 1;
         });
         next.GUARDAR = 0;
-        setCounts(next);
+        if (mountedRef.current) setCounts(next);
       }
 
-      const { count } = await supabase
+      // ENTREGADO pendientes de pago
+      const { count: pendCount, error: pendErr } = await supabase
         .from('pedido')
-        .select('*', { head: true, count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('estado', 'ENTREGADO')
         .eq('pagado', false);
 
-      setPendingEntregado(count ?? 0);
+      if (pendErr) throw pendErr;
+      if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
     } catch (e: any) {
-      setErr(e?.message ?? 'Error al cargar');
+      if (mountedRef.current) setErr(e?.message ?? 'Error desconocido al cargar');
+      console.error('fetchCounts error:', e);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCounts();
+    (async () => {
+      await fetchCounts();
+    })();
+
     let channel: RealtimeChannel | null = supabase
       .channel('pedido-counts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pedido' },
-        fetchCounts
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido' }, () => {
+        fetchCounts();
+      })
       .subscribe();
 
     return () => {
       if (channel) supabase.removeChannel(channel);
+      channel = null;
     };
   }, []);
 
-  const tiles = [
-    { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet },
-    { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine },
-    { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2 },
-    {
-      title: 'Entregar',
-      key: 'ENTREGAR' as EstadoKey,
-      icon: Truck,
-    },
-    {
-      title: 'Entregado',
-      key: 'ENTREGADO' as EstadoKey,
-      icon: PackageCheck,
-      subtitle: `Pago pend. ${pendingEntregado}`,
-    },
-  ];
+  // 🔗 Helper para que todos vayan a general.page con el estado
+  const generalHref = (estado: EstadoKey) => `/general?estado=${estado}`;
+
+  const tiles = useMemo(
+    () => [
+      // 👉 Todos estos van ahora a /general?estado=...
+      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: generalHref('LAVAR') },
+      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: generalHref('LAVANDO') },
+
+      // Editar se mantiene como ruta independiente
+      { title: 'Editar', key: null, icon: Archive, href: '/editar' },
+
+      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: generalHref('GUARDADO') },
+      {
+        title: 'Entregado',
+        key: 'ENTREGADO' as EstadoKey,
+        icon: PackageCheck,
+        href: generalHref('ENTREGADO'),
+        subtitle: `P. pago ${pendingEntregado}`,
+      },
+      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: generalHref('ENTREGAR') },
+
+      // 🔹 NUEVO TILE: Imp Rotulo (sin contador)
+      { title: 'Imp Rótulo', key: null, icon: Printer, href: '/rotulos' },
+    ],
+    [pendingEntregado]
+  );
 
   const shortcuts = [
     { name: 'Base', icon: LayoutDashboard, href: '/base' },
@@ -141,77 +162,125 @@ export default function BasePage() {
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
+
+      {/* HEADER */}
       <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
         <h1 className="font-bold text-xl sm:text-2xl">Base de Pedidos</h1>
-        <button
-          onClick={fetchCounts}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-        >
-          <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
-          {loading ? 'Actualizando…' : 'Actualizar'}
-        </button>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={fetchCounts}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+            aria-busy={loading}
+          >
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+            {loading ? 'Actualizando…' : 'Actualizar'}
+          </button>
+          <button onClick={() => router.push('/menu')} className="text-sm text-white/90 hover:text-white">
+            ← Volver
+          </button>
+        </div>
       </header>
 
+      {/* ERROR */}
       {err && (
-        <div className="text-center text-sm text-red-200">{err}</div>
+        <div className="relative z-10 mx-auto max-w-6xl px-4">
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
+            <AlertTriangle size={16} />
+            <span>No se pudieron cargar los contadores: {err}</span>
+          </div>
+        </div>
       )}
 
+      {/* GRID COMPACTO */}
       <section className="relative z-10 mx-auto max-w-5xl px-4">
-        <div className="grid grid-cols-2 gap-4 sm:gap-5">
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 [grid-auto-rows:5.5rem] sm:[grid-auto-rows:6rem]">
           {tiles.map((t) => (
-            <button
-              key={t.title}
-              onClick={() =>
-                router.push(`/base/general?estado=${t.key}`)
-              }
-              className="rounded-xl bg-white/10 border border-white/15 p-4 shadow text-left"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <t.icon size={22} />
-                  <span className="font-bold">{t.title}</span>
-                </div>
-                <span className="text-lg font-extrabold">
-                  {loading ? '-' : counts[t.key]}
-                </span>
-              </div>
-              {t.subtitle && (
-                <p className="text-[0.7rem] italic text-yellow-300 mt-1">
-                  {t.subtitle}
-                </p>
-              )}
-            </button>
+            <Tile
+              key={`${t.title}-${t.href}`}
+              title={t.title}
+              count={loading || !t.key ? null : counts[t.key]}
+              onClick={() => router.push(t.href)}
+              Icon={t.icon}
+              subtitle={t.subtitle}
+            />
           ))}
-
-          <button
-            onClick={() => router.push('/rotulos')}
-            className="rounded-xl bg-white/10 border border-white/15 p-4 shadow text-left"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Printer size={22} />
-                <span className="font-bold">Imp Rótulo</span>
-              </div>
-            </div>
-          </button>
         </div>
       </section>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-3 py-3 backdrop-blur-md">
-        <div className="mx-auto max-w-6xl rounded-xl bg-white/10 border border-white/15 p-3 grid grid-cols-4 gap-3">
-          {shortcuts.map((s) => (
-            <button
-              key={s.name}
-              onClick={() => router.push(s.href)}
-              className="flex flex-col items-center text-white"
-            >
-              <s.icon size={18} />
-              <span className="text-xs">{s.name}</span>
-            </button>
-          ))}
+      {/* BOTTOM NAV */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-3 pt-2 pb-3 backdrop-blur-md">
+        <div className="mx-auto max-w-6xl rounded-2xl bg-white/10 border border-white/15 p-3">
+          <div className="grid grid-cols-4 gap-3">
+            {shortcuts.map((item) => (
+              <button
+                key={item.name}
+                onClick={() => router.push(item.href)}
+                className="flex flex-col items-center justify-center rounded-xl bg-white/5 border border-white/10 py-3 text-white/90 hover:bg-white/10 transition"
+                aria-label={item.name}
+              >
+                <item.icon size={18} className="mb-1" />
+                <span className="text-sm font-medium">{item.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
     </main>
+  );
+}
+
+/* =========================
+   Componente Tile
+========================= */
+function Tile({
+  title,
+  count,
+  Icon,
+  onClick,
+  subtitle,
+}: {
+  title: string;
+  count: number | null;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  onClick: () => void;
+  subtitle?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="
+        group w-full rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md
+        shadow-[0_4px_16px_rgba(0,0,0,0.20)] hover:bg-white/14 hover:shadow-[0_6px_22px_rgba(0,0,0,0.25)]
+        transition p-3 sm:p-4 text-left h-[5.5rem] sm:h-[6.25rem] active:scale-[.99]
+      "
+      aria-label={title}
+    >
+      <div className="h-full flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon className="w-6 h-6 text-white/90 shrink-0" />
+          <div className="min-w-0">
+            <span className="block text-base sm:text-lg font-extrabold tracking-tight truncate">
+              {title}
+            </span>
+            {subtitle ? (
+              <span className="mt-0.5 block text-[0.9rem] sm:text-[1rem] text-yellow-300 font-extrabold italic truncate">
+                {subtitle}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="text-right w-12 sm:w-14">
+          {count === null ? (
+            <span className="block w-0 h-0" />
+          ) : (
+            <span className="block text-2xl sm:text-3xl font-extrabold leading-none tracking-tight">
+              {count}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
