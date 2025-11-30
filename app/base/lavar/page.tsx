@@ -466,12 +466,14 @@ export default function LavarPage() {
   function closeAskEdit() {
     setAskEditForId(null);
   }
-  function goEdit() {
-    const id = askEditForId;
-    if (!id) return;
-    setAskEditForId(null);
-    router.push(`/pedido/editar/${id}`);
-  }
+function goEdit() {
+  const id = askEditForId;
+  if (!id) return;
+  setAskEditForId(null);
+
+  // Enviamos el nro como querystring a /editar
+  router.push(`/editar?nro=${id}`);
+}
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
