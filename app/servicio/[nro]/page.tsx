@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 export const dynamic = 'force-dynamic';
 
 type PageProps = {
-  params: { nro: string };
+  params: { nro?: string };
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -27,26 +27,21 @@ function fmtDate(iso?: string | null) {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const nro = Number(params.nro || 0);
-  if (!nro || Number.isNaN(nro)) {
-    return {
-      title: 'Servicio no válido | Lavandería Fabiola',
-      description: 'El número de pedido no es correcto.',
-      robots: { index: false, follow: false },
-    };
-  }
-
+  const raw = params?.nro ?? '';
   return {
-    title: `Servicio #${nro} | Lavandería Fabiola`,
-    description: `Comprobante visual del servicio #${nro}`,
+    title: raw ? `Servicio #${raw} | Lavandería Fabiola` : 'Servicio | Lavandería Fabiola',
+    description: 'Comprobante visual del servicio de Lavandería Fabiola.',
     robots: { index: false, follow: false },
   };
 }
 
 export default async function ServicioPage({ params }: PageProps) {
-  const nro = Number(params.nro || 0);
+  // Tomamos el nro como VIENE en la URL y luego lo convertimos
+  const raw = params?.nro ?? '';
+  const nro = Number(raw);
 
-  if (!nro || Number.isNaN(nro) || nro <= 0) {
+  // Si no vino nada en la URL, es realmente inválido
+  if (!raw) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
         <div className="text-center">
@@ -57,11 +52,11 @@ export default async function ServicioPage({ params }: PageProps) {
     );
   }
 
-  // --- Cargar pedido principal ---
+  // --- Cargar pedido principal (aunque el número sea raro, intentamos igual) ---
   const { data: pedido, error: e1 } = await supabase
     .from('pedido')
     .select('nro, telefono, total, estado, detalle, pagado, fecha_ingreso, fecha_entrega, foto_url')
-    .eq('nro', nro)
+    .eq('nro', nro)         // tu tabla ya usa nro numérico (igual que en EDITAR)
     .maybeSingle();
 
   if (e1) {
@@ -93,7 +88,7 @@ export default async function ServicioPage({ params }: PageProps) {
   const { data: lineas } = await supabase
     .from('pedido_linea')
     .select('articulo, cantidad, valor')
-    .eq('pedido_id', nro);
+    .eq('pedido_id', pedido.nro);
 
   const items =
     lineas?.map((l) => ({
@@ -110,7 +105,7 @@ export default async function ServicioPage({ params }: PageProps) {
       ? items.reduce((acc, it) => acc + it.qty * it.valor, 0)
       : Number(pedido.total ?? 0);
 
-  // --- Foto principal: prioridad pedido.foto_url, luego pedido_foto ---
+  // --- Foto principal ---
   let fotoUrl: string | null = null;
 
   if (typeof pedido.foto_url === 'string' && pedido.foto_url.trim() !== '') {
@@ -119,7 +114,7 @@ export default async function ServicioPage({ params }: PageProps) {
     const { data: fotos } = await supabase
       .from('pedido_foto')
       .select('url')
-      .eq('pedido_id', nro)
+      .eq('pedido_id', pedido.nro)
       .limit(1)
       .maybeSingle();
     if (fotos?.url) fotoUrl = fotos.url;
@@ -131,7 +126,7 @@ export default async function ServicioPage({ params }: PageProps) {
   return (
     <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center px-2 py-6">
       <div className="w-full max-w-xl rounded-3xl bg-[#0b1020] border border-white/10 shadow-2xl px-5 py-6 sm:px-8 sm:py-7">
-        {/* Encabezado */}
+        {/* Encabezado tipo boleta */}
         <header className="text-center mb-5">
           <div className="text-xs tracking-[0.3em] text-violet-300 uppercase mb-1">
             Lavandería
@@ -141,7 +136,7 @@ export default async function ServicioPage({ params }: PageProps) {
           </h1>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[11px] text-white/70">
             <span className="px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 font-semibold">
-              Servicio N° {nro}
+              Servicio N° {pedido.nro}
             </span>
             <span className="px-2 py-1 rounded-full bg-violet-500/10 border border-violet-400/40 text-violet-200">
               Estado: {pedido.estado || 'N/D'}
@@ -265,7 +260,7 @@ export default async function ServicioPage({ params }: PageProps) {
             <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/40">
               <Image
                 src={fotoUrl}
-                alt={`Foto pedido ${nro}`}
+                alt={`Foto pedido ${pedido.nro}`}
                 width={800}
                 height={600}
                 className="w-full h-auto max-h-[320px] object-contain"
