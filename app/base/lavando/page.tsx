@@ -121,7 +121,10 @@ export default function LavandoPage() {
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
-  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +175,9 @@ export default function LavandoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -180,8 +185,15 @@ export default function LavandoPage() {
           if (!pid) return;
 
           const label =
-            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
-              .trim() || 'SIN NOMBRE';
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                '',
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -219,7 +231,9 @@ export default function LavandoPage() {
 
           return {
             id: r.id,
-            cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+            cliente:
+              nombreByTel.get(String(r.telefono)) ??
+              String(r.telefono ?? 'SIN NOMBRE'),
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
@@ -286,7 +300,10 @@ export default function LavandoPage() {
     const actual = prev.find((p) => p.id === id)?.pagado ?? false;
     setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
+    const { error } = await supabase
+      .from('pedido')
+      .update({ pagado: !actual })
+      .eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar pago:', error);
       setPedidos(prev);
@@ -298,7 +315,7 @@ export default function LavandoPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto / abrir modal -------  
+  // ------- Subida de foto / abrir modal -------
   function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
     setPickerFotoUrl(fotoUrl);
@@ -337,11 +354,16 @@ export default function LavandoPage() {
 
       // Obtener fotos actuales del pedido para actualizar JSON en foto_url
       const pedidoActual = pedidos.find((p) => p.id === pid);
-      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
       const nuevasFotos = [...fotosActuales, publicUrl];
 
       // Guardamos la lista completa en foto_url como JSON
-      await supabase.from('pedido').update({ foto_url: JSON.stringify(nuevasFotos) }).eq('nro', pid);
+      await supabase
+        .from('pedido')
+        .update({ foto_url: JSON.stringify(nuevasFotos) })
+        .eq('nro', pid);
 
       // Actualizar estado local
       setPedidos((prev) =>
@@ -368,13 +390,15 @@ export default function LavandoPage() {
     }
   }
 
-  // ------- Eliminar foto (botón del modal) -------  
+  // ------- Eliminar foto (botón del modal) -------
   async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
     if (!pedidoId) return;
 
     try {
       const pedidoActual = pedidos.find((p) => p.id === pedidoId);
-      const fotosActuales = pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
 
       const targetUrl = fotoUrl || fotosActuales[0] || null;
       if (!targetUrl) {
@@ -398,11 +422,17 @@ export default function LavandoPage() {
           }
         }
       } catch (e) {
-        console.warn('No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).', e);
+        console.warn(
+          'No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).',
+          e,
+        );
       }
 
       // Borrar de tabla pedido_foto
-      await supabase.from('pedido_foto').delete().match({ pedido_id: pedidoId, url: targetUrl });
+      await supabase
+        .from('pedido_foto')
+        .delete()
+        .match({ pedido_id: pedidoId, url: targetUrl });
 
       // Actualizar lista de fotos para el pedido
       const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
@@ -410,7 +440,9 @@ export default function LavandoPage() {
       // Actualizar foto_url en pedido (JSON o null)
       await supabase
         .from('pedido')
-        .update({ foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null })
+        .update({
+          foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null,
+        })
         .eq('nro', pedidoId);
 
       // Actualizar estado local
@@ -431,7 +463,10 @@ export default function LavandoPage() {
         if (!nuevasFotos.length) {
           delete next[pedidoId];
         } else {
-          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
+          next[pedidoId] = Math.min(
+            prev[pedidoId] ?? 0,
+            nuevasFotos.length - 1,
+          );
         }
         return next;
       });
@@ -463,17 +498,23 @@ export default function LavandoPage() {
   function askEdit(id: number) {
     setAskEditForId(id);
   }
+
   function closeAskEdit() {
     setAskEditForId(null);
   }
-    function goEdit() {
-      const id = askEditForId;
-      if (!id) return;
-      setAskEditForId(null);
 
-      // Enviamos el nro como querystring a /editar
-      router.push(`/editar?nro=${id}`);
+  // ✅ Igual que en Lavar: acepta id directo o usa el del modal
+  function goEdit(idFromButton?: number) {
+    const targetId = idFromButton ?? askEditForId;
+    if (!targetId) return;
+
+    if (!idFromButton) {
+      setAskEditForId(null);
     }
+
+    // Navegamos a /editar?nro=ID
+    router.push(`/editar?nro=${targetId}`);
+  }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -513,15 +554,23 @@ export default function LavandoPage() {
               const isOpen = openId === p.id;
               const detOpen = !!openDetail[p.id];
               const totalCalc =
-                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+                Array.isArray(p.items) && p.items.length
+                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
+                  : p.total ?? 0;
 
-              const fotos = p.fotos && p.fotos.length ? p.fotos : p.foto_url ? [p.foto_url] : [];
+              const fotos =
+                p.fotos && p.fotos.length
+                  ? p.fotos
+                  : p.foto_url
+                  ? [p.foto_url]
+                  : [];
               const totalFotos = fotos.length;
               const slideIndex =
                 totalFotos > 0
                   ? Math.min(currentSlide[p.id] ?? 0, totalFotos - 1)
                   : 0;
-              const activeFoto = totalFotos > 0 ? fotos[slideIndex] : null;
+              const activeFoto =
+                totalFotos > 0 ? fotos[slideIndex] : null;
 
               return (
                 <div
@@ -556,7 +605,9 @@ export default function LavandoPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 lg:gap-4">
-                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                        {CLP.format(totalCalc)}
+                      </div>
                       {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
                   </button>
@@ -565,7 +616,12 @@ export default function LavandoPage() {
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                       <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                         <button
-                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          onClick={() =>
+                            setOpenDetail((prev) => ({
+                              ...prev,
+                              [p.id]: !prev[p.id],
+                            }))
+                          }
                           className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                         >
                           <div className="flex items-center gap-2">
@@ -573,17 +629,19 @@ export default function LavandoPage() {
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* Ícono + botón Editar + chevron */}
+                          {/* Botón Editar + flecha, igual que en Lavar */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation(); // que no abra/cierre el acordeón
-                                askEdit(p.id);
+                                goEdit(p.id);        // va directo a /editar?nro=ID
                               }}
-                              className="hidden sm:inline-flex items-center gap-1 rounded-full bg-violet-500/90 hover:bg-violet-400 text-xs font-semibold px-3 py-1 shadow"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
                             >
-                              Editar
+                              <Archive size={14} className="text-violet-50" />
+                              <span>Editar</span>
                             </button>
                             {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </div>
@@ -606,11 +664,15 @@ export default function LavandoPage() {
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
-                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                          {it.articulo.length > 15
+                                            ? it.articulo.slice(0, 15) + '.'
+                                            : it.articulo}
                                         </td>
                                         <td className="px-3 py-2 text-right">{it.qty}</td>
                                         <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(it.qty * it.valor)}
+                                        </td>
                                       </tr>
                                     ))
                                   ) : (
@@ -688,7 +750,11 @@ export default function LavandoPage() {
                               title="Agregar imagen"
                             >
                               <ImagePlus size={18} />
-                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                              <span>
+                                {(uploading[p.id] ?? false)
+                                  ? 'Subiendo…'
+                                  : 'Sin imagen adjunta. Toca para agregar.'}
+                              </span>
                             </button>
                           )}
                         </div>
@@ -708,35 +774,49 @@ export default function LavandoPage() {
             <IconBtn
               title="Lavando"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'LAVANDO')
+              }
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
             />
             <IconBtn
               title="Guardado"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'GUARDADO')
+              }
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
             />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'ENTREGAR')
+              }
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
             />
             <IconBtn
               title="Entregado"
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              onClick={() =>
+                pedidoAbierto &&
+                changeEstado(pedidoAbierto.id, 'ENTREGADO')
+              }
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
             />
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
-              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
+              onClick={() =>
+                pedidoAbierto && togglePago(pedidoAbierto.id)
+              }
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
             />
@@ -752,7 +832,9 @@ export default function LavandoPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -775,10 +857,17 @@ export default function LavandoPage() {
             className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
-            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <h3 className="text-lg font-semibold mb-1">
+              Editar pedido #{askEditForId}
+            </h3>
+            <p className="text-sm text-black/70 mb-4">
+              ¿Desea editar este pedido?
+            </p>
             <div className="flex gap-2">
-              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+              <button
+                onClick={() => goEdit()}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
                 Editar
               </button>
               <button
@@ -796,7 +885,9 @@ export default function LavandoPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Imagen del pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Imagen del pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -849,7 +940,13 @@ export default function LavandoPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
@@ -875,7 +972,9 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
