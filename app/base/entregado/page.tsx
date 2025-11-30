@@ -102,7 +102,7 @@ export default function EntregadoPage() {
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Modal “¿Desea editar?” al hacer doble clic en Total
+  // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
   const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
@@ -119,7 +119,7 @@ export default function EntregadoPage() {
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'ENTREGADO')
-          .order('nro', { ascending: false }); // más antiguos primero
+          .order('nro', { ascending: false });
 
         if (e1) throw e1;
 
@@ -156,7 +156,9 @@ export default function EntregadoPage() {
         if (e4) throw e4;
 
         const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) => nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'));
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
+        );
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -164,8 +166,15 @@ export default function EntregadoPage() {
           if (!pid) return;
 
           const label =
-            String(l.articulo ?? l.nombre ?? l.descripcion ?? l.item ?? l.articulo_nombre ?? l.articulo_id ?? '')
-              .trim() || 'SIN NOMBRE';
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                '',
+            ).trim() || 'SIN NOMBRE';
 
           const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
           const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
@@ -203,7 +212,7 @@ export default function EntregadoPage() {
         mapped.sort((a, b) => {
           const ap = !!a.pagado;
           const bp = !!b.pagado;
-          if (ap !== bp) return ap ? 1 : -1; // false primero
+          if (ap !== bp) return ap ? 1 : -1;
           return (a.id ?? 0) - (b.id ?? 0);
         });
 
@@ -230,7 +239,7 @@ export default function EntregadoPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  // Cambio de estado (por si quieres devolver a otro estado)
+  // Cambio de estado
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
     setSaving(true);
@@ -329,11 +338,12 @@ export default function EntregadoPage() {
   function closeAskEdit() {
     setAskEditForId(null);
   }
-  function goEdit() {
-    const id = askEditForId;
-    if (!id) return;
-    setAskEditForId(null);
-    router.push(`/pedido/editar/${id}`);
+  function goEdit(idFromButton?: number) {
+    const targetId = idFromButton ?? askEditForId;
+    if (!targetId) return;
+    if (!idFromButton) setAskEditForId(null);
+    // ✅ misma ruta que en Guardado/Lavar
+    router.push(`/editar?nro=${targetId}`);
   }
 
   return (
@@ -374,7 +384,9 @@ export default function EntregadoPage() {
               const isOpen = openId === p.id;
               const detOpen = !!openDetail[p.id];
               const totalCalc =
-                Array.isArray(p.items) && p.items.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
+                Array.isArray(p.items) && p.items.length
+                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
+                  : p.total ?? 0;
 
               return (
                 <div
@@ -425,7 +437,23 @@ export default function EntregadoPage() {
                             <Table size={16} />
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
-                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+
+                          {/* 👉 Botón Editar + chevron, igual que en Guardado */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                goEdit(p.id);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
+                            >
+                              <Archive size={14} className="text-violet-50" />
+                              <span>Editar</span>
+                            </button>
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </div>
                         </button>
 
                         {detOpen && (
@@ -498,7 +526,11 @@ export default function EntregadoPage() {
                               title="Agregar imagen"
                             >
                               <ImagePlus size={18} />
-                              <span>{(uploading[p.id] ?? false) ? 'Subiendo…' : 'Sin imagen adjunta. Toca para agregar.'}</span>
+                              <span>
+                                {(uploading[p.id] ?? false)
+                                  ? 'Subiendo…'
+                                  : 'Sin imagen adjunta. Toca para agregar.'}
+                              </span>
                             </button>
                           )}
                         </div>
@@ -511,7 +543,7 @@ export default function EntregadoPage() {
         </ErrorBoundary>
       </section>
 
-      {/* Barra de acciones (Entregado) - solo iconos */}
+      {/* Barra de acciones (Entregado) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
@@ -562,7 +594,9 @@ export default function EntregadoPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -588,7 +622,10 @@ export default function EntregadoPage() {
             <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
             <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
             <div className="flex gap-2">
-              <button onClick={goEdit} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+              <button
+                onClick={() => goEdit()}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
                 Editar
               </button>
               <button
@@ -622,7 +659,10 @@ export default function EntregadoPage() {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+              <button
+                onClick={() => setPickerForPedido(null)}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
                 Cancelar
               </button>
             </div>
