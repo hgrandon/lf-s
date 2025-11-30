@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Script from 'next/script';
 
 type PageProps = {
-  searchParams?: { [key: string]: string | string[] | undefined };
+  searchParams?: Record<string, string | string[] | undefined>;
 };
 
 type PedidoEstado =
@@ -39,6 +39,16 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
+/** Obtiene un solo valor de searchParams, aunque venga como string[] */
+function getParam(
+  searchParams: PageProps['searchParams'],
+  key: string
+): string | undefined {
+  const raw = searchParams?.[key];
+  if (Array.isArray(raw)) return raw[0];
+  return raw ?? undefined;
+}
+
 function formatFecha(iso?: string | null) {
   if (!iso) return '';
   const [y, m, d] = iso.split('T')[0].split('-');
@@ -47,13 +57,16 @@ function formatFecha(iso?: string | null) {
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
+
   if (typeof input === 'string') {
     const s = input.trim();
     if (!s) return null;
+
+    // Caso: JSON con arreglo de urls
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
+        if (Array.isArray(arr) && typeof arr[0] === 'string') {
           return arr[0] as string;
         }
         return null;
@@ -61,30 +74,39 @@ function firstFotoFromMixed(input: unknown): string | null {
         return null;
       }
     }
+
+    // Caso: una sola URL en texto
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
+
+  // Caso: ya viene como arreglo
+  if (Array.isArray(input) && typeof input[0] === 'string') {
     return input[0] as string;
   }
+
   return null;
+}
+
+function ErrorServicio({ message }: { message: string }) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="text-center max-w-sm px-4">
+        <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
+        <p className="text-sm text-white/70">{message}</p>
+      </div>
+    </main>
+  );
 }
 
 export const dynamic = 'force-dynamic';
 
 export default async function ServicioPage({ searchParams }: PageProps) {
-  const nroParam = searchParams?.nro;
-  const nroStr = Array.isArray(nroParam) ? nroParam[0] : nroParam;
+  const nroStr = getParam(searchParams, 'nro');
+  const popupFlag = getParam(searchParams, 'popup'); // por si luego quieres cambiar algo visual
   const nro = Number(nroStr);
 
   if (!nro || Number.isNaN(nro)) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
-          <p className="text-sm text-white/70">El número de pedido no es correcto.</p>
-        </div>
-      </main>
-    );
+    return <ErrorServicio message="El número de pedido no es correcto." />;
   }
 
   // --- Cargar pedido ---
@@ -98,14 +120,7 @@ export default async function ServicioPage({ searchParams }: PageProps) {
 
   if (ePed || !ped) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
-          <p className="text-sm text-white/70">
-            No se encontró el pedido #{nro}.
-          </p>
-        </div>
-      </main>
+      <ErrorServicio message={`No se encontró el pedido #${nro}.`} />
     );
   }
 
@@ -120,6 +135,7 @@ export default async function ServicioPage({ searchParams }: PageProps) {
       .select('nombre,direccion')
       .eq('telefono', pedido.telefono)
       .maybeSingle();
+
     nombre = (cli?.nombre as string) || '';
     direccion = (cli?.direccion as string) || '';
   }
@@ -131,7 +147,7 @@ export default async function ServicioPage({ searchParams }: PageProps) {
     .eq('pedido_id', nro);
 
   const items: Linea[] =
-    ((lineas as any[]) || []).map((l) => ({
+    (lineas as any[] | null)?.map((l) => ({
       articulo: String(l.articulo || ''),
       cantidad: Number(l.cantidad ?? 0),
       valor: Number(l.valor ?? 0),
@@ -153,6 +169,8 @@ export default async function ServicioPage({ searchParams }: PageProps) {
       ? 'DOMICILIO'
       : 'LOCAL';
 
+  const saludoNombre = nombre ? nombre.split(' ')[0].toUpperCase() : '';
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-3 py-6">
       {/* Script para “enmascarar” la URL después de cargar */}
@@ -160,6 +178,7 @@ export default async function ServicioPage({ searchParams }: PageProps) {
         {`
           try {
             const url = new URL(window.location.href);
+            // sólo si existe nro, limpiamos parámetros sensibles
             if (url.searchParams.get('nro')) {
               url.searchParams.delete('nro');
               url.searchParams.delete('popup');
@@ -189,6 +208,12 @@ export default async function ServicioPage({ searchParams }: PageProps) {
             <span className="font-semibold">SERVICIO N°</span>
             <span className="font-bold text-white text-sm">{pedido.nro}</span>
           </div>
+          {saludoNombre && (
+            <div className="flex justify-between text-[11px] text-white/75">
+              <span>Hola</span>
+              <span className="font-semibold">{saludoNombre}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Fecha ingreso</span>
             <span>{formatFecha(pedido.fecha_ingreso)}</span>
@@ -283,7 +308,9 @@ export default async function ServicioPage({ searchParams }: PageProps) {
         {/* Foto (opcional, pequeña) */}
         {foto && (
           <div className="px-6 pt-2 pb-4">
-            <div className="text-xs text-white/70 mb-1">Referencia visual</div>
+            <div className="text-xs text-white/70 mb-1">
+              Referencia visual del pedido
+            </div>
             <div className="border border-white/15 rounded-2xl overflow-hidden bg-black/50">
               <Image
                 src={foto}
@@ -299,6 +326,12 @@ export default async function ServicioPage({ searchParams }: PageProps) {
         {/* Nota final */}
         <div className="px-6 pb-5 pt-2 text-[10px] text-center text-white/50 border-t border-white/10">
           Solo válido como comprobante de servicio de Lavandería Fabiola.
+          {popupFlag && (
+            <>
+              {' '}
+              (Vista enviada por WhatsApp)
+            </>
+          )}
         </div>
       </div>
     </main>
