@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Loader2,
@@ -516,7 +516,6 @@ function NuevoArticuloModal({
 
 export default function EditarPedidoPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [nroInput, setNroInput] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -535,7 +534,7 @@ export default function EditarPedidoPage() {
   const [bolsasModalOpen, setBolsasModalOpen] = useState(false);
   const [bolsasInput, setBolsasInput] = useState('');
 
-  // originales (por si después quieres comparar)
+  // originales
   const [estadoOriginal, setEstadoOriginal] = useState<PedidoEstado | null>(null);
   const [pagadoOriginal, setPagadoOriginal] = useState<boolean | null>(null);
   const [tipoEntregaOriginal, setTipoEntregaOriginal] =
@@ -662,9 +661,11 @@ export default function EditarPedidoPage() {
     };
   }, [telefono]);
 
-  /* === Si venimos desde Lavar/Lavando con ?nro=XXXX, autocompletar y cargar === */
+  /* === Leer ?nro= desde la URL (viene de Lavar) y auto-cargar === */
   useEffect(() => {
-    const nroQS = searchParams.get('nro');
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const nroQS = params.get('nro');
     if (!nroQS) return;
 
     const nroNum = Number(nroQS);
@@ -672,8 +673,9 @@ export default function EditarPedidoPage() {
 
     setNroInput(String(nroNum));
     void handleCargarPedido(nroNum);
+    // solo una vez al montar
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, []);
 
   /* === Cargar pedido por N° === */
   async function handleCargarPedido(forceNro?: number) {
@@ -811,7 +813,6 @@ export default function EditarPedidoPage() {
 
     const nombreNormalizado = nombreSel.trim().toUpperCase();
 
-    // 1) Buscar el artículo en el catálogo
     const base = catalogo.find(
       (a) => a.nombre.trim().toUpperCase() === nombreNormalizado,
     );
@@ -820,12 +821,10 @@ export default function EditarPedidoPage() {
       return;
     }
 
-    // 2) Buscar si YA hay una línea de este artículo en el pedido
     const existingLine = items.find(
       (it) => it.articulo.trim().toUpperCase() === nombreNormalizado,
     );
 
-    // 3) Si existe, usamos el valor de ESA línea como precio inicial del modal
     const found: Articulo = existingLine
       ? { ...base, precio: Number(existingLine.valor || 0) }
       : base;
@@ -932,7 +931,6 @@ export default function EditarPedidoPage() {
       return;
     }
 
-    // Prellenar con bolsas actuales (si existen)
     if (bolsas != null && !Number.isNaN(bolsas) && bolsas > 0) {
       setBolsasInput(String(bolsas));
     } else {
@@ -973,7 +971,6 @@ export default function EditarPedidoPage() {
 
       if (eP) throw eP;
 
-      // Reemplazar líneas
       const { error: eDelLine } = await supabase
         .from('pedido_linea')
         .delete()
@@ -996,7 +993,6 @@ export default function EditarPedidoPage() {
         if (eInsLine) throw eInsLine;
       }
 
-      // Reemplazar fotos en pedido_foto
       const { error: eDelFotos } = await supabase
         .from('pedido_foto')
         .delete()
@@ -1043,7 +1039,6 @@ export default function EditarPedidoPage() {
   const hayPedidoCargado = !!nextInfo;
   const estadoCfg = getEstadoConfig(estado);
 
-  // toggles de iconos
   function toggleTipoEntrega() {
     if (!hayPedidoCargado) return;
     setTipoEntrega((prev) => (prev === 'LOCAL' ? 'DOMICILIO' : 'LOCAL'));
@@ -1190,7 +1185,7 @@ export default function EditarPedidoPage() {
                 </span>
               </button>
 
-              {/* Estado del pedido: va ciclando por todos los estados */}
+              {/* Estado del pedido */}
               <button
                 type="button"
                 onClick={toggleEstado}
@@ -1208,7 +1203,7 @@ export default function EditarPedidoPage() {
 
       {/* Modal bolsas */}
       {bolsasModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justifycenter bg-black/60 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b">
               <div className="font-bold text-sm sm:text-base">
