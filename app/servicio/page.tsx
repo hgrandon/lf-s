@@ -293,10 +293,18 @@ export default function ServicioPage() {
 
         {/* Datos principales */}
         <div className="px-6 py-3 text-xs text-slate-800 grid gap-2">
-          <div className="flex justify-between">
+
+            {/* Fecha de ingreso ocultada temporalmente */}
+            {/* <div className="flex justify-between">
             <span className="font-semibold">Fecha ingreso</span>
             <span>{formatFecha(pedido.fecha_ingreso)}</span>
-          </div>
+            </div> */}
+
+            <div className="flex justify-between">
+            <span className="font-semibold">Fecha entrega</span>
+            <span>{formatFecha(pedido.fecha_entrega)}</span>
+            </div>
+
           <div className="flex justify-between">
             <span className="font-semibold">Fecha entrega</span>
             <span>{formatFecha(pedido.fecha_entrega)}</span>
