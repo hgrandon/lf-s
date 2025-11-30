@@ -1,318 +1,270 @@
 // app/servicio/[nro]/page.tsx
-import type { Metadata } from "next";
-import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import type { Metadata } from 'next';
+import { supabase } from '@/lib/supabaseClient';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 type Params = { params: { nro: string } };
 
-type PedidoRow = {
-  nro: number;
-  telefono: string | null;
-  total: number | null;
-  detalle: string | null;
-  pagado: boolean | null;
-  estado: string | null;
-  tipo_entrega: string | null;
-  fecha_ingreso: string | null;
-  fecha_entrega: string | null;
-};
+type Item = { articulo: string; qty: number; valor: number };
 
-type LineaRow = { articulo: string | null; cantidad: number | null; valor: number | null };
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const nro = params.nro;
   return {
     title: `Servicio #${nro} | Lavandería Fabiola`,
-    description: `Detalle del servicio #${nro}`,
+    description: `Comprobante visual del pedido #${nro}`,
     robots: { index: false, follow: false },
   };
 }
 
-function fmtCLP(n: number) {
-  return new Intl.NumberFormat("es-CL", {
-    style: "currency",
-    currency: "CLP",
-    maximumFractionDigits: 0,
-  }).format(n || 0);
-}
-
-function fmtTel(raw: string | null): { telFmt: string; telE164: string | null } {
-  const digits = String(raw ?? "").replace(/\D/g, "");
-  if (!digits) return { telFmt: "—", telE164: null };
-  const local = digits.startsWith("56") ? digits.slice(2) : digits;
-  const is9 = local.length === 9;
-  const telFmt = is9 ? `+56 9 ${local.slice(1, 5)} ${local.slice(5)}` : `+${digits}`;
-  const telE164 = is9 ? `569${local.slice(1)}` : digits.startsWith("56") ? digits : `56${local}`;
-  return { telFmt, telE164 };
-}
-
 export default async function ServicioPage({ params }: Params) {
   const nro = Number(params.nro || 0);
-
   if (!nro || Number.isNaN(nro)) {
     return (
-      <main className="min-h-screen bg-white text-gray-900 grid place-items-center p-6">
-        <div className="max-w-md w-full text-center">
-          <h1 className="text-xl font-bold mb-2">N° inválido</h1>
-          <p className="text-sm text-gray-600">La URL debe ser /servicio/1234</p>
-          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium" prefetch={false}>
-            ← Volver
-          </Link>
+      <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="text-center space-y-2">
+          <h1 className="text-xl font-bold">Servicio no válido</h1>
+          <p>El número de pedido no es correcto.</p>
         </div>
       </main>
     );
   }
 
-  const [{ data: pedido }, { data: lineas }] = await Promise.all([
-    supabase
-      .from("pedido")
-      .select(
-        "nro, telefono, total, detalle, pagado, estado, tipo_entrega, fecha_ingreso, fecha_entrega"
-      )
-      .eq("nro", nro)
-      .maybeSingle<PedidoRow>(),
-    supabase
-      .from("pedido_linea")
-      .select("articulo, cantidad, valor")
-      .eq("pedido_id", nro)
-      .returns<LineaRow[]>(),
-  ]);
+  // --- Cargar pedido ---
+  const { data: pedidoRow, error: e1 } = await supabase
+    .from('pedido')
+    .select('nro, telefono, total, estado, detalle, pagado, created_at, fecha_entrega')
+    .eq('nro', nro)
+    .maybeSingle();
 
-  if (!pedido) {
+  if (e1 || !pedidoRow) {
     return (
-      <main className="min-h-screen bg-white text-gray-900 grid place-items-center p-6">
-        <div className="max-w-md w-full text-center">
-          <h1 className="text-xl font-bold mb-2">No encontrado</h1>
-          <p className="text-sm text-gray-600">No existe el pedido #{nro}</p>
-          <Link href="/base" className="inline-block mt-4 text-violet-700 font-medium" prefetch={false}>
-            ← Volver
-          </Link>
+      <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="text-center space-y-2">
+          <h1 className="text-xl font-bold">Servicio no encontrado</h1>
+          <p>No se encontró el pedido #{nro}.</p>
         </div>
       </main>
     );
   }
 
-  let clienteNombre: string | null = null;
-  let clienteDireccion: string | null = null;
-  if (pedido.telefono) {
-    const { data: cli } = await supabase
-      .from("cliente")
-      .select("nombre, direccion")
-      .eq("telefono", pedido.telefono)
-      .maybeSingle<{ nombre: string | null; direccion: string | null }>();
-    clienteNombre = cli?.nombre ?? null;
-    clienteDireccion = cli?.direccion ?? null;
-  }
+  const tel = pedidoRow.telefono ? String(pedidoRow.telefono) : '';
 
-  const items = (lineas ?? []).map((l) => ({
-    articulo: String(l.articulo ?? "").trim() || "SIN NOMBRE",
-    qty: Number(l.cantidad ?? 0),
-    valor: Number(l.valor ?? 0),
-  }));
+  // --- Cliente ---
+  const { data: cli } = await supabase
+    .from('clientes')
+    .select('nombre, direccion')
+    .eq('telefono', tel)
+    .maybeSingle();
 
-  const total =
+  // --- Ítems ---
+  const { data: lineas } = await supabase
+    .from('pedido_linea')
+    .select('articulo, cantidad, valor')
+    .eq('pedido_id', nro)
+    .order('id', { ascending: true });
+
+  const items: Item[] =
+    lineas?.map((l: any) => ({
+      articulo:
+        String(
+          l.articulo ??
+            l.nombre ??
+            l.descripcion ??
+            l.item ??
+            l.articulo_nombre ??
+            l.articulo_id ??
+            '',
+        ).trim() || 'SIN NOMBRE',
+      qty: Number(l.cantidad ?? l.qty ?? 0),
+      valor: Number(l.valor ?? l.precio ?? 0),
+    })) ?? [];
+
+  const totalCalc =
     items.length > 0
-      ? items.reduce(
-          (a, it) =>
-            a +
-            (Number.isFinite(it.qty) ? it.qty : 0) *
-              (Number.isFinite(it.valor) ? it.valor : 0),
-          0
-        )
-      : Number(pedido.total ?? 0);
+      ? items.reduce((a, it) => a + it.qty * it.valor, 0)
+      : Number(pedidoRow.total ?? 0);
 
-  const { telFmt, telE164 } = fmtTel(String(pedido.telefono ?? ""));
-  const listoParaRetirar = ["ENTREGAR", "GUARDADO", "ENTREGADO"].includes(String(pedido.estado ?? ""));
-  const estadoBadge =
-    pedido.pagado === true
-      ? { txt: "PAGADO", cls: "bg-green-100 text-green-700" }
-      : { txt: "PENDIENTE", cls: "bg-rose-100 text-rose-700" };
+  const fechaIngreso = pedidoRow.created_at
+    ? new Date(pedidoRow.created_at)
+    : null;
+  const fechaEntrega = pedidoRow.fecha_entrega
+    ? new Date(pedidoRow.fecha_entrega)
+    : null;
 
-  const saludo = clienteNombre ? `Hola ${clienteNombre},` : "Servicio";
-  const msgWA = encodeURIComponent(
-    [
-      `${saludo} tu servicio #${nro} está ${listoParaRetirar ? "listo para retirar" : "en proceso"}.`,
-      "",
-      ...items.map((it) => `• ${it.articulo} x${it.qty} = ${fmtCLP(it.qty * it.valor)}`),
-      "",
-      `Total: ${fmtCLP(total)}`,
-      pedido.detalle ? `Nota: ${pedido.detalle}` : "",
-      telFmt ? `Contacto: ${telFmt}` : "",
-      "",
-      "Gracias por preferir Lavandería Fabiola 💜",
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
-  const waHref = telE164 ? `https://wa.me/${telE164}?text=${msgWA}` : null;
+  const fmtDate = (d: Date | null) =>
+    d
+      ? d.toLocaleDateString('es-CL', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        })
+      : '';
 
-  const autoPrintScript = `
-    (function(){
-      try {
-        const qs = new URLSearchParams(window.location.search);
-        if (qs.get("popup") === "1") {
-          setTimeout(() => window.print(), 400);
-        }
-      } catch {}
-    })();
-  `;
+  const estadoTexto = (() => {
+    switch (pedidoRow.estado) {
+      case 'LAVAR':
+        return 'Por lavar';
+      case 'LAVANDO':
+        return 'Lavando';
+      case 'GUARDAR':
+        return 'Para guardar';
+      case 'GUARDADO':
+        return 'Guardado';
+      case 'ENTREGAR':
+        return 'Para entregar';
+      case 'ENTREGADO':
+        return 'Entregado';
+      default:
+        return String(pedidoRow.estado || '');
+    }
+  })();
 
   return (
-    <main className="min-h-screen bg-[#F6F7FB] text-gray-900 p-4">
-      <div className="mx-auto max-w-[520px]">
-        <header className="flex items-start justify-between mb-3">
+    <main className="min-h-screen bg-slate-900 py-6 px-2 flex items-center justify-center">
+      <div className="w-full max-w-md bg-white shadow-2xl rounded-2xl border border-slate-200 overflow-hidden print:w-[420px]">
+        {/* Header */}
+        <header className="bg-violet-700 text-white px-5 py-4 flex items-center justify-between">
           <div>
-            <div className="text-sm text-gray-500">{saludo}</div>
-            <h1 className="text-xl font-extrabold -mt-0.5">
-              {listoParaRetirar ? "¡Tu servicio está listo!" : "Estado de tu servicio"}
+            <h1 className="text-lg font-extrabold tracking-wide uppercase">
+              Lavandería Fabiola
             </h1>
+            <p className="text-[11px] opacity-90">
+              Comprobante de servicio #{nro}
+            </p>
           </div>
-          <div className="text-right">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500">N° SERVICIO</div>
-            <div className="text-2xl font-extrabold text-violet-600 leading-none">{nro}</div>
-            {listoParaRetirar && <div className="text-[11px] font-semibold text-emerald-600 mt-1">LISTO</div>}
+          <div className="text-right text-[11px] leading-tight">
+            <div>Fono: {tel || '—'}</div>
+            <div>Estado: {estadoTexto}</div>
+            <div>{pedidoRow.pagado ? 'PAGADO' : 'PENDIENTE'}</div>
           </div>
         </header>
 
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-sm text-gray-500">Monto a Pagar</div>
-              <div className="text-3xl font-extrabold leading-tight">{fmtCLP(total)}</div>
+        {/* Datos cliente */}
+        <section className="px-5 py-3 border-b border-slate-200 text-[12px]">
+          <div className="flex justify-between gap-2">
+            <div className="space-y-1">
+              <div className="font-semibold text-slate-700 uppercase">
+                Cliente
+              </div>
+              <div className="text-slate-900 font-semibold">
+                {cli?.nombre || 'SIN NOMBRE'}
+              </div>
+              <div className="text-slate-700">
+                {cli?.direccion || 'Sin dirección registrada'}
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm text-gray-500">Estado</div>
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold ${estadoBadge.cls}`}>
-                <svg viewBox="0 0 24 24" className="w-4 h-4 mr-1" fill="currentColor">
-                  <path d="M12 2a10 10 0 100 20 10 10 0 000-20Zm1 14h-2v-2h2v2Zm0-4h-2V6h2v6Z" />
-                </svg>
-                {estadoBadge.txt}
+            <div className="text-right space-y-1">
+              <div className="font-semibold text-slate-700 uppercase">
+                Fechas
+              </div>
+              <div>Ingreso: {fmtDate(fechaIngreso)}</div>
+              <div>Entrega: {fmtDate(fechaEntrega)}</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Detalle de artículos */}
+        <section className="px-5 pt-3 pb-1 text-[12px]">
+          <div className="mb-1 font-semibold text-slate-700 uppercase">
+            Detalle del servicio
+          </div>
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full border-collapse">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="text-left px-2 py-1.5 w-[50%]">Artículo</th>
+                  <th className="text-right px-2 py-1.5 w-[15%]">Cant.</th>
+                  <th className="text-right px-2 py-1.5 w-[20%]">Valor</th>
+                  <th className="text-right px-2 py-1.5 w-[15%]">Subt.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length ? (
+                  items.map((it, idx) => (
+                    <tr
+                      key={idx}
+                      className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}
+                    >
+                      <td className="px-2 py-1.5 align-top">
+                        {it.articulo.length > 32
+                          ? it.articulo.slice(0, 32) + '…'
+                          : it.articulo}
+                      </td>
+                      <td className="px-2 py-1.5 text-right align-top">
+                        {it.qty}
+                      </td>
+                      <td className="px-2 py-1.5 text-right align-top">
+                        {CLP.format(it.valor)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right align-top">
+                        {CLP.format(it.qty * it.valor)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-2 py-3 text-center text-slate-500"
+                    >
+                      Sin artículos registrados en este pedido.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Total + detalle libre */}
+        <section className="px-5 py-3 text-[12px] border-t border-slate-200 space-y-2">
+          <div className="flex justify-between items-center">
+            <div className="text-[11px] text-slate-600">
+              Estado de pago:{' '}
+              <span className="font-semibold text-slate-800">
+                {pedidoRow.pagado ? 'PAGADO' : 'PENDIENTE'}
               </span>
             </div>
-          </div>
-
-          {pedido.pagado !== true && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm font-semibold flex items-center">
-              <svg viewBox="0 0 24 24" className="w-5 h-5 mr-2" fill="currentColor">
-                <path d="M21 7H3a1 1 0 00-1 1v8a1 1 0 001 1h18a1 1 0 001-1V8a1 1 0 00-1-1Zm-2 6a3 3 0 11-6 0 3 3 0 016 0Z" />
-              </svg>
-              SOLO PAGO EFECTIVO
-              <span className="font-normal ml-1 text-amber-700">· Por favor, ten el monto exacto.</span>
-            </div>
-          )}
-        </section>
-
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-          <h2 className="font-bold text-gray-800 mb-3">Información de Retiro</h2>
-          <div className="flex items-start gap-3 mb-3">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 mt-0.5 text-violet-600" fill="currentColor">
-              <path d="M12 2C8.14 2 5 5.14 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.86-3.14-7-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"/>
-            </svg>
-            <div>
-              <div className="text-sm text-gray-500">Dirección</div>
-              <div className="font-medium text-gray-900">
-                {clienteDireccion ?? "Periodista Mario Peña Carreño #5304"}
+            <div className="text-right">
+              <div className="text-[11px] text-slate-600">Total servicio</div>
+              <div className="text-base font-extrabold text-slate-900">
+                {CLP.format(totalCalc)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-start gap-3">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 mt-0.5 text-violet-600" fill="currentColor">
-              <path d="M12 7a1 1 0 0 1 1 1v4.06l2.47 1.42a1 1 0 1 1-1 1.74l-3-1.73A1 1 0 0 1 11 13V8a1 1 0 0 1 1-1Zm0-5a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Z"/>
-            </svg>
-            <div>
-              <div className="text-sm text-gray-500">Horario de Atención</div>
-              <div className="font-medium text-gray-900">Lunes a Viernes de 10:00 a 20:00 hrs.</div>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-          <div className="p-4">
-            <h2 className="font-bold text-gray-800">Detalle del Servicio</h2>
-          </div>
-          <div className="border-t border-gray-100" />
-          <div className="p-4">
-            {items.length ? (
-              <div className="space-y-3">
-                {items.map((it, i) => (
-                  <div key={i} className="flex items-start justify-between">
-                    <div className="pr-2">
-                      <div className="font-semibold text-gray-900">
-                        {it.articulo} {fmtCLP(it.valor)}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Cantidad: <span className="font-medium text-gray-700">{it.qty}</span> · Valor unitario:{" "}
-                        <span className="font-medium text-gray-700">{fmtCLP(it.valor)}</span>
-                      </div>
-                    </div>
-                    <div className="font-extrabold text-gray-900">{fmtCLP(it.qty * it.valor)}</div>
-                  </div>
-                ))}
+          {pedidoRow.detalle && (
+            <div className="mt-1">
+              <div className="text-[11px] text-slate-600 font-semibold">
+                Observaciones
               </div>
-            ) : (
-              <div className="text-center text-gray-500">Sin artículos</div>
-            )}
-          </div>
-          <div className="border-t border-gray-100" />
-          <div className="p-4 flex items-center justify-between text-sm">
-            <div className="font-bold tracking-wide">TOTAL</div>
-            <div className="font-extrabold text-violet-600">{fmtCLP(total)}</div>
-          </div>
+              <div className="text-slate-800 whitespace-pre-wrap">
+                {pedidoRow.detalle}
+              </div>
+            </div>
+          )}
         </section>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 text-sm mb-6">
-          <button
-            className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-            onClick={() => typeof window !== "undefined" && window.print()}
-          >
-            Imprimir
-          </button>
-
-          <a
-            href={`/servicio/${nro}?popup=1`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-          >
-            Abrir en ventana nueva
-          </a>
-
-          {waHref && (
-            <a
-              href={waHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-2 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-            >
-              WhatsApp al cliente
-            </a>
-          )}
-
-          <Link href="/base" className="px-3 py-2 rounded-lg border border-violet-300 text-violet-700 bg-white hover:bg-violet-50" prefetch={false}>
-            ← Volver
-          </Link>
-        </div>
-
-        <footer className="text-center text-[13px] text-gray-500 mb-8">
-          Gracias por su preferencia{clienteNombre ? `, ${clienteNombre}` : ""}.
+        {/* Footer tipo boleta */}
+        <footer className="px-5 py-3 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-600">
+          <p className="font-semibold text-center mb-1">
+            Gracias por preferir Lavandería Fabiola 💜
+          </p>
+          <p className="text-center">
+            Este comprobante es válido solo como registro interno del servicio.
+          </p>
+          <p className="text-center mt-1">
+            Medios de pago aceptados: efectivo / transferencia.
+          </p>
         </footer>
       </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @page { margin: 10mm; }
-            @media print {
-              html, body { background: #fff !important; }
-              a, button { display: none !important; }
-            }
-          `,
-        }}
-      />
-      <script dangerouslySetInnerHTML={{ __html: autoPrintScript }} />
     </main>
   );
 }
