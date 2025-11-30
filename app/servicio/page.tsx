@@ -2,7 +2,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 /* =========================
@@ -56,30 +55,6 @@ function formatFecha(iso?: string | null) {
   return `${d}-${m}-${y}`;
 }
 
-function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
-  if (typeof input === 'string') {
-    const s = input.trim();
-    if (!s) return null;
-    if (s.startsWith('[')) {
-      try {
-        const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
-          return arr[0] as string;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    }
-    return s;
-  }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
-    return input[0] as string;
-  }
-  return null;
-}
-
 function ErrorServicio({ message }: { message: string }) {
   return (
     <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
@@ -105,7 +80,7 @@ export default function ServicioPage() {
   const [items, setItems] = useState<Linea[]>([]);
   const [cliente, setCliente] = useState<ClienteRow | null>(null);
 
-  // Leer token desde la URL (window.location) y limpiar la URL
+  // Leer token desde la URL y limpiar la URL
   useEffect(() => {
     try {
       const url = new URL(window.location.href);
@@ -119,7 +94,6 @@ export default function ServicioPage() {
 
       setToken(t);
 
-      // enmascarar URL (ocultar token)
       url.searchParams.delete('token');
       window.history.replaceState({}, '', url.toString());
     } catch (e) {
@@ -141,7 +115,6 @@ export default function ServicioPage() {
         setLoading(true);
         setError(null);
 
-        // Pedido por token_seguro
         const { data: ped, error: ePed } = await supabase
           .from('pedido')
           .select(
@@ -151,13 +124,15 @@ export default function ServicioPage() {
           .maybeSingle();
 
         if (ePed) throw ePed;
-        if (!ped) throw new Error('No se encontró el servicio asociado a este link.');
+        if (!ped) throw new Error(
+          'No se encontró el servicio asociado a este link.'
+        );
 
         const pedidoRow = ped as PedidoRow;
         if (cancelled) return;
         setPedido(pedidoRow);
 
-        // Cliente
+        // Cliente solo para saludo (no mostramos datos personales)
         if (pedidoRow.telefono) {
           const { data: cli } = await supabase
             .from('clientes')
@@ -216,7 +191,6 @@ export default function ServicioPage() {
     return Number(pedido?.total ?? 0);
   }, [items, pedido]);
 
-  const foto = firstFotoFromMixed(pedido?.foto_url ?? null);
   const esPagado = !!pedido?.pagado;
   const tipoEntrega =
     (pedido?.tipo_entrega || '').toUpperCase() === 'DOMICILIO'
@@ -224,8 +198,6 @@ export default function ServicioPage() {
       : 'LOCAL';
 
   const nombreCli = (cliente?.nombre || '').trim() || 'CLIENTE';
-  const direccionCli =
-    (cliente?.direccion || '').trim() || 'SIN DIRECCIÓN REGISTRADA';
 
   /* =========================
      ESTADOS
@@ -252,13 +224,13 @@ export default function ServicioPage() {
   if (!pedido) return null;
 
   /* =========================
-     COMPROBANTE
+     COMPROBANTE limpio
   ========================== */
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-6">
       <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-violet-100 overflow-hidden">
-        {/* Cabecera */}
+        {/* Cabecera grande */}
         <div className="px-6 pt-5 pb-4 border-b border-violet-100 text-center">
           <div className="flex items-center justify-between text-violet-700 text-xs font-semibold">
             <span>LAVANDERÍA FABIOLA</span>
@@ -276,17 +248,43 @@ export default function ServicioPage() {
           </div>
 
           <div className="mt-3 text-sm font-semibold text-slate-800">
-            Hola {nombreCli.split(' ')[0]}, tu servicio está{' '}
-            {esPagado ? (
-              <span className="text-emerald-600">PAGADO</span>
+            Hola {nombreCli.split(' ')[0]},{' '}
+            {pedido.estado === 'GUARDADO' || pedido.estado === 'ENTREGAR' ? (
+              tipoEntrega === 'DOMICILIO' ? (
+                <>
+                  tu servicio está{' '}
+                  <span className="text-emerald-600">LISTO</span>. <br />
+                  Necesitamos que nos confirmes si podemos llevar tu pedido a
+                  domicilio 🚚
+                </>
+              ) : (
+                <>
+                  tu servicio está{' '}
+                  <span className="text-emerald-600">LISTO</span>. <br />
+                  Por favor pasa a retirar tu ropa cuando puedas 🕘
+                </>
+              )
+            ) : pedido.estado === 'ENTREGADO' ? (
+              <>
+                tu servicio ya fue{' '}
+                <span className="text-emerald-600">ENTREGADO</span>. <br />
+                ¡Gracias por tu preferencia! 💜
+              </>
+            ) : esPagado ? (
+              <>
+                tu servicio está{' '}
+                <span className="text-emerald-600">PAGADO</span>.
+              </>
             ) : (
-              <span className="text-amber-600">PENDIENTE</span>
+              <>
+                tu servicio está{' '}
+                <span className="text-amber-600">PENDIENTE</span>.
+              </>
             )}
-            .
           </div>
+
           <div className="mt-1 text-xs text-slate-600">
-            Necesitamos que pases a retirar tu ropa. Atención de Lunes a
-            Viernes de 10:00 a 20:00 hrs.
+            Atención de Lunes a Viernes de 10:00 a 20:00 hrs.
           </div>
         </div>
 
@@ -312,22 +310,8 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* Cliente */}
-        <div className="px-6 pt-3 pb-3 text-xs text-slate-800">
-          <div className="font-semibold mb-1">Cliente</div>
-          <div className="border border-slate-200 rounded-2xl px-3 py-2 bg-slate-50">
-            <div className="font-bold text-[13px] truncate">
-              {nombreCli.toUpperCase()}
-            </div>
-            <div className="text-[11px] truncate">{direccionCli}</div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              Teléfono: {pedido.telefono || '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* Detalle */}
-        <div className="px-6 pt-2 pb-1 text-xs text-slate-800">
+        {/* Detalle del servicio */}
+        <div className="px-6 pt-3 pb-1 text-xs text-slate-800">
           <div className="font-semibold mb-1">Detalle del servicio</div>
           <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
             <table className="w-full text-[11px]">
@@ -381,26 +365,8 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* Foto */}
-        {foto && (
-          <div className="px-6 pt-3 pb-3">
-            <div className="text-xs text-slate-600 mb-1">
-              Referencia visual del pedido
-            </div>
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-black/5">
-              <Image
-                src={foto}
-                alt={`Foto pedido ${pedido.nro}`}
-                width={800}
-                height={600}
-                className="w-full h-auto object-cover"
-              />
-            </div>
-          </div>
-        )}
-
         {/* SOLO PAGO EFECTIVO */}
-        <div className="px-6 pb-4 pt-1">
+        <div className="px-6 pb-4 pt-3">
           <div className="w-full rounded-2xl bg-yellow-400 text-center font-extrabold text-red-700 text-sm py-2">
             SOLO PAGO EFECTIVO
           </div>
