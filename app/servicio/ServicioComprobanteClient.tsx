@@ -246,17 +246,30 @@ export default function ServicioPage() {
             {pedido.nro}
           </div>
 
-          <div className="mt-3 text-sm font-semibold text-slate-800">
-            Hola {nombreCli.split(' ')[0]}, tu servicio está{' '}
-            {pedido.estado === 'GUARDADO' ? (
-              <span className="text-emerald-600">LISTO</span>
-            ) : esPagado ? (
-              <span className="text-emerald-600">PAGADO</span>
-            ) : (
-              <span className="text-amber-600">PENDIENTE</span>
-            )}
-            .
-          </div>
+                        <div className="mt-3 text-sm font-semibold text-slate-800">
+                        Hola {nombreCli.split(' ')[0]},{" "}
+                        {pedido.estado === "GUARDADO" ? (
+                            tipoEntrega === "DOMICILIO" ? (
+                            <>
+                                tu servicio está <span className="text-emerald-600">LISTO</span>. <br />
+                                Necesitamos que nos confirmes si podemos llevar tu pedido a domicilio 🚚
+                            </>
+                            ) : (
+                            <>
+                                tu servicio está <span className="text-emerald-600">LISTO</span>. <br />
+                                Por favor pasa a retirar tu ropa cuando puedas 🕘
+                            </>
+                            )
+                        ) : esPagado ? (
+                            <>
+                            tu servicio está <span className="text-emerald-600">PAGADO</span>.
+                            </>
+                        ) : (
+                            <>
+                            tu servicio está <span className="text-amber-600">PENDIENTE</span>.
+                            </>
+                        )}
+                        </div>
         </div>
 
         {/* Datos principales */}
