@@ -18,7 +18,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
-  Printer, // 👈 NUEVO ICONO
+  Printer,          // 👈 NUEVO ICONO
 } from 'lucide-react';
 
 /* =========================
@@ -76,7 +76,6 @@ export default function BasePage() {
           const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
           if (key && key in next) next[key] = Number(row.n) || 0;
         });
-        // seguimos forzando GUARDAR en 0 si así lo quieres
         next.GUARDAR = 0;
         if (mountedRef.current) setCounts(next);
       } else {
@@ -96,9 +95,9 @@ export default function BasePage() {
         .select('*', { count: 'exact', head: true })
         .eq('estado', 'ENTREGADO')
         .eq('pagado', false);
-
       if (pendErr) throw pendErr;
       if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
+
     } catch (e: any) {
       if (mountedRef.current) setErr(e?.message ?? 'Error desconocido al cargar');
       console.error('fetchCounts error:', e);
@@ -125,27 +124,20 @@ export default function BasePage() {
     };
   }, []);
 
-  // 🔗 Helper para que todos vayan a general.page con el estado
-  const generalHref = (estado: EstadoKey) => `/general?estado=${estado}`;
-
   const tiles = useMemo(
     () => [
-      // 👉 Todos estos van ahora a /general?estado=...
-      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: generalHref('LAVAR') },
-      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: generalHref('LAVANDO') },
-
-      // Editar se mantiene como ruta independiente
+      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: '/base/lavar' },
+      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
       { title: 'Editar', key: null, icon: Archive, href: '/editar' },
-
-      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: generalHref('GUARDADO') },
+      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
       {
         title: 'Entregado',
         key: 'ENTREGADO' as EstadoKey,
         icon: PackageCheck,
-        href: generalHref('ENTREGADO'),
+        href: '/base/entregado',
         subtitle: `P. pago ${pendingEntregado}`,
       },
-      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: generalHref('ENTREGAR') },
+      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
 
       // 🔹 NUEVO TILE: Imp Rotulo (sin contador)
       { title: 'Imp Rótulo', key: null, icon: Printer, href: '/rotulos' },
