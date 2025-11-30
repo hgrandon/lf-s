@@ -276,7 +276,7 @@ export default function GuardadoPage() {
     if (!p) return;
 
     const base = getBaseUrl();
-    const link = `${base}/servicio/${p.id}?popup=1`;
+    const link = `${base}/servicio?nro=${p.id}&popup=1`;
 
     const texto = [
       '🧾 *Lavandería Fabiola*',
