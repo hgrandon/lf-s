@@ -2,69 +2,46 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ChevronDown,
+  ChevronRight,
+  User,
+  Table,
+  Loader2,
+  AlertTriangle,
+  Camera,
+  ImagePlus,
+  Truck,
+  PackageCheck,
+  Droplet,
+  WashingMachine,
+  CreditCard,
+  CheckCircle2,
+  Archive,
+} from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  User, ChevronDown, ChevronRight, MapPin, Route, Car, Truck, CheckCircle2,
-  Droplet, PackageCheck, CreditCard, AlertTriangle, ImagePlus, Loader2
-} from 'lucide-react';
-
-/* =========================
-   Tipos
-========================= */
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type Item = { articulo: string; qty: number; valor: number };
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
-type PedidoRow = {
-  nro: number;
-  telefono: string | null;
+type Pedido = {
+  id: number; // nro
+  cliente: string;
   total: number | null;
-  estado: PedidoEstado | null;
-  pagado: boolean | null;
-  detalle: string | null;
-  foto_url: string | null;
-};
-
-type ClienteRow = {
-  telefono: string;
-  nombre: string | null;
-  direccion: string | null;
-  lat: number | null;
-  lng: number | null;
-};
-
-type PedidoUI = {
-  id: number;
-  total: number;
   estado: PedidoEstado;
-  pagado: boolean;
-  detalle: string | null;
-  foto_url: string | null;
-  items: Item[];
+  detalle?: string | null;
+  foto_url?: string | null;
+  pagado?: boolean | null;
+  items?: Item[];
 };
 
-type GrupoCliente = {
-  telefono: string;
-  nombre: string;
-  direccion: string;
-  lat: number | null;
-  lng: number | null;
-  distanciaKm: number | null; // desde el origen (si hay lat/lng)
-  pedidos: PedidoUI[];
-};
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
 
-/* =========================
-   Constantes
-========================= */
-const CLP = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
-const ORIGIN_ADDR = 'Periodista Mario Peña Carreño 5304, La Serena, Coquimbo, Chile';
-const REGION_HINT = 'La Serena, Coquimbo, Chile';
-const NOMINATIM_HEADERS = { 'User-Agent': 'lf-app/1.0 (contact: lf-app@example.local)' };
-
-/* =========================
-   Utils
-========================= */
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
   if (typeof input === 'string') {
@@ -85,446 +62,405 @@ function firstFotoFromMixed(input: unknown): string | null {
   return null;
 }
 
-function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const la1 = (a.lat * Math.PI) / 180;
-  const la2 = (b.lat * Math.PI) / 180;
-  const x =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
-
-async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    // Forzamos la búsqueda solo dentro de la región de Coquimbo
-    const query = `${q}, ${REGION_HINT}`;
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=cl&viewbox=-71.4,-29.8,-70.9,-30.1&bounded=1&q=${encodeURIComponent(query)}`;
-    const r = await fetch(url, { headers: NOMINATIM_HEADERS });
-    const j = (await r.json()) as any[];
-    if (!Array.isArray(j) || j.length === 0) return null;
-    const best = j[0];
-    return { lat: parseFloat(best.lat), lng: parseFloat(best.lon) };
-  } catch {
-    return null;
+/* Para que un error de render no deje la pantalla en blanco */
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [err, setErr] = useState<Error | null>(null);
+  if (err) {
+    return (
+      <div className="rounded-xl bg-red-500/15 border border-red-400/30 p-4 text-sm">
+        <div className="font-semibold mb-1">Ocurrió un error al renderizar.</div>
+        <div className="opacity-80">{String(err.message || err)}</div>
+      </div>
+    );
   }
+  return (
+    <div
+      onErrorCapture={(e) => {
+        e.preventDefault();
+        setErr(new Error('Error de render capturado.'));
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
-// dirección válida para permitir ENTREGAR
-function isBadAddress(d?: string | null) {
-  const t = (d ?? '').trim().toUpperCase();
-  return !t || t === 'LOCAL' || t === 'SIN DIRECCION' || t === 'SIN DIRECCIÓN' || t === 'S/D';
-}
-
-/* =========================
-   Página ENTREGAR
-========================= */
 export default function EntregarPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [grupos, setGrupos] = useState<GrupoCliente[]>([]);
-  const [openTel, setOpenTel] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [openDetail, setOpenDetail] = useState<Record<number, boolean>>({});
   const [imageError, setImageError] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // Origen (coords), cacheado en localStorage
-  const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
+  // Picker / upload
+  const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const inputCamRef = useRef<HTMLInputElement>(null);
+  const inputFileRef = useRef<HTMLInputElement>(null);
+
+  // Modal “¿Desea editar?”
+  const [askEditForId, setAskEditForId] = useState<number | null>(null);
+
+  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         setLoading(true);
-        setErr(null);
+        setErrMsg(null);
 
-        // 1) Origen
-        const oCache = localStorage.getItem('lf_origin_coords');
-        if (oCache) {
-          try {
-            const p = JSON.parse(oCache);
-            if (p && typeof p.lat === 'number' && typeof p.lng === 'number') {
-              setOrigin(p);
-            } else {
-              const g = await geocodeNominatim(ORIGIN_ADDR);
-              if (g) {
-                setOrigin(g);
-                localStorage.setItem('lf_origin_coords', JSON.stringify(g));
-              }
-            }
-          } catch {
-            const g = await geocodeNominatim(ORIGIN_ADDR);
-            if (g) {
-              setOrigin(g);
-              localStorage.setItem('lf_origin_coords', JSON.stringify(g));
-            }
-          }
-        } else {
-          const g = await geocodeNominatim(ORIGIN_ADDR);
-          if (g) {
-            setOrigin(g);
-            localStorage.setItem('lf_origin_coords', JSON.stringify(g));
-          }
-        }
-
-        // 2) Pedidos a ENTREGAR
-        const { data: pedidos, error: e1 } = await supabase
+        // Pedidos en estado ENTREGAR
+        const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('nro, telefono, total, estado, detalle, pagado, foto_url')
+          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
           .eq('estado', 'ENTREGAR')
-          .order('nro', { ascending: true });
+          .order('nro', { ascending: false });
 
         if (e1) throw e1;
-        const tels = Array.from(
-          new Set((pedidos ?? []).map((p) => String((p as PedidoRow).telefono || '')).filter(Boolean)),
-        );
 
-        // 3) Clientes
-        const { data: clientes, error: e2 } = await supabase
-          .from('clientes')
-          .select('telefono, nombre, direccion, lat, lng')
-          .in('telefono', tels);
+        const ids = (rows ?? []).map((r) => (r as any).id);
+        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
 
-        if (e2) throw e2;
+        if (!rows?.length) {
+          if (!cancelled) {
+            setPedidos([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-        // 4) Líneas
-        const ids = (pedidos ?? []).map((p) => (p as PedidoRow).nro);
-        const { data: lineas, error: e3 } = await supabase
+        // Líneas
+        const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
+        if (e2) throw e2;
 
+        // Fotos
+        const { data: fotos, error: e3 } = await supabase
+          .from('pedido_foto')
+          .select('pedido_id, url')
+          .in('pedido_id', ids);
         if (e3) throw e3;
 
-        // Armar índice líneas
+        // Clientes
+        const { data: cli, error: e4 } = await supabase
+          .from('clientes')
+          .select('telefono, nombre')
+          .in('telefono', tels);
+        if (e4) throw e4;
+
+        const nombreByTel = new Map<string, string>();
+        (cli ?? []).forEach((c) =>
+          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
+        );
+
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
-          const pid = Number(l.pedido_id);
+          const pid = Number(l.pedido_id ?? l.pedido_nro ?? l.nro);
           if (!pid) return;
-          const label = String(l.articulo ?? '').trim() || 'SIN NOMBRE';
-          const qty = Number(l.cantidad ?? 0);
-          const valor = Number(l.valor ?? 0);
+
+          const label =
+            String(
+              l.articulo ??
+                l.nombre ??
+                l.descripcion ??
+                l.item ??
+                l.articulo_nombre ??
+                l.articulo_id ??
+                '',
+            ).trim() || 'SIN NOMBRE';
+
+          const qty = Number(l.cantidad ?? l.qty ?? l.cantidad_item ?? 0);
+          const valor = Number(l.valor ?? l.precio ?? l.monto ?? 0);
+
           const arr = itemsByPedido.get(pid) ?? [];
           arr.push({ articulo: label, qty, valor });
           itemsByPedido.set(pid, arr);
         });
 
-        // 5) Geocodificar clientes sin lat/lng (suave, con delay)
-        const byTel = new Map<string, ClienteRow>();
-        for (const c of (clientes ?? []) as ClienteRow[]) {
-          byTel.set(String(c.telefono), c);
-        }
-
-        for (const tel of tels) {
-          const c = byTel.get(tel);
-          if (c && (!c.lat || !c.lng)) {
-            const q = `${c.direccion ?? ''}, Chile`;
-            const geo = await geocodeNominatim(q);
-            if (geo) {
-              await supabase.from('clientes').update({ lat: geo.lat, lng: geo.lng }).eq('telefono', tel);
-              c.lat = geo.lat;
-              c.lng = geo.lng;
-            }
-            await new Promise((r) => setTimeout(r, 1100)); // respetar rate-limit
+        // Foto principal
+        const fotoByPedido = new Map<number, string>();
+        (rows ?? []).forEach((r: any) => {
+          const f = firstFotoFromMixed(r.foto_url);
+          if (f) fotoByPedido.set(r.id, f);
+        });
+        (fotos ?? []).forEach((f: any) => {
+          const pid = Number(f.pedido_id ?? f.nro);
+          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
+            fotoByPedido.set(pid, f.url);
           }
-        }
-
-        // 6) Mapear a grupos por cliente
-        const gruposTmp = new Map<string, GrupoCliente>();
-        (pedidos ?? []).forEach((p) => {
-          const pr = p as PedidoRow;
-          const tel = String(pr.telefono || '');
-          const cli = byTel.get(tel);
-          const items = itemsByPedido.get(pr.nro) ?? [];
-
-          if (!gruposTmp.has(tel)) {
-            gruposTmp.set(tel, {
-              telefono: tel,
-              nombre: (cli?.nombre ?? 'SIN NOMBRE').toUpperCase(),
-              direccion: (cli?.direccion ?? 'SIN DIRECCIÓN').toUpperCase(),
-              lat: cli?.lat ?? null,
-              lng: cli?.lng ?? null,
-              distanciaKm: null,
-              pedidos: [],
-            });
-          }
-
-          gruposTmp.get(tel)!.pedidos.push({
-            id: pr.nro,
-            total: Number(pr.total ?? items.reduce((a, it) => a + it.qty * it.valor, 0)),
-            estado: (pr.estado ?? 'ENTREGAR') as PedidoEstado,
-            pagado: !!pr.pagado,
-            detalle: pr.detalle,
-            foto_url: firstFotoFromMixed(pr.foto_url),
-            items,
-          });
         });
 
-        // 7) Distancias y orden por distancia
-        let arr: GrupoCliente[] = Array.from(gruposTmp.values());
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
+          id: r.id,
+          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
+          total: r.total ?? null,
+          estado: r.estado,
+          detalle: r.detalle ?? null,
+          foto_url: fotoByPedido.get(r.id) ?? null,
+          pagado: r.pagado ?? false,
+          items: itemsByPedido.get(r.id) ?? [],
+        }));
 
-        // Filtrar clientes sin dirección válida (no deben entrar a ENTREGAR)
-        arr = arr.filter((g) => !isBadAddress(g.direccion));
+        // Pendiente pago primero, luego pagado; dentro de cada grupo, más antiguos primero
+        mapped.sort((a, b) => {
+          const ap = !!a.pagado;
+          const bp = !!b.pagado;
+          if (ap !== bp) return ap ? 1 : -1;
+          return (a.id ?? 0) - (b.id ?? 0);
+        });
 
-        if (origin) {
-          arr.forEach((g) => {
-            if (typeof g.lat === 'number' && typeof g.lng === 'number') {
-              g.distanciaKm = haversineKm(origin, { lat: g.lat, lng: g.lng });
-            } else {
-              g.distanciaKm = null;
-            }
-          });
-          arr.sort((a, b) => {
-            const da = a.distanciaKm ?? Number.POSITIVE_INFINITY;
-            const db = b.distanciaKm ?? Number.POSITIVE_INFINITY;
-            return da - db;
-          });
+        if (!cancelled) {
+          setPedidos(mapped);
+          setLoading(false);
         }
-
-        setGrupos(arr);
-      } catch (e: any) {
-        console.error(e);
-        setErr(e?.message ?? 'Error al cargar ENTREGAR.');
-      } finally {
-        setLoading(false);
+      } catch (err: any) {
+        console.error(err);
+        if (!cancelled) {
+          setErrMsg(err?.message ?? 'Error al cargar pedidos');
+          setLoading(false);
+        }
       }
     })();
-  }, [origin?.lat, origin?.lng]);
 
-  function snack(s: string) {
-    setNotice(s);
-    setTimeout(() => setNotice(null), 1700);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function snack(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 1800);
   }
 
-  async function changeEstadoPedido(id: number, next: PedidoEstado) {
+  async function changeEstado(id: number, next: PedidoEstado) {
+    if (!id) return;
     setSaving(true);
-    const prev = grupos;
-    setGrupos((curr) =>
-      curr
-        .map((g) => ({ ...g, pedidos: g.pedidos.map((p) => (p.id === id ? { ...p, estado: next } : p)) }))
-        .filter((g) => g.pedidos.some((p) => p.estado === 'ENTREGAR')),
-    );
+    const prev = pedidos;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
+
     const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
     if (error) {
-      console.error(error);
-      setGrupos(prev);
-    } else {
-      if (next !== 'ENTREGAR') {
-        setGrupos((curr) =>
-          curr
-            .map((g) => ({ ...g, pedidos: g.pedidos.filter((p) => p.id !== id) }))
-            .filter((g) => g.pedidos.length > 0),
-        );
-      }
-      snack(`Pedido #${id} → ${next}`);
+      console.error('No se pudo actualizar estado:', error);
+      setPedidos(prev);
+      setSaving(false);
+      return;
+    }
+
+    // Si cambia a otro estado, se saca del tablero ENTREGAR
+    if (next !== 'ENTREGAR') {
+      setPedidos((curr) => curr.filter((p) => p.id !== id));
+      setOpenId(null);
+      snack(`Pedido #${id} movido a ${next}`);
     }
     setSaving(false);
   }
 
   async function togglePago(id: number) {
+    if (!id) return;
     setSaving(true);
-    const prev = grupos;
-    setGrupos((curr) =>
-      curr.map((g) => ({
-        ...g,
-        pedidos: g.pedidos.map((p) => (p.id === id ? { ...p, pagado: !p.pagado } : p)),
-      })),
-    );
-    const { error } = await supabase
-      .from('pedido')
-      .update({ pagado: (prev.flatMap((g) => g.pedidos).find((p) => p.id === id)?.pagado ?? false) ? false : true })
-      .eq('nro', id);
+    const prev = pedidos;
+    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
 
+    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
     if (error) {
-      console.error(error);
-      setGrupos(prev);
-    } else {
-      const isOn = prev.flatMap((g) => g.pedidos).find((p) => p.id === id)?.pagado;
-      snack(`Pedido #${id} marcado como ${!isOn ? 'PAGADO' : 'PENDIENTE'}`);
+      console.error('No se pudo actualizar pago:', error);
+      setPedidos(prev);
+      setSaving(false);
+      return;
     }
+
+    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
 
-  function gmapsSingle(lat?: number | null, lng?: number | null, dir?: string) {
-    if (typeof lat === 'number' && typeof lng === 'number' && origin) {
-      return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${lat},${lng}&travelmode=driving`;
-    }
-    const dest = encodeURIComponent(`${(dir ?? '').trim()}, ${REGION_HINT}`);
-
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-      ORIGIN_ADDR,
-    )}&destination=${dest}&travelmode=driving`;
+  // ------- Subida de foto -------
+  function openPickerFor(pid: number) {
+    setPickerForPedido(pid);
   }
 
-  function wazeSingle(lat?: number | null, lng?: number | null, dir?: string) {
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      return `https://waze.com/ul?ll=${lat}%2C${lng}&navigate=yes&zoom=16`;
-    }
-    return `https://waze.com/ul?q=${encodeURIComponent(dir ?? '')}&navigate=yes&zoom=16`;
+  async function handlePick(kind: 'camera' | 'file') {
+    if (!pickerForPedido) return;
+    if (kind === 'camera') inputCamRef.current?.click();
+    else inputFileRef.current?.click();
   }
 
-  function gmapsRutaOrdenada() {
-    const destinos = grupos
-      .map((g) =>
-        typeof g.lat === 'number' && typeof g.lng === 'number'
-          ? `${g.lat},${g.lng}`
-          : encodeURIComponent(g.direccion),
-      )
-      .slice(0, 15);
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = '';
+    const pid = pickerForPedido;
+    if (!pid) return setPickerForPedido(null);
+    if (!file) return setPickerForPedido(null);
 
-    if (destinos.length === 0) return '#';
-    const originStr = origin ? `${origin.lat},${origin.lng}` : encodeURIComponent(ORIGIN_ADDR);
-    const destination = destinos[destinos.length - 1];
-    const waypoints = destinos.slice(0, destinos.length - 1).join('|');
-    return `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destination}&travelmode=driving${
-      waypoints ? `&waypoints=${waypoints}` : ''
-    }`;
+    try {
+      setUploading((prev) => ({ ...prev, [pid]: true }));
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `pedido-${pid}/${Date.now()}.${ext}`;
+
+      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+
+      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
+      const publicUrl = pub.publicUrl;
+
+      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
+      if (insErr) throw insErr;
+
+      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+
+      setPedidos((prev) => prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)));
+      setImageError((prev) => ({ ...prev, [pid]: false }));
+      snack(`Foto subida al pedido #${pid}`);
+    } catch (err: any) {
+      console.error(err);
+      snack('No se pudo subir la foto.');
+    } finally {
+      setUploading((prev) => ({ ...prev, [pid!]: false }));
+      setPickerForPedido(null);
+    }
+  }
+
+  // Modal de edición
+  function askEdit(id: number) {
+    setAskEditForId(id);
+  }
+  function closeAskEdit() {
+    setAskEditForId(null);
+  }
+  function goEdit(idFromButton?: number) {
+    const targetId = idFromButton ?? askEditForId;
+    if (!targetId) return;
+    if (!idFromButton) setAskEditForId(null);
+    // ✅ misma ruta que en Lavar / Guardado / Entregado
+    router.push(`/editar?nro=${targetId}`);
   }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      <header className="relative z-10 flex items-center justify-between px-4 lg:px-8 py-3 lg:py-5">
+      <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Entregar</h1>
         <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
         </button>
       </header>
 
-      {err && (
-        <div className="relative z-10 mx-4 lg:mx-8">
-          <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
-            <AlertTriangle size={16} />
-            <span>{err}</span>
-          </div>
-        </div>
-      )}
+      <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
+        <ErrorBoundary>
+          {loading && (
+            <div className="flex items-center gap-2 text-white/90">
+              <Loader2 className="animate-spin" size={18} />
+              Cargando pedidos…
+            </div>
+          )}
 
-      <section className="relative z-10 w-full px-3 sm:px-6 lg:px-8 grid gap-4">
-        {loading && (
-          <div className="flex items-center gap-2 text-white/90">
-            <Loader2 className="animate-spin" size={18} />
-            Cargando ruta…
-          </div>
-        )}
+          {!loading && errMsg && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-300/30 p-3 text-sm">
+              <AlertTriangle size={16} />
+              <span>{errMsg}</span>
+            </div>
+          )}
 
-        {!loading && grupos.length === 0 && <div className="text-white/85">No hay pedidos en ENTREGAR con dirección válida.</div>}
+          {!loading && !errMsg && (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
+            <div className="text-white/80">No hay pedidos en estado ENTREGAR.</div>
+          )}
 
-        {!loading &&
-          grupos.map((g) => {
-            const open = openTel === g.telefono;
-            const totalCliente = g.pedidos.reduce((a, p) => a + p.total, 0);
-            return (
-              <div
-                key={g.telefono}
-                className={[
-                  'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
-                  open ? 'border-white/40' : 'border-white/15',
-                ].join(' ')}
-              >
-                <button
-                  onClick={() => {
-                    // doble seguridad: no abrir acordeón si no hay dirección válida
-                    if (isBadAddress(g.direccion)) {
-                      alert(`El cliente ${g.nombre} no tiene dirección válida. Este pedido no puede entregarse.`);
-                      return;
-                    }
-                    setOpenTel(open ? null : g.telefono);
-                  }}
-                  className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+          {!loading &&
+            !errMsg &&
+            Array.isArray(pedidos) &&
+            pedidos.map((p) => {
+              const isOpen = openId === p.id;
+              const detOpen = !!openDetail[p.id];
+              const totalCalc =
+                Array.isArray(p.items) && p.items.length
+                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
+                  : p.total ?? 0;
+
+              return (
+                <div
+                  key={p.id}
+                  className={[
+                    'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
+                    isOpen ? 'border-white/40' : 'border-white/15',
+                  ].join(' ')}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/15 border border-white/20">
-                      <User size={18} />
-                    </span>
-                    <div className="text-left">
-                      <div className="font-extrabold tracking-wide text-sm lg:text-base">
-                        {g.nombre} — {g.telefono}
+                  <button
+                    onClick={() => setOpenId(isOpen ? null : p.id)}
+                    className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={[
+                          'inline-flex items-center justify-center w-10 h-10 rounded-full border-2 shadow text-white/90',
+                          p.pagado
+                            ? 'bg-emerald-500 border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.25)]'
+                            : 'bg-red-500 border-red-300 shadow-[0_0_0_3px_rgba(239,68,68,0.25)]',
+                        ].join(' ')}
+                        aria-label={p.pagado ? 'Pagado' : 'Pendiente'}
+                      >
+                        <User size={18} />
+                      </span>
+
+                      <div className="text-left">
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                        <div className="text-[10px] lg:text-xs uppercase text-white/85">
+                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        </div>
                       </div>
-                      <div className="text-[10px] lg:text-xs uppercase text-white/85 flex items-center gap-2">
-                        <MapPin size={12} /> {g.direccion}
-                        {typeof g.distanciaKm === 'number' && (
-                          <span>• {g.distanciaKm.toFixed(1)} km</span>
-                        )}
-                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 lg:gap-4">
-                    <div className="font-extrabold text-white/95 text-sm lg:text-base">
-                      {CLP.format(totalCliente)}
+                    <div className="flex items-center gap-3 lg:gap-4">
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
-                    {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                  </div>
-                </button>
+                  </button>
 
-                {open && (
-                  <div className="px-3 sm:px-4 lg:px-6 pb-4">
-                    {/* Acciones rápidas por cliente */}
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <a
-                        href={gmapsSingle(g.lat, g.lng, g.direccion)}
-                        target="_blank"
-                        className="rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-xs hover:bg-white/15 inline-flex items-center gap-2"
-                      >
-                        <Car size={14} /> Google Maps
-                      </a>
-                      <a
-                        href={wazeSingle(g.lat, g.lng, g.direccion)}
-                        target="_blank"
-                        className="rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-xs hover:bg-white/15 inline-flex items-center gap-2"
-                      >
-                        <Truck size={14} /> Waze
-                      </a>
-                      <a
-                        href={gmapsRutaOrdenada()}
-                        target="_blank"
-                        className="rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-xs hover:bg-white/15 inline-flex items-center gap-2"
-                      >
-                        <Route size={14} /> Ruta completa (orden)
-                      </a>
-                    </div>
+                  {isOpen && (
+                    <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
+                      <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
+                        <button
+                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Table size={16} />
+                            <span className="font-semibold">Detalle Pedido</span>
+                          </div>
 
-                    {/* Pedidos del cliente */}
-                    <div className="grid gap-3">
-                      {g.pedidos.map((p) => {
-                        const totalCalc =
-                          p.items?.length ? p.items.reduce((a, it) => a + it.qty * it.valor, 0) : p.total ?? 0;
-                        return (
-                          <div key={p.id} className="rounded-xl bg-white/8 border border-white/15 p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="text-sm font-semibold">
-                                Pedido N° {p.id} — {g.direccion} • {p.pagado ? 'PAGADO' : 'PENDIENTE'}
-                              </div>
-                              <div className="text-sm font-extrabold">{CLP.format(totalCalc)}</div>
-                            </div>
+                          {/* 👉 Botón Editar + chevron, igual que en Guardado/Entregado */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                goEdit(p.id);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
+                            >
+                              <Archive size={14} className="text-violet-50" />
+                              <span>Editar</span>
+                            </button>
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </div>
+                        </button>
 
-                            {/* Foto */}
-                            {p.foto_url ? (
-                              <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                                <Image
-                                  src={p.foto_url}
-                                  alt={`Foto pedido ${p.id}`}
-                                  width={0}
-                                  height={0}
-                                  sizes="100vw"
-                                  style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '60vh' }}
-                                  onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                                />
-                              </div>
-                            ) : (
-                              <div className="mt-3 rounded-xl overflow-hidden bg-black/10 border border-white/10 p-4 text-xs text-white/80 flex items-center gap-2">
-                                <ImagePlus size={14} />
-                                Sin imagen adjunta.
-                              </div>
-                            )}
-
-                            {/* Detalle artículos */}
-                            <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10">
-                              <table className="w-full text-xs text-white/95">
+                        {detOpen && (
+                          <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
+                            <div className="overflow-x-auto w-full max-w-4xl">
+                              <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
                                     <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
@@ -534,10 +470,12 @@ export default function EntregarPage() {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/10">
-                                  {p.items?.length ? (
+                                  {Array.isArray(p.items) && p.items.length ? (
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
-                                        <td className="px-3 py-2">{it.articulo}</td>
+                                        <td className="px-3 py-2 truncate">
+                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                        </td>
                                         <td className="px-3 py-2 text-right">{it.qty}</td>
                                         <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
                                         <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
@@ -552,73 +490,122 @@ export default function EntregarPage() {
                                   )}
                                 </tbody>
                               </table>
-                              <div className="px-3 py-2 bg-white/10 text-right font-extrabold">
+
+                              <div
+                                className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
+                                title="Doble clic para editar pedido"
+                                onDoubleClick={() => askEdit(p.id)}
+                              >
                                 Total: {CLP.format(totalCalc)}
                               </div>
                             </div>
+                          </div>
+                        )}
 
-                            {/* Acciones del pedido */}
-                            <div className="mt-3 grid grid-cols-4 gap-2">
-                              <ActionBtn
-                                label="Entregar"
-                                onClick={() => changeEstadoPedido(p.id, 'ENTREGADO')}
-                                active={p.estado === 'ENTREGADO'}
-                                disabled={saving}
-                                IconComp={CheckCircle2}
-                              />
-                              <ActionBtn
-                                label="Lavar"
-                                onClick={() => changeEstadoPedido(p.id, 'LAVAR')}
-                                active={p.estado === 'LAVAR'}
-                                disabled={saving}
-                                IconComp={Droplet}
-                              />
-                              <ActionBtn
-                                label="Guardado"
-                                onClick={() => changeEstadoPedido(p.id, 'GUARDADO')}
-                                active={p.estado === 'GUARDADO'}
-                                disabled={saving}
-                                IconComp={PackageCheck}
-                              />
-                              <ActionBtn
-                                label={p.pagado ? 'Pago' : 'Pendiente'}
-                                onClick={() => togglePago(p.id)}
-                                active={p.pagado}
-                                disabled={saving}
-                                IconComp={CreditCard}
+                        <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                          {typeof p.foto_url === 'string' && p.foto_url && !imageError[p.id] ? (
+                            <div
+                              className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                              onDoubleClick={() => openPickerFor(p.id)}
+                              title="Doble clic para cambiar la imagen"
+                            >
+                              <Image
+                                src={p.foto_url}
+                                alt={`Foto pedido ${p.id}`}
+                                width={0}
+                                height={0}
+                                sizes="100vw"
+                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                priority={false}
                               />
                             </div>
-                          </div>
-                        );
-                      })}
+                          ) : (
+                            <button
+                              onClick={() => openPickerFor(p.id)}
+                              className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+                              title="Agregar imagen"
+                            >
+                              <ImagePlus size={18} />
+                              <span>
+                                {(uploading[p.id] ?? false)
+                                  ? 'Subiendo…'
+                                  : 'Sin imagen adjunta. Toca para agregar.'}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  )}
+                </div>
+              );
+            })}
+        </ErrorBoundary>
       </section>
 
-      {/* Barra fija: crear ruta completa */}
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-8 pt-2 pb-4 backdrop-blur-md">
-        <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3 flex items-center justify-between gap-3">
-          <div className="text-xs">
-            {saving ? (
-              <span className="inline-flex items-center gap-1">
-                <Loader2 size={14} className="animate-spin" /> Guardando…
-              </span>
-            ) : (
-              'Ruta en orden desde el origen'
-            )}
+      {/* Barra de acciones para ENTREGAR */}
+      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
+        <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
+          <div className="grid grid-cols-6 gap-3">
+            <IconBtn
+              title="Guardado"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')}
+              active={pedidoAbierto?.estado === 'GUARDADO'}
+              Icon={CheckCircle2}
+            />
+            <IconBtn
+              title="Entregar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')}
+              active={pedidoAbierto?.estado === 'ENTREGAR'}
+              Icon={Truck}
+            />
+            <IconBtn
+              title="Entregado"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')}
+              active={pedidoAbierto?.estado === 'ENTREGADO'}
+              Icon={PackageCheck}
+            />
+            <IconBtn
+              title="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')}
+              active={pedidoAbierto?.estado === 'LAVAR'}
+              Icon={Droplet}
+            />
+            <IconBtn
+              title="Lavando"
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')}
+              active={pedidoAbierto?.estado === 'LAVANDO'}
+              Icon={WashingMachine}
+            />
+            <IconBtn
+              title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
+              disabled={!pedidoAbierto || saving}
+              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
+              active={!!pedidoAbierto?.pagado}
+              Icon={CreditCard}
+            />
           </div>
-          <a
-            href={gmapsRutaOrdenada()}
-            target="_blank"
-            className="rounded-xl bg-white/20 border border-white/30 px-3 py-2 text-sm hover:bg-white/25 inline-flex items-center gap-2"
-          >
-            <Route size={16} />
-            Abrir ruta en Google Maps
-          </a>
+
+          {pedidoAbierto ? (
+            <div className="mt-2 text-center text-xs text-white/90">
+              Pedido seleccionado: <b>#{pedidoAbierto.id}</b>{' '}
+              {saving && (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 size={14} className="animate-spin" /> Guardando…
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
+          )}
         </div>
       </nav>
 
@@ -627,38 +614,110 @@ export default function EntregarPage() {
           {notice}
         </div>
       )}
+
+      {/* Modal “¿Desea editar?” */}
+      {askEditForId && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-black/50"
+          onClick={closeAskEdit}
+          onKeyDown={(e) => e.key === 'Escape' && closeAskEdit()}
+          tabIndex={-1}
+        >
+          <div
+            className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
+            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => goEdit()}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
+                Editar
+              </button>
+              <button
+                onClick={closeAskEdit}
+                className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para elegir cámara/archivo */}
+      {pickerForPedido && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
+          <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
+            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <div className="grid gap-2">
+              <button
+                onClick={() => handlePick('camera')}
+                className="flex items-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
+                <Camera size={18} />
+                Sacar foto
+              </button>
+              <button
+                onClick={() => handlePick('file')}
+                className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+              >
+                <ImagePlus size={18} />
+                Buscar en archivos
+              </button>
+              <button
+                onClick={() => setPickerForPedido(null)}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* inputs ocultos */}
+      <input
+        ref={inputCamRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onFileSelected}
+      />
+      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
     </main>
   );
 }
 
-/* =========================
-   Botón de acción
-========================= */
-function ActionBtn({
-  label,
+function IconBtn({
+  title,
   onClick,
   disabled,
   active,
-  IconComp,
+  Icon,
 }: {
-  label: string;
+  title: string;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  IconComp: any;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={!!disabled}
+      disabled={disabled}
+      aria-label={title}
+      title={title}
       className={[
-        'rounded-xl py-2 text-xs font-medium border transition inline-flex items-center justify-center gap-2',
+        'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
         active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
-      <IconComp size={14} />
-      {label}
+      <Icon size={18} />
     </button>
   );
 }
