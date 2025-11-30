@@ -1,3 +1,6 @@
+'use client';
+
+import { useSearchParams } from 'next/navigation';
 // app/servicio/page.tsx
 import { supabase } from '@/lib/supabaseClient';
 import Image from 'next/image';
