@@ -1,7 +1,7 @@
+// app/servicio/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -56,38 +56,23 @@ function formatFecha(iso?: string | null) {
   return `${d}-${m}-${y}`;
 }
 
-function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
-  if (typeof input === 'string') {
-    const s = input.trim();
-    if (!s) return null;
-    if (s.startsWith('[')) {
-      try {
-        const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
-          return arr[0] as string;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    }
-    return s;
-  }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
-    return input[0] as string;
-  }
-  return null;
+function ErrorServicio({ message }: { message: string }) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="text-center max-w-sm px-4">
+        <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
+        <p className="text-sm text-white/70">{message}</p>
+      </div>
+    </main>
+  );
 }
 
 /* =========================
-   Componente cliente
+   Página /servicio (cliente)
 ========================= */
 
-export default function ServicioComprobanteClient() {
-  const searchParams = useSearchParams();
-  const nroStr = searchParams.get('nro');
-  const nro = nroStr ? Number(nroStr) : NaN;
+export default function ServicioPage() {
+  const [token, setToken] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,12 +81,33 @@ export default function ServicioComprobanteClient() {
   const [items, setItems] = useState<Linea[]>([]);
   const [cliente, setCliente] = useState<ClienteRow | null>(null);
 
+  // Leer token desde la URL y limpiar la URL
   useEffect(() => {
-    if (!nro || Number.isNaN(nro)) {
-      setError('El número de pedido no es correcto.');
+    try {
+      const url = new URL(window.location.href);
+      const t = url.searchParams.get('token');
+      if (!t) {
+        setToken(null);
+        setError('El link del servicio no es válido.');
+        setLoading(false);
+        return;
+      }
+
+      setToken(t);
+
+      url.searchParams.delete('token');
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {
+      console.error('No se pudo leer token del servicio:', e);
+      setToken(null);
+      setError('El link del servicio no es válido.');
       setLoading(false);
-      return;
     }
+  }, []);
+
+  // Cargar datos desde Supabase cuando ya tenemos token
+  useEffect(() => {
+    if (!token) return;
 
     let cancelled = false;
 
@@ -110,23 +116,23 @@ export default function ServicioComprobanteClient() {
         setLoading(true);
         setError(null);
 
-        // ---- Pedido ----
+        // Pedido por token
         const { data: ped, error: ePed } = await supabase
           .from('pedido')
           .select(
             'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url'
           )
-          .eq('nro', nro)
+          .eq('token_servicio', token)
           .maybeSingle();
 
         if (ePed) throw ePed;
-        if (!ped) throw new Error(`No se encontró el pedido #${nro}.`);
+        if (!ped) throw new Error('No se encontró el servicio asociado a este link.');
 
         const pedidoRow = ped as PedidoRow;
         if (cancelled) return;
         setPedido(pedidoRow);
 
-        // ---- Cliente ----
+        // Cliente (solo para saludo, no mostramos caja de datos)
         if (pedidoRow.telefono) {
           const { data: cli } = await supabase
             .from('clientes')
@@ -134,19 +140,19 @@ export default function ServicioComprobanteClient() {
             .eq('telefono', pedidoRow.telefono)
             .maybeSingle();
 
-          if (!cancelled) {
+          if (!cancelled && cli) {
             setCliente({
-              nombre: (cli?.nombre as string) ?? null,
-              direccion: (cli?.direccion as string) ?? null,
+              nombre: (cli.nombre as string) ?? null,
+              direccion: (cli.direccion as string) ?? null,
             });
           }
         }
 
-        // ---- Líneas ----
+        // Líneas
         const { data: lineas } = await supabase
           .from('pedido_linea')
           .select('articulo,cantidad,valor')
-          .eq('pedido_id', nro);
+          .eq('pedido_id', pedidoRow.nro);
 
         if (!cancelled) {
           const mapped: Linea[] =
@@ -159,6 +165,7 @@ export default function ServicioComprobanteClient() {
         }
       } catch (e: any) {
         if (!cancelled) {
+          console.error(e);
           setError(e?.message ?? 'No se pudo cargar el servicio.');
         }
       } finally {
@@ -171,21 +178,19 @@ export default function ServicioComprobanteClient() {
     return () => {
       cancelled = true;
     };
-  }, [nro]);
+  }, [token]);
 
   const totalCalc = useMemo(() => {
     if (items.length > 0) {
       return items.reduce(
         (acc, it) =>
-          acc +
-          (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
+          acc + (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
         0
       );
     }
     return Number(pedido?.total ?? 0);
   }, [items, pedido]);
 
-  const foto = firstFotoFromMixed(pedido?.foto_url ?? null);
   const esPagado = !!pedido?.pagado;
   const tipoEntrega =
     (pedido?.tipo_entrega || '').toUpperCase() === 'DOMICILIO'
@@ -193,55 +198,33 @@ export default function ServicioComprobanteClient() {
       : 'LOCAL';
 
   const nombreCli = (cliente?.nombre || '').trim() || 'CLIENTE';
-  const direccionCli =
-    (cliente?.direccion || '').trim() || 'SIN DIRECCIÓN REGISTRADA';
 
   /* =========================
-     ESTADOS DE CARGA / ERROR
+     ESTADOS
   ========================== */
 
-  if (!nro || Number.isNaN(nro)) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
-        <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-rose-100 max-w-md">
-          <h1 className="text-lg font-semibold mb-1 text-rose-600">
-            Servicio no válido
-          </h1>
-          <p className="text-sm text-slate-600">
-            El número de pedido ingresado no es correcto.
-          </p>
-        </div>
-      </main>
-    );
+  if (!token && !loading) {
+    return <ErrorServicio message="El link del servicio no es válido." />;
   }
 
   if (loading && !pedido && !error) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
         <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-violet-100 max-w-md">
-          <p className="text-sm text-slate-600">Cargando servicio #{nro}…</p>
+          <p className="text-sm text-slate-600">Cargando servicio…</p>
         </div>
       </main>
     );
   }
 
   if (error && !pedido) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
-        <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-rose-100 max-w-md">
-          <h1 className="text-lg font-semibold mb-1 text-rose-600">
-            Servicio no disponible
-          </h1>
-          <p className="text-sm text-slate-600">{error}</p>
-        </div>
-      </main>
-    );
+    return <ErrorServicio message={error} />;
   }
 
   if (!pedido) return null;
 
   /* =========================
-     COMPROBANTE tipo "B"
+     COMPROBANTE limpio
   ========================== */
 
   return (
@@ -301,22 +284,8 @@ export default function ServicioComprobanteClient() {
           </div>
         </div>
 
-        {/* Cliente */}
-        <div className="px-6 pt-3 pb-3 text-xs text-slate-800">
-          <div className="font-semibold mb-1">Cliente</div>
-          <div className="border border-slate-200 rounded-2xl px-3 py-2 bg-slate-50">
-            <div className="font-bold text-[13px] truncate">
-              {nombreCli.toUpperCase()}
-            </div>
-            <div className="text-[11px] truncate">{direccionCli}</div>
-            <div className="text-[11px] text-slate-500 mt-1">
-              Teléfono: {pedido.telefono || '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* Detalle */}
-        <div className="px-6 pt-2 pb-1 text-xs text-slate-800">
+        {/* Detalle del servicio */}
+        <div className="px-6 pt-3 pb-1 text-xs text-slate-800">
           <div className="font-semibold mb-1">Detalle del servicio</div>
           <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
             <table className="w-full text-[11px]">
@@ -370,26 +339,8 @@ export default function ServicioComprobanteClient() {
           </div>
         </div>
 
-        {/* Foto pequeña opcional */}
-        {foto && (
-          <div className="px-6 pt-3 pb-3">
-            <div className="text-xs text-slate-600 mb-1">
-              Referencia visual del pedido
-            </div>
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-black/5">
-              <Image
-                src={foto}
-                alt={`Foto pedido ${pedido.nro}`}
-                width={800}
-                height={600}
-                className="w-full h-auto object-cover"
-              />
-            </div>
-          </div>
-        )}
-
         {/* SOLO PAGO EFECTIVO */}
-        <div className="px-6 pb-4 pt-1">
+        <div className="px-6 pb-4 pt-3">
           <div className="w-full rounded-2xl bg-yellow-400 text-center font-extrabold text-red-700 text-sm py-2">
             SOLO PAGO EFECTIVO
           </div>
