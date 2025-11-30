@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Loader2,
@@ -516,6 +516,7 @@ function NuevoArticuloModal({
 
 export default function EditarPedidoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [nroInput, setNroInput] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -661,9 +662,22 @@ export default function EditarPedidoPage() {
     };
   }, [telefono]);
 
+  /* === Si venimos desde Lavar/Lavando con ?nro=XXXX, autocompletar y cargar === */
+  useEffect(() => {
+    const nroQS = searchParams.get('nro');
+    if (!nroQS) return;
+
+    const nroNum = Number(nroQS);
+    if (!nroNum || Number.isNaN(nroNum)) return;
+
+    setNroInput(String(nroNum));
+    void handleCargarPedido(nroNum);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   /* === Cargar pedido por N° === */
-  async function handleCargarPedido() {
-    const nro = Number(nroInput);
+  async function handleCargarPedido(forceNro?: number) {
+    const nro = typeof forceNro === 'number' ? forceNro : Number(nroInput);
     if (!nro || Number.isNaN(nro)) {
       setMensaje('Ingresa un número de pedido válido.');
       return;
@@ -1067,7 +1081,7 @@ export default function EditarPedidoPage() {
             />
           </div>
           <button
-            onClick={handleCargarPedido}
+            onClick={() => handleCargarPedido()}
             disabled={buscando || !nroInput}
             className="mt-1 sm:mt-0 inline-flex items-center justify-center gap-2 rounded-2xl bg-white/90 text-violet-800 px-4 py-2 font-semibold shadow disabled:opacity-60"
           >
@@ -1194,7 +1208,7 @@ export default function EditarPedidoPage() {
 
       {/* Modal bolsas */}
       {bolsasModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justifycenter bg-black/60 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b">
               <div className="font-bold text-sm sm:text-base">
