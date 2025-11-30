@@ -1,12 +1,13 @@
-// app/servicio/page.tsx
-import { supabase } from '@/lib/supabaseClient';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabaseClient';
 
-export const dynamic = 'force-dynamic';
-
-type PageProps = {
-  searchParams?: { [key: string]: string | string[] | undefined };
-};
+/* =========================
+   Tipos
+========================= */
 
 type PedidoEstado =
   | 'LAVAR'
@@ -17,8 +18,7 @@ type PedidoEstado =
   | 'ENTREGAR';
 
 type PedidoRow = {
-  id: number;
-  nro: number | null;
+  nro: number;
   telefono: string | null;
   total: number | null;
   estado: PedidoEstado | null;
@@ -35,6 +35,15 @@ type Linea = {
   valor: number | null;
 };
 
+type ClienteRow = {
+  nombre: string | null;
+  direccion: string | null;
+};
+
+/* =========================
+   Utilidades
+========================= */
+
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
   currency: 'CLP',
@@ -47,14 +56,11 @@ function formatFecha(iso?: string | null) {
   return `${d}-${m}-${y}`;
 }
 
-// toma primera foto desde string o JSON
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
-
   if (typeof input === 'string') {
     const s = input.trim();
     if (!s) return null;
-
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
@@ -68,240 +74,281 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-
   if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
     return input[0] as string;
   }
-
   return null;
 }
 
-export default async function ServicioPage({ searchParams }: PageProps) {
-  const nroParam = searchParams?.nro;
-  const nroStr = Array.isArray(nroParam) ? nroParam[0] : nroParam;
-  const nroNumero = Number(nroStr);
+/* =========================
+   Página COMPROBANTE
+========================= */
 
-  if (!nroNumero || Number.isNaN(nroNumero)) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
-          <p className="text-sm text-white/70">El número de pedido no es correcto.</p>
-        </div>
-      </main>
-    );
-  }
+export default function ServicioComprobantePage() {
+  const searchParams = useSearchParams();
+  const nroStr = searchParams.get('nro');
+  const nro = nroStr ? Number(nroStr) : NaN;
 
-  // 1° intento: buscar por nro
-  let pedResp = await supabase
-    .from('pedido')
-    .select(
-      'id, nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url'
-    )
-    .eq('nro', nroNumero)
-    .maybeSingle();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 2° intento (fallback): buscar por id si no encontró por nro
-  if (!pedResp.data && !pedResp.error) {
-    pedResp = await supabase
-      .from('pedido')
-      .select(
-        'id, nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url'
-      )
-      .eq('id', nroNumero)
-      .maybeSingle();
-  }
+  const [pedido, setPedido] = useState<PedidoRow | null>(null);
+  const [items, setItems] = useState<Linea[]>([]);
+  const [cliente, setCliente] = useState<ClienteRow | null>(null);
 
-  const ped = pedResp.data;
+  useEffect(() => {
+    if (!nro || Number.isNaN(nro)) {
+      setError('El número de pedido no es correcto.');
+      setLoading(false);
+      return;
+    }
 
-  if (pedResp.error || !ped) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold mb-2">Servicio no válido</h1>
-          <p className="text-sm text-white/70">
-            No se encontró el pedido #{nroNumero}.
-          </p>
-        </div>
-      </main>
-    );
-  }
+    let cancelled = false;
 
-  const pedido = ped as PedidoRow;
+    async function cargar() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  // Cliente
-  let nombre = '';
-  let direccion = '';
-  if (pedido.telefono) {
-    const { data: cli } = await supabase
-      .from('clientes')
-      .select('nombre,direccion')
-      .eq('telefono', pedido.telefono)
-      .maybeSingle();
+        // ---- Pedido ----
+        const { data: ped, error: ePed } = await supabase
+          .from('pedido')
+          .select(
+            'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url'
+          )
+          .eq('nro', nro)
+          .maybeSingle();
 
-    nombre = (cli?.nombre as string) || '';
-    direccion = (cli?.direccion as string) || '';
-  }
+        if (ePed) throw ePed;
+        if (!ped) {
+          throw new Error(`No se encontró el pedido #${nro}.`);
+        }
 
-  const primerNombre =
-    nombre && nombre.trim().length > 0 ? nombre.trim().split(' ')[0] : 'Cliente';
+        const pedidoRow = ped as PedidoRow;
+        if (cancelled) return;
+        setPedido(pedidoRow);
 
-  // Líneas
-  const { data: lineas } = await supabase
-    .from('pedido_linea')
-    .select('articulo,cantidad,valor')
-    .eq('pedido_id', pedido.nro ?? pedido.id);
+        // ---- Cliente ----
+        if (pedidoRow.telefono) {
+          const { data: cli } = await supabase
+            .from('clientes')
+            .select('nombre,direccion')
+            .eq('telefono', pedidoRow.telefono)
+            .maybeSingle();
 
-  const items: Linea[] =
-    (lineas as any[])?.map((l) => ({
-      articulo: String(l.articulo || ''),
-      cantidad: Number(l.cantidad ?? 0),
-      valor: Number(l.valor ?? 0),
-    })) ?? [];
+          if (!cancelled) {
+            setCliente({
+              nombre: (cli?.nombre as string) ?? null,
+              direccion: (cli?.direccion as string) ?? null,
+            });
+          }
+        }
 
-  const totalCalc =
-    items.length > 0
-      ? items.reduce(
-          (acc, it) =>
-            acc + (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
-          0
-        )
-      : Number(pedido.total ?? 0);
+        // ---- Líneas ----
+        const { data: lineas } = await supabase
+          .from('pedido_linea')
+          .select('articulo,cantidad,valor')
+          .eq('pedido_id', nro);
 
-  const foto = firstFotoFromMixed(pedido.foto_url);
-  const esPagado = !!pedido.pagado;
+        if (!cancelled) {
+          const mapped: Linea[] =
+            (lineas || []).map((l: any) => ({
+              articulo: String(l.articulo || ''),
+              cantidad: l.cantidad == null ? null : Number(l.cantidad),
+              valor: l.valor == null ? null : Number(l.valor),
+            })) ?? [];
+          setItems(mapped);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message ?? 'No se pudo cargar el servicio.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void cargar();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nro]);
+
+  const totalCalc = useMemo(() => {
+    if (items.length > 0) {
+      return items.reduce(
+        (acc, it) =>
+          acc +
+          (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
+        0
+      );
+    }
+    return Number(pedido?.total ?? 0);
+  }, [items, pedido]);
+
+  const foto = firstFotoFromMixed(pedido?.foto_url ?? null);
+  const esPagado = !!pedido?.pagado;
   const tipoEntrega =
-    (pedido.tipo_entrega || '').toUpperCase() === 'DOMICILIO'
+    (pedido?.tipo_entrega || '').toUpperCase() === 'DOMICILIO'
       ? 'DOMICILIO'
       : 'LOCAL';
 
-  const numeroVisible = pedido.nro ?? pedido.id;
+  const nombreCli = (cliente?.nombre || '').trim() || 'CLIENTE';
+  const direccionCli =
+    (cliente?.direccion || '').trim() || 'SIN DIRECCIÓN REGISTRADA';
+
+  /* =========================
+     ESTADOS DE CARGA / ERROR
+  ========================== */
+
+  if (!nro || Number.isNaN(nro)) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
+        <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-rose-100 max-w-md">
+          <h1 className="text-lg font-semibold mb-1 text-rose-600">
+            Servicio no válido
+          </h1>
+          <p className="text-sm text-slate-600">
+            El número de pedido ingresado no es correcto.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (loading && !pedido && !error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
+        <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-violet-100 max-w-md">
+          <p className="text-sm text-slate-600">Cargando servicio #{nro}…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error && !pedido) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-900 px-3">
+        <div className="text-center bg-white rounded-3xl shadow-xl px-6 py-5 border border-rose-100 max-w-md">
+          <h1 className="text-lg font-semibold mb-1 text-rose-600">
+            Servicio no disponible
+          </h1>
+          <p className="text-sm text-slate-600">{error}</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!pedido) {
+    return null;
+  }
+
+  /* =========================
+     COMPROBANTE (estilo B)
+  ========================== */
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-200 px-2 py-6">
-      <div className="w-full max-w-3xl bg-white shadow-2xl border border-slate-300 rounded-xl overflow-hidden">
-        {/* CABECERA CON LOGO Y NÚMERO */}
-        <div className="flex flex-col md:flex-row items-center justify-between px-6 pt-4 pb-3 border-b border-violet-300">
-          <div className="flex items-center gap-3 mb-3 md:mb-0">
-            {/* Logo (opcional) */}
-            <div className="h-14 w-14 relative">
-              <Image
-                src="/logo.png"
-                alt="Lavandería Fabiola"
-                fill
-                className="object-contain"
-              />
-            </div>
-            <div className="leading-tight">
-              <div className="text-[11px] tracking-[0.25em] text-violet-700 font-semibold">
-                TU N° SERVICIO
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Lavandería Fabiola
-              </div>
+    <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-6">
+      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-violet-100 overflow-hidden">
+        {/* Cabecera grande */}
+        <div className="px-6 pt-5 pb-4 border-b border-violet-100 text-center">
+          <div className="flex items-center justify-between text-violet-700 text-xs font-semibold">
+            <span>LAVANDERÍA FABIOLA</span>
+            <span>COMPROBANTE DE SERVICIO</span>
+          </div>
+
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <div className="text-[11px] tracking-[0.25em] text-violet-500">
+              TU N° SERVICIO
             </div>
           </div>
 
-          <div className="text-center md:text-right">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-violet-600 font-semibold mb-1">
-              SERVICIO
+          <div className="mt-1 text-6xl font-extrabold text-violet-700 leading-tight">
+            {pedido.nro}
+          </div>
+
+          <div className="mt-3 text-sm font-semibold text-slate-800">
+            Hola {nombreCli.split(' ')[0]}, tu servicio está{' '}
+            {esPagado ? (
+              <span className="text-emerald-600">PAGADO</span>
+            ) : (
+              <span className="text-amber-600">PENDIENTE</span>
+            )}
+            .
+          </div>
+          <div className="mt-1 text-xs text-slate-600">
+            Necesitamos que pases a retirar tu ropa. Atención de Lunes a
+            Viernes de 10:00 a 20:00 hrs.
+          </div>
+        </div>
+
+        {/* Datos principales */}
+        <div className="px-6 pt-4 pb-2 grid gap-1 text-xs text-slate-800">
+          <div className="flex justify-between">
+            <span className="font-semibold">Fecha ingreso</span>
+            <span>{formatFecha(pedido.fecha_ingreso)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold">Fecha entrega</span>
+            <span>{formatFecha(pedido.fecha_entrega)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold">Estado pago</span>
+            <span className={esPagado ? 'text-emerald-600' : 'text-amber-600'}>
+              {esPagado ? 'PAGADO' : 'PENDIENTE'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold">Tipo entrega</span>
+            <span>{tipoEntrega}</span>
+          </div>
+        </div>
+
+        {/* Cliente */}
+        <div className="px-6 pt-3 pb-3 text-xs text-slate-800">
+          <div className="font-semibold mb-1">Cliente</div>
+          <div className="border border-slate-200 rounded-2xl px-3 py-2 bg-slate-50">
+            <div className="font-bold text-[13px] truncate">
+              {nombreCli.toUpperCase()}
             </div>
-            <div className="text-5xl font-black text-violet-800 leading-none">
-              {numeroVisible}
-            </div>
-            <div className="mt-1 inline-flex items-center gap-1 text-emerald-600 text-xs font-bold">
-              <span className="text-[11px] px-2 py-0.5 rounded-full border border-emerald-500 bg-emerald-50">
-                LISTO
-              </span>
+            <div className="text-[11px] truncate">{direccionCli}</div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Teléfono: {pedido.telefono || '—'}
             </div>
           </div>
         </div>
 
-        {/* MENSAJE PRINCIPAL */}
-        <div className="px-6 pt-4 text-center">
-          <p className="text-xl md:text-2xl font-extrabold text-violet-800 mb-1">
-            Hola {primerNombre}, servicio listo, por favor
-          </p>
-          <p className="text-lg md:text-xl font-bold text-violet-700 mb-2">
-            Necesitamos pase a retirar
-          </p>
-          <p className="text-sm md:text-base text-slate-700 mb-1">
-            Atención de Lunes a Viernes de 10:00 a 20:00 hrs.
-          </p>
-          <p className="text-sm md:text-base text-slate-800 font-semibold mb-4">
-            Te esperamos en nuestro local<br />
-            Periodista Mario Peña Carreño #5304
-          </p>
-        </div>
-
-        {/* VALOR SERVICIO + ESTADO PAGO */}
-        <div className="px-6 mt-2 mb-4">
-          <div className="border border-slate-400 rounded-md overflow-hidden">
-            <div className="grid grid-cols-3 md:grid-cols-4">
-              <div className="col-span-2 flex items-center justify-center bg-white">
-                <span className="text-lg font-bold text-violet-800">
-                  Valor Servicio
-                </span>
-              </div>
-              <div className="col-span-1 flex items-center justify-center border-l border-slate-400 bg-white">
-                <span className="text-lg font-bold text-violet-800">$</span>
-              </div>
-              <div className="col-span-1 flex items-center justify-center bg-violet-700 text-white text-xl font-extrabold">
-                {CLP.format(totalCalc)}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 border-t border-slate-400">
-              <div className="col-span-1 flex items-center justify-center text-xs md:text-sm font-semibold text-slate-600 bg-slate-100">
-                PAGO
-              </div>
-              <div className="col-span-2 flex items-center justify-center text-sm md:text-base font-extrabold text-white"
-                   style={{
-                     backgroundColor: esPagado ? '#16a34a' : '#dc2626',
-                   }}>
-                {esPagado ? 'PAGADO' : 'PENDIENTE'}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* DETALLE DEL SERVICIO */}
-        <div className="px-6 mb-4">
-          <div className="text-center font-extrabold text-violet-800 mb-2">
-            GRACIAS POR SU PREFERENCIA
-          </div>
-
-          <div className="text-xs font-semibold bg-violet-800 text-white text-center py-1">
-            DETALLE
-          </div>
-
-          <div className="border border-violet-800 border-t-0">
+        {/* Detalle */}
+        <div className="px-6 pt-2 pb-1 text-xs text-slate-800">
+          <div className="font-semibold mb-1">Detalle del servicio</div>
+          <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
             <table className="w-full text-[11px]">
-              <thead>
-                <tr className="bg-violet-100 text-violet-900">
-                  <th className="px-2 py-1 text-left w-[50%]">DESCRIPCIÓN SERVICIO</th>
-                  <th className="px-2 py-1 text-center w-[10%]">CANTIDAD</th>
-                  <th className="px-2 py-1 text-right w-[20%]">VALOR</th>
-                  <th className="px-2 py-1 text-right w-[20%]">SUB TOTAL</th>
+              <thead className="bg-violet-50">
+                <tr className="text-violet-800">
+                  <th className="text-left px-3 py-1.5 w-[48%]">Descripción</th>
+                  <th className="text-right px-2 py-1.5 w-[14%]">Cant.</th>
+                  <th className="text-right px-2 py-1.5 w-[18%]">Valor</th>
+                  <th className="text-right px-3 py-1.5 w-[20%]">Subtotal</th>
                 </tr>
               </thead>
               <tbody>
                 {items.length ? (
-                  items.map((it, idx) => (
+                  items.map((it, i) => (
                     <tr
-                      key={idx}
-                      className={idx % 2 === 0 ? 'bg-white' : 'bg-violet-50'}
+                      key={i}
+                      className="border-t border-slate-200 last:border-b"
                     >
-                      <td className="px-2 py-1 text-left">
+                      <td className="px-3 py-1.5 truncate">
                         {it.articulo || '—'}
                       </td>
-                      <td className="px-2 py-1 text-center">
+                      <td className="px-2 py-1.5 text-right">
                         {it.cantidad ?? 0}
                       </td>
-                      <td className="px-2 py-1 text-right">
+                      <td className="px-2 py-1.5 text-right">
                         {CLP.format(it.valor ?? 0)}
                       </td>
-                      <td className="px-2 py-1 text-right">
+                      <td className="px-3 py-1.5 text-right">
                         {CLP.format(
                           (Number(it.cantidad) || 0) *
                             (Number(it.valor) || 0)
@@ -313,7 +360,7 @@ export default async function ServicioPage({ searchParams }: PageProps) {
                   <tr>
                     <td
                       colSpan={4}
-                      className="px-2 py-2 text-center text-slate-500"
+                      className="px-3 py-3 text-center text-slate-500"
                     >
                       Sin artículos registrados.
                     </td>
@@ -321,77 +368,39 @@ export default async function ServicioPage({ searchParams }: PageProps) {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* SOLO EFECTIVO */}
-        <div className="px-6 mb-4">
-          <div className="w-full text-center py-2 text-lg md:text-xl font-extrabold bg-yellow-400 text-red-600">
-            SOLO PAGO EFECTIVO
-          </div>
-        </div>
-
-        {/* Datos cliente + tipo entrega */}
-        <div className="px-6 mb-4 text-xs md:text-sm">
-          <div className="grid md:grid-cols-2 gap-3">
-            <div className="border border-slate-300 rounded-md px-3 py-2">
-              <div className="font-semibold text-slate-700 mb-1">
-                Datos del cliente
-              </div>
-              <div className="text-slate-800 font-bold">
-                {nombre || 'SIN NOMBRE'}
-              </div>
-              <div className="text-slate-700">
-                {direccion || 'SIN DIRECCIÓN'}
-              </div>
-              <div className="text-slate-600 mt-1">
-                Teléfono: {pedido.telefono || '—'}
-              </div>
-            </div>
-            <div className="border border-slate-300 rounded-md px-3 py-2">
-              <div className="font-semibold text-slate-700 mb-1">
-                Información adicional
-              </div>
-              <div className="flex justify-between">
-                <span>Fecha ingreso:</span>
-                <span className="font-semibold">
-                  {formatFecha(pedido.fecha_ingreso)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Fecha entrega:</span>
-                <span className="font-semibold">
-                  {formatFecha(pedido.fecha_entrega)}
-                </span>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span>Tipo entrega:</span>
-                <span className="font-semibold">{tipoEntrega}</span>
-              </div>
+            <div className="px-3 py-2 bg-violet-50 text-right text-[12px] font-extrabold text-violet-800">
+              VALOR SERVICIO:&nbsp; {CLP.format(totalCalc)}
             </div>
           </div>
         </div>
 
-        {/* FOTO OPCIONAL */}
+        {/* Foto pequeña opcional */}
         {foto && (
-          <div className="px-6 mb-4">
+          <div className="px-6 pt-3 pb-3">
             <div className="text-xs text-slate-600 mb-1">
               Referencia visual del pedido
             </div>
-            <div className="border border-slate-300 rounded-md overflow-hidden">
+            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-black/5">
               <Image
                 src={foto}
-                alt={`Foto pedido ${numeroVisible}`}
+                alt={`Foto pedido ${pedido.nro}`}
                 width={800}
-                height={500}
-                className="w-full h-auto"
+                height={600}
+                className="w-full h-auto object-cover"
               />
             </div>
           </div>
         )}
 
-        {/* PIE DE PÁGINA */}
-        <div className="px-6 pb-4 pt-2 text-[10px] text-center text-slate-500 border-t border-slate-200">
+        {/* Solo pago efectivo */}
+        <div className="px-6 pb-4 pt-1">
+          <div className="w-full rounded-2xl bg-yellow-400 text-center font-extrabold text-red-700 text-sm py-2">
+            SOLO PAGO EFECTIVO
+          </div>
+        </div>
+
+        {/* Pie */}
+        <div className="px-6 pb-4 pt-1 text-[10px] text-center text-slate-500 border-t border-slate-200">
           Comprobante generado por Lavandería Fabiola. Uso exclusivo informativo
           para el cliente.
         </div>
