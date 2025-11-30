@@ -1,7 +1,8 @@
+// app/base/general/page.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -13,7 +14,6 @@ import {
   ImagePlus,
   Truck,
   PackageCheck,
-  Droplet,
   WashingMachine,
   CreditCard,
   Archive,
@@ -109,16 +109,9 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
 
 export default function GeneralPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  // Estado que viene desde la URL: /general?estado=LAVAR
-  const estadoFiltro: PedidoEstado = useMemo(() => {
-    const raw = (searchParams.get('estado') ?? '').trim().toUpperCase();
-    if (ESTADOS.includes(raw as PedidoEstado)) {
-      return raw as PedidoEstado;
-    }
-    return 'LAVAR';
-  }, [searchParams]);
+  // Estado actual leído desde ?estado= en la URL
+  const [estadoFiltro, setEstadoFiltro] = useState<PedidoEstado>('LAVAR');
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -147,6 +140,22 @@ export default function GeneralPage() {
     [pedidos, openId],
   );
 
+  // Leer ?estado= desde la URL una vez en el cliente
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const raw = (sp.get('estado') ?? '').trim().toUpperCase();
+      if (ESTADOS.includes(raw as PedidoEstado)) {
+        setEstadoFiltro(raw as PedidoEstado);
+      } else {
+        setEstadoFiltro('LAVAR');
+      }
+    } catch {
+      setEstadoFiltro('LAVAR');
+    }
+  }, []);
+
+  // Carga de pedidos según estadoFiltro
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -158,7 +167,6 @@ export default function GeneralPage() {
         setCurrentSlide({});
         setImageError({});
 
-        // Pedidos en estadoFiltro
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
@@ -178,21 +186,18 @@ export default function GeneralPage() {
           return;
         }
 
-        // Líneas
         const { data: lineas, error: e2 } = await supabase
           .from('pedido_linea')
           .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', ids);
         if (e2) throw e2;
 
-        // Fotos (todas las filas de pedido_foto)
         const { data: fotos, error: e3 } = await supabase
           .from('pedido_foto')
           .select('pedido_id, url')
           .in('pedido_id', ids);
         if (e3) throw e3;
 
-        // Clientes
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
           .select('telefono, nombre')
@@ -228,7 +233,6 @@ export default function GeneralPage() {
           itemsByPedido.set(pid, arr);
         });
 
-        // Agrupar fotos por pedido desde tabla pedido_foto
         const fotosByPedido = new Map<number, string[]>();
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.pedido_id ?? f.nro);
@@ -240,7 +244,6 @@ export default function GeneralPage() {
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-          // fotos base que puedan venir en foto_url (string o JSON)
           const baseFotos = allFotosFromMixed(r.foto_url);
           const extra = fotosByPedido.get(r.id) ?? [];
 
@@ -309,7 +312,6 @@ export default function GeneralPage() {
       return;
     }
 
-    // En vista general: si cambia a otro estado distinto al filtro, se saca de la lista
     if (next !== estadoFiltro) {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -342,7 +344,6 @@ export default function GeneralPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto ------->
   function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
     setPickerFotoUrl(fotoUrl);
@@ -383,20 +384,17 @@ export default function GeneralPage() {
         .insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      // Obtener fotos actuales del pedido para actualizar JSON en foto_url
       const pedidoActual = pedidos.find((p) => p.id === pid);
       const fotosActuales =
         pedidoActual?.fotos ??
         allFotosFromMixed(pedidoActual?.foto_url ?? null);
       const nuevasFotos = [...fotosActuales, publicUrl];
 
-      // Guardamos la lista completa en foto_url como JSON
       await supabase
         .from('pedido')
         .update({ foto_url: JSON.stringify(nuevasFotos) })
         .eq('nro', pid);
 
-      // Actualizar estado local
       setPedidos((prev) =>
         prev.map((p) =>
           p.id === pid
@@ -424,7 +422,6 @@ export default function GeneralPage() {
     }
   }
 
-  // ------- Eliminar foto (botón del modal) ------->
   async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
     if (!pedidoId) return;
 
@@ -440,16 +437,15 @@ export default function GeneralPage() {
         return;
       }
 
-      // Intentar borrar del storage (si la URL es pública de Supabase)
       try {
         const urlObj = new URL(targetUrl);
-        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
+        const pathname = urlObj.pathname;
         const marker = '/object/public/';
         const idx = pathname.indexOf(marker);
         if (idx >= 0) {
-          let path = pathname.substring(idx + marker.length); // fotos/...
+          let path = pathname.substring(idx + marker.length);
           if (path.startsWith('fotos/')) {
-            path = path.substring('fotos/'.length); // solo ruta interna
+            path = path.substring('fotos/'.length);
           }
           if (path) {
             await supabase.storage.from('fotos').remove([path]);
@@ -462,16 +458,13 @@ export default function GeneralPage() {
         );
       }
 
-      // Borrar de tabla pedido_foto
       await supabase
         .from('pedido_foto')
         .delete()
         .match({ pedido_id: pedidoId, url: targetUrl });
 
-      // Actualizar lista de fotos para el pedido
       const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
 
-      // Actualizar foto_url en pedido (JSON o null)
       await supabase
         .from('pedido')
         .update({
@@ -479,7 +472,6 @@ export default function GeneralPage() {
         })
         .eq('nro', pedidoId);
 
-      // Actualizar estado local
       setPedidos((prev) =>
         prev.map((p) =>
           p.id === pedidoId
@@ -514,7 +506,6 @@ export default function GeneralPage() {
     }
   }
 
-  // Slider: cambiar de foto
   function changeSlide(pedidoId: number, direction: -1 | 1) {
     const pedido = pedidos.find((p) => p.id === pedidoId);
     const fotos = pedido?.fotos ?? [];
@@ -528,7 +519,6 @@ export default function GeneralPage() {
     });
   }
 
-  // Modal de edición
   function askEdit(id: number) {
     setAskEditForId(id);
   }
@@ -537,7 +527,6 @@ export default function GeneralPage() {
     setAskEditForId(null);
   }
 
-  // Mejorado: acepta opcionalmente un id directo (para el botón dentro del header de Detalle)
   function goEdit(idFromButton?: number) {
     const targetId = idFromButton ?? askEditForId;
     if (!targetId) return;
@@ -546,7 +535,6 @@ export default function GeneralPage() {
       setAskEditForId(null);
     }
 
-    // Navegamos a /editar?nro=ID
     router.push(`/editar?nro=${targetId}`);
   }
 
@@ -679,7 +667,6 @@ export default function GeneralPage() {
                           }
                           className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                         >
-                          {/* Lado izquierdo: título */}
                           <div className="flex items-center gap-2">
                             <Table size={16} />
                             <span className="font-semibold">
@@ -687,13 +674,12 @@ export default function GeneralPage() {
                             </span>
                           </div>
 
-                          {/* Lado derecho: botón Editar + flecha */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={(ev) => {
-                                ev.stopPropagation(); // no abre/cierra el acordeón
-                                goEdit(p.id); // usa la misma lógica /editar?nro=ID
+                                ev.stopPropagation();
+                                goEdit(p.id);
                               }}
                               className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
                                 bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
@@ -777,7 +763,6 @@ export default function GeneralPage() {
                           </div>
                         )}
 
-                        {/* Galería de fotos */}
                         <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                           {activeFoto && !imageError[p.id] ? (
                             <div
@@ -860,7 +845,6 @@ export default function GeneralPage() {
         </ErrorBoundary>
       </section>
 
-      {/* Barra de acciones (general) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
@@ -938,7 +922,6 @@ export default function GeneralPage() {
         </div>
       )}
 
-      {/* Modal “¿Desea editar?” */}
       {askEditForId && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-black/50"
@@ -974,7 +957,6 @@ export default function GeneralPage() {
         </div>
       )}
 
-      {/* Modal para opciones de imagen: sacar / cargar / eliminar */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
@@ -1024,7 +1006,6 @@ export default function GeneralPage() {
         </div>
       )}
 
-      {/* inputs ocultos */}
       <input
         ref={inputCamRef}
         type="file"
