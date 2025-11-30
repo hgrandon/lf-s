@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 /* =========================
@@ -232,12 +233,26 @@ export default function ServicioPage() {
       <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-violet-100 overflow-hidden">
         {/* Cabecera grande */}
         <div className="px-6 pt-5 pb-4 border-b border-violet-100 text-center">
-          <div className="flex items-center justify-between text-violet-700 text-xs font-semibold">
-            <span>LAVANDERÍA FABIOLA</span>
-            <span>COMPROBANTE DE SERVICIO</span>
+          {/* Logo + título */}
+          <div className="flex flex-col items-center gap-2 mb-2">
+            <Image
+              src="/logo.png"
+              alt="Lavandería Fabiola"
+              width={80}
+              height={80}
+              className="rounded-xl object-cover shadow-sm"
+              priority
+            />
+            <h1 className="text-violet-800 font-extrabold text-sm tracking-[0.25em]">
+              LAVANDERÍA FABIOLA
+            </h1>
+            <p className="text-[11px] text-violet-600 font-semibold uppercase tracking-wide">
+              Comprobante de servicio
+            </p>
           </div>
 
-          <div className="mt-3 flex items-center justify-center gap-3">
+          {/* Número de servicio */}
+          <div className="mt-2 flex items-center justify-center">
             <div className="text-[11px] tracking-[0.25em] text-violet-500">
               TU N° SERVICIO
             </div>
@@ -247,6 +262,7 @@ export default function ServicioPage() {
             {pedido.nro}
           </div>
 
+          {/* Mensaje dinámico según estado / tipo de entrega */}
           <div className="mt-3 text-sm font-semibold text-slate-800">
             Hola {nombreCli.split(' ')[0]},{' '}
             {pedido.estado === 'GUARDADO' || pedido.estado === 'ENTREGAR' ? (
