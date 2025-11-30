@@ -246,9 +246,6 @@ export default function ServicioPage() {
             <h1 className="text-violet-800 font-extrabold text-sm tracking-[0.25em]">
               LAVANDERÍA FABIOLA
             </h1>
-            <p className="text-[11px] text-violet-600 font-semibold uppercase tracking-wide">
-              Comprobante de servicio
-            </p>
           </div>
 
           {/* Número de servicio */}
@@ -277,7 +274,7 @@ export default function ServicioPage() {
                 <>
                   tu servicio está{' '}
                   <span className="text-emerald-600">LISTO</span>. <br />
-                  Por favor pasa a retirar tu ropa cuando puedas 🕘
+                  Por favor pasa a retirar 
                 </>
               )
             ) : pedido.estado === 'ENTREGADO' ? (
@@ -320,10 +317,7 @@ export default function ServicioPage() {
               {esPagado ? 'PAGADO' : 'PENDIENTE'}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Tipo entrega</span>
-            <span>{tipoEntrega}</span>
-          </div>
+
         </div>
 
         {/* Detalle del servicio */}
