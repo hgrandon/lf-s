@@ -138,8 +138,8 @@ export default function ServicioPage() {
             .maybeSingle();
           if (!cancelled && cli) {
             setCliente({
-              nombre: (cli.nombre as string) ?? null,
-              direccion: (cli.direccion as string) ?? null,
+              nombre: cli.nombre ?? null,
+              direccion: cli.direccion ?? null,
             });
           }
         }
@@ -153,8 +153,8 @@ export default function ServicioPage() {
           setItems(
             lineas.map((l: any) => ({
               articulo: l.articulo || '',
-              cantidad: l.cantidad == null ? null : Number(l.cantidad),
-              valor: l.valor == null ? null : Number(l.valor),
+              cantidad: l.cantidad ? Number(l.cantidad) : null,
+              valor: l.valor ? Number(l.valor) : null,
             }))
           );
         }
@@ -165,7 +165,7 @@ export default function ServicioPage() {
       }
     }
 
-    void cargar();
+    cargar();
     return () => {
       cancelled = true;
     };
@@ -174,7 +174,8 @@ export default function ServicioPage() {
   const totalCalc = useMemo(() => {
     if (items.length)
       return items.reduce(
-        (acc, it) => acc + (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
+        (acc, it) =>
+          acc + (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
         0
       );
 
@@ -213,43 +214,46 @@ export default function ServicioPage() {
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-violet-800 via-violet-900 to-slate-950 px-3 py-8">
       <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
         <div className="px-6 pt-6 pb-4 border-b border-slate-200 text-center">
-          {/* Logo + título */}
+          {/* Logo */}
           <div className="flex flex-col items-center gap-2 mb-3">
             <Image
               src="/logo.png"
-              alt="Logo Lavandería Fabiola"
+              alt="Logo"
               width={85}
               height={85}
               className="rounded-xl shadow-md object-cover"
             />
-            <h1 className="text-[#4B0082] font-extrabold text-sm tracking-[0.25em]">
+            <h1 className="text-violet-800 font-extrabold text-sm tracking-[0.25em]">
               LAVANDERÍA FABIOLA
             </h1>
-            <p className="text-[11px] text-[#7A1FA2] font-semibold tracking-wide uppercase">
+            <p className="text-[11px] text-violet-600 font-semibold tracking-wide uppercase">
               Comprobante de servicio
             </p>
           </div>
 
-          {/* Número de servicio */}
-          <div className="text-[11px] tracking-[0.25em] text-[#C084FC] mb-1">
+          {/* Número */}
+          <div className="text-[11px] tracking-[0.25em] text-violet-500 mb-1">
             TU N° SERVICIO
           </div>
           <div
             className="
-              mt-1
-              text-[64px]
-              md:text-[72px]
-              font-black
-              leading-none
-              tracking-[0.22em]
-              text-[#4B0082]
+              text-7xl 
+              font-black 
+              leading-tight 
+              bg-gradient-to-b 
+              from-violet-400 
+              via-violet-600 
+              to-violet-900 
+              text-transparent 
+              bg-clip-text 
               drop-shadow-[0_3px_3px_rgba(0,0,0,0.35)]
+              tracking-widest
             "
           >
             {pedido.nro}
           </div>
 
-          {/* Mensaje dinámico */}
+          {/* Texto dinámico */}
           <div className="mt-4 text-sm font-semibold text-slate-800">
             Hola {nombreCli.split(' ')[0]},
             <br />
@@ -257,21 +261,21 @@ export default function ServicioPage() {
               tipoEntrega === 'DOMICILIO' ? (
                 <>
                   tu servicio está{' '}
-                  <span className="text-emerald-600">LISTO</span>. <br />
-                  ¿Nos confirmas si podemos llevar tu pedido a domicilio? 🚚
+                  <span className="text-emerald-600">LISTO</span>.  
+                  <br /> ¿Nos confirmas si podemos llevar tu pedido a domicilio? 🚚
                 </>
               ) : (
                 <>
                   tu servicio está{' '}
-                  <span className="text-emerald-600">LISTO</span>. <br />
-                  Te esperamos para su retiro en nuestro local 🕘
+                  <span className="text-emerald-600">LISTO</span>.  
+                  <br /> Te esperamos para su retiro en nuestro local 🕘
                 </>
               )
             ) : pedido.estado === 'ENTREGADO' ? (
               <>
                 tu servicio está{' '}
-                <span className="text-emerald-600">ENTREGADO</span>. <br />
-                ¡Gracias por preferirnos! 💜
+                <span className="text-emerald-600">ENTREGADO</span>.  
+                <br /> ¡Gracias por preferirnos! 💜
               </>
             ) : esPagado ? (
               <>
@@ -291,20 +295,8 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* Datos principales */}
+        {/* Datos: solo fecha entrega + estados */}
         <div className="px-6 py-3 text-xs text-slate-800 grid gap-2">
-
-            {/* Fecha de ingreso ocultada temporalmente */}
-            {/* <div className="flex justify-between">
-            <span className="font-semibold">Fecha ingreso</span>
-            <span>{formatFecha(pedido.fecha_ingreso)}</span>
-            </div> */}
-
-            <div className="flex justify-between">
-            <span className="font-semibold">Fecha entrega</span>
-            <span>{formatFecha(pedido.fecha_entrega)}</span>
-            </div>
-
           <div className="flex justify-between">
             <span className="font-semibold">Fecha entrega</span>
             <span>{formatFecha(pedido.fecha_entrega)}</span>
@@ -321,7 +313,7 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* Detalle del servicio */}
+        {/* Detalle */}
         <div className="px-6 py-3">
           <div className="text-xs font-semibold mb-2 text-slate-700">
             Detalle del servicio
@@ -329,8 +321,8 @@ export default function ServicioPage() {
 
           <div className="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden">
             <table className="w-full text-[11px]">
-              <thead className="bg-[#F3E8FF]">
-                <tr className="text-[#4B0082]">
+              <thead className="bg-violet-50">
+                <tr className="text-violet-800">
                   <th className="text-left px-3 py-2">Descripción</th>
                   <th className="text-right px-2 py-2">Cant</th>
                   <th className="text-right px-2 py-2">Valor</th>
@@ -349,9 +341,7 @@ export default function ServicioPage() {
                         {CLP.format(it.valor ?? 0)}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        {CLP.format(
-                          (Number(it.cantidad) || 0) * (Number(it.valor) || 0)
-                        )}
+                        {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
                       </td>
                     </tr>
                   ))
@@ -368,15 +358,10 @@ export default function ServicioPage() {
               </tbody>
             </table>
 
-            <div className="px-3 py-3 bg-[#F3E8FF] text-right text-[12px] font-extrabold text-[#4B0082]">
+            <div className="px-3 py-3 bg-violet-50 text-right text-[12px] font-extrabold text-violet-800">
               TOTAL:&nbsp; {CLP.format(totalCalc)}
             </div>
           </div>
-        </div>
-
-        {/* Pie */}
-        <div className="px-6 pb-5 pt-3 text-[10px] text-center text-slate-500 border-t border-slate-200">
-          Comprobante generado por Lavandería Fabiola – Uso informativo.
         </div>
       </div>
     </main>
