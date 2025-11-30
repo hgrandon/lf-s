@@ -466,12 +466,14 @@ export default function LavandoPage() {
   function closeAskEdit() {
     setAskEditForId(null);
   }
-  function goEdit() {
-    const id = askEditForId;
-    if (!id) return;
-    setAskEditForId(null);
-    router.push(`/pedido/editar/${id}`);
-  }
+    function goEdit() {
+      const id = askEditForId;
+      if (!id) return;
+      setAskEditForId(null);
+
+      // Enviamos el nro como querystring a /editar
+      router.push(`/editar?nro=${id}`);
+    }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
@@ -570,7 +572,21 @@ export default function LavandoPage() {
                             <Table size={16} />
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
-                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+
+                          {/* Ícono + botón Editar + chevron */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation(); // que no abra/cierre el acordeón
+                                askEdit(p.id);
+                              }}
+                              className="hidden sm:inline-flex items-center gap-1 rounded-full bg-violet-500/90 hover:bg-violet-400 text-xs font-semibold px-3 py-1 shadow"
+                            >
+                              Editar
+                            </button>
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </div>
                         </button>
 
                         {detOpen && (
