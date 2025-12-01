@@ -289,7 +289,7 @@ export default function BasePage() {
           </p>
           <p className="text-[11px] text-white/60">
             Abre la app Lavandería Fabiola, inicia sesión y vuelve
-            a intentar ingresar a <strong>/base</strong>.
+            a intentar ingresar
           </p>
         </div>
       </main>
