@@ -312,7 +312,6 @@ function DetalleArticuloModal({
   onClose: () => void;
   onConfirm: (d: { articulo: string; qty: number; valor: number }) => void;
 }) {
-  // los manejamos como STRING para que sea fácil editar 7000 -> 8000
   const [qtyStr, setQtyStr] = useState('1');
   const [valorStr, setValorStr] = useState('');
 
@@ -330,7 +329,6 @@ function DetalleArticuloModal({
   if (!open || !articulo) return null;
 
   function handleAgregar() {
-    // convertimos a número SOLO al confirmar
     const qNum = Number(qtyStr.replace(/\D/g, '') || '0');
     const vNum = Number(valorStr.replace(/\D/g, '') || '0');
 
@@ -577,7 +575,7 @@ function BolsasModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justifycenter bg-black/60 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <h2 className="font-bold text-sm sm:text-base">
@@ -636,72 +634,56 @@ function BolsasModal({
 export default function PedidoPage() {
   const router = useRouter();
 
-  // === Seguridad UUD: bloquear si no hay sesión válida ===
+  // Seguridad UUD
   const [authOk, setAuthOk] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     const sess = readSessionSafely();
     if (!sess) {
-      // sin sesión o expirada => al login
       router.replace('/login?next=/pedido');
-      return;
+      setAuthOk(false);
+    } else {
+      setAuthOk(true);
     }
-    // si quisieras restringir por rol, acá podrías validar sess.rol
-    setAuthOk(true);
+    setAuthChecked(true);
   }, [router]);
 
-  // mientras validamos o redirigimos, no mostramos la pantalla de pedido
-  if (!authOk) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="animate-spin" size={28} />
-          <span className="text-sm opacity-80">Verificando acceso UUD…</span>
-        </div>
-      </main>
-    );
-  }
-
+  // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
 
-  // cliente
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
   const [openCliModal, setOpenCliModal] = useState(false);
 
-  // artículos
   const [catalogo, setCatalogo] = useState<Articulo[]>([]);
   const [openArtModal, setOpenArtModal] = useState(false);
 
-  // modal de detalle
   const [openDetalle, setOpenDetalle] = useState(false);
   const [articuloDetalle, setArticuloDetalle] = useState<Articulo | null>(null);
 
-  // modal de eliminar
   const [openDelete, setOpenDelete] = useState(false);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
-  // líneas
   const [items, setItems] = useState<Item[]>([]);
 
-  // fotos
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null); // última foto para mostrar
-  const [fotos, setFotos] = useState<string[]>([]); // TODAS las fotos del pedido
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<string[]>([]);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
 
-  // estados de pago y tipo de entrega
   const [pagado, setPagado] = useState<boolean>(false);
   const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
 
-  // estado del pedido (icono que cicla)
   const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
 
-  // bolsas (solo para flujo / debugging, se guarda en DB en guardarPedido)
   const [bolsasModalOpen, setBolsasModalOpen] = useState(false);
 
-  // ref para la cámara / archivo (se usa en Correlativo y Fotos)
   const fotoInputRef = useRef<HTMLInputElement>(null!);
+
+  const debRef = useRef<number | null>(null);
+
+  const [saving, setSaving] = useState(false);
 
   const total = useMemo(
     () =>
@@ -781,7 +763,6 @@ export default function PedidoPage() {
   }, []);
 
   /* === Buscar cliente por teléfono con debounce === */
-  const debRef = useRef<number | null>(null);
   useEffect(() => {
     const digits = (telefono || '').replace(/\D/g, '');
     if (digits.length < 8) {
@@ -823,7 +804,7 @@ export default function PedidoPage() {
     };
   }, [telefono]);
 
-  /* === Lógica para selección de artículos (abre modal al elegir) === */
+  /* === Lógica selección de artículos === */
   function handleSelectArticulo(nombreSel: string) {
     if (!nombreSel) return;
 
@@ -838,7 +819,6 @@ export default function PedidoPage() {
 
     const nombreNormalizado = nombreSel.trim().toUpperCase();
 
-    // Buscamos el artículo en el catálogo normalizando nombre
     const found = catalogo.find(
       (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
     );
@@ -855,13 +835,11 @@ export default function PedidoPage() {
   function confirmarDetalleLinea(d: { articulo: string; qty: number; valor: number }) {
     const nombreNormalizado = d.articulo.trim().toUpperCase();
 
-    // 1) Actualizar catálogo si cambió el precio
     const artCatalogo = catalogo.find(
       (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
     );
 
     if (artCatalogo && Number(artCatalogo.precio || 0) !== Number(d.valor || 0)) {
-      // Actualizamos en el estado local
       setCatalogo((prev) =>
         prev.map((a) =>
           a.nombre.trim().toUpperCase() === nombreNormalizado
@@ -870,7 +848,6 @@ export default function PedidoPage() {
         )
       );
 
-      // Actualizamos en Supabase (fire & forget)
       (async () => {
         try {
           await supabase
@@ -883,7 +860,6 @@ export default function PedidoPage() {
       })();
     }
 
-    // 2) Actualizar / agregar línea en el pedido
     setItems((prev) => {
       const index = prev.findIndex(
         (x) => x.articulo === d.articulo && x.valor === d.valor
@@ -942,7 +918,6 @@ export default function PedidoPage() {
       const stamp = Date.now();
       const ext = file.name.split('.').pop() || 'jpg';
 
-      // carpeta por pedido
       const nro = nextInfo.nro;
       const path = `pedido-${nro}/${stamp}.${ext}`;
 
@@ -957,10 +932,7 @@ export default function PedidoPage() {
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(data!.path);
       const publicUrl = pub.publicUrl;
 
-      // última foto para mostrar en el componente Fotos
       setFotoUrl(publicUrl);
-
-      // acumulamos todas las fotos del pedido
       setFotos((prev) => [...prev, publicUrl]);
     } catch (e) {
       console.error(e);
@@ -969,9 +941,7 @@ export default function PedidoPage() {
     }
   }
 
-  /* === Guardar pedido (recibe n° de bolsas) === */
-  const [saving, setSaving] = useState(false);
-
+  /* === Guardar pedido === */
   async function guardarPedido(numBolsas: number) {
     if (!nextInfo) return;
     if (!items.length) {
@@ -982,7 +952,6 @@ export default function PedidoPage() {
     try {
       setSaving(true);
 
-      // Todas las fotos tomadas en Pedido (si no hay, usamos la última suelta)
       const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
 
       const payload = {
@@ -994,16 +963,13 @@ export default function PedidoPage() {
         tipo_entrega: tipoEntrega,
         fecha_ingreso: nextInfo.fechaIngresoISO,
         fecha_entrega: nextInfo.fechaEntregaISO,
-        bolsas: numBolsas, // <-- NUEVO: número de bolsas
-        // Guardamos como JSON para que otras vistas puedan usar el slider
+        bolsas: numBolsas,
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
       };
 
-      // 1) Insertar pedido
       const { error: eP } = await supabase.from('pedido').insert(payload);
       if (eP) throw eP;
 
-      // 2) Insertar líneas
       const lineas = items
         .filter((it) => it.qty > 0 && it.articulo.trim() !== '')
         .map((it) => ({
@@ -1018,7 +984,6 @@ export default function PedidoPage() {
         if (eL) throw eL;
       }
 
-      // 3) Insertar todas las fotos en pedido_foto
       if (fotosArray.length) {
         const filasFotos = fotosArray.map((url) => ({
           pedido_id: nextInfo.nro,
@@ -1029,9 +994,7 @@ export default function PedidoPage() {
         if (eF) throw eF;
       }
 
-      // Volver al menú principal después de guardar
       router.push('/menu');
-      return;
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'No se pudo guardar el pedido');
@@ -1053,9 +1016,37 @@ export default function PedidoPage() {
       alert('Debes agregar al menos un artículo.');
       return;
     }
-    // Abrimos el modal de bolsas
     setBolsasModalOpen(true);
   }
+
+  /* =========================
+     Renders según seguridad
+  ========================== */
+
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin" size={28} />
+          <span className="text-sm opacity-80">Verificando acceso UUD…</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!authOk) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <span className="text-sm opacity-80">
+          Redirigiendo a login…
+        </span>
+      </main>
+    );
+  }
+
+  /* =========================
+     Página principal OK
+  ========================== */
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
@@ -1098,7 +1089,7 @@ export default function PedidoPage() {
         <Fotos
           fotoUrl={fotoUrl}
           inputRef={fotoInputRef}
-          initialGaleria={fotos} // todas las fotos del pedido
+          initialGaleria={fotos}
           onFileSelected={(file) => {
             if (file) uploadFoto(file);
           }}
@@ -1118,7 +1109,7 @@ export default function PedidoPage() {
           </button>
 
           <div className="flex items-center gap-4 ml-2">
-            {/* Estado: icono que avanza en el ciclo al hacer click */}
+            {/* Estado */}
             <button
               type="button"
               onClick={() =>
@@ -1136,7 +1127,7 @@ export default function PedidoPage() {
               </span>
             </button>
 
-            {/* Casa: LOCAL rojo / DOMICILIO amarillo (toggle al hacer click) */}
+            {/* Tipo entrega */}
             <button
               type="button"
               onClick={() =>
@@ -1157,7 +1148,7 @@ export default function PedidoPage() {
               </span>
             </button>
 
-            {/* Tarjeta: pagado verde / pendiente rojo (toggle al hacer click) */}
+            {/* Pago */}
             <button
               type="button"
               onClick={() => setPagado((prev) => !prev)}
@@ -1185,7 +1176,7 @@ export default function PedidoPage() {
         onClose={() => setOpenCliModal(false)}
         onSaved={(c) => {
           setCliente(c);
-          setTelefono(c.telefono); // por si cambiaste el número
+          setTelefono(c.telefono);
         }}
       />
 
