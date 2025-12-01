@@ -44,6 +44,34 @@ type PedidoEstado =
   | 'ENTREGAR'
   | 'ENTREGADO';
 
+// === Seguridad UUD (basada en lf_auth del login) ===
+type AuthMode = 'clave' | 'usuario';
+
+type LfSession = {
+  mode: AuthMode;
+  display: string;
+  rol?: string | null;
+  ts: number;
+  ttl: number;
+};
+
+function readSessionSafely(): LfSession | null {
+  try {
+    const raw = localStorage.getItem('lf_auth');
+    if (!raw) return null;
+    const s = JSON.parse(raw) as LfSession;
+    if (!s || !s.ts || !s.ttl) return null;
+    const expired = Date.now() - s.ts > s.ttl;
+    if (expired) {
+      localStorage.removeItem('lf_auth');
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
 /* =========================
    Utilidades
 ========================= */
@@ -549,7 +577,7 @@ function BolsasModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justifycenter bg-black/60 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <h2 className="font-bold text-sm sm:text-base">
@@ -607,6 +635,32 @@ function BolsasModal({
 
 export default function PedidoPage() {
   const router = useRouter();
+
+  // === Seguridad UUD: bloquear si no hay sesión válida ===
+  const [authOk, setAuthOk] = useState(false);
+
+  useEffect(() => {
+    const sess = readSessionSafely();
+    if (!sess) {
+      // sin sesión o expirada => al login
+      router.replace('/login?next=/pedido');
+      return;
+    }
+    // si quisieras restringir por rol, acá podrías validar sess.rol
+    setAuthOk(true);
+  }, [router]);
+
+  // mientras validamos o redirigimos, no mostramos la pantalla de pedido
+  if (!authOk) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin" size={28} />
+          <span className="text-sm opacity-80">Verificando acceso UUD…</span>
+        </div>
+      </main>
+    );
+  }
 
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
 
