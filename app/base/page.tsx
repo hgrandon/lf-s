@@ -18,16 +18,61 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
-  Printer,          // 👈 NUEVO ICONO
+  Printer, // 👈 NUEVO ICONO
 } from 'lucide-react';
+
+/* =========================
+   Tipos extra (UUD)
+========================= */
+
+type AuthMode = 'clave' | 'usuario' | 'google';
+
+type LfSession = {
+  mode: AuthMode;
+  display: string;
+  rol?: string | null;
+  ts: number;
+  ttl: number;
+};
+
+function readSessionSafely(): LfSession | null {
+  try {
+    const raw = localStorage.getItem('lf_auth');
+    if (!raw) return null;
+    const s = JSON.parse(raw) as LfSession;
+    if (!s || !s.ts || !s.ttl) return null;
+    const expired = Date.now() - s.ts > s.ttl;
+    if (expired) {
+      localStorage.removeItem('lf_auth');
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
 
 /* =========================
    Tipos y constantes
 ========================= */
-type EstadoKey = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type EstadoKey =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
+
 type PedidoRow = { estado: string | null };
 
-const ESTADOS: EstadoKey[] = ['LAVAR', 'LAVANDO', 'GUARDAR', 'GUARDADO', 'ENTREGADO', 'ENTREGAR'];
+const ESTADOS: EstadoKey[] = [
+  'LAVAR',
+  'LAVANDO',
+  'GUARDAR',
+  'GUARDADO',
+  'ENTREGADO',
+  'ENTREGAR',
+];
 
 const EMPTY_COUNTS: Record<EstadoKey, number> = {
   LAVAR: 0,
@@ -43,9 +88,27 @@ const EMPTY_COUNTS: Record<EstadoKey, number> = {
 ========================= */
 export default function BasePage() {
   const router = useRouter();
+
+  // --- Seguridad UUD: requiere sesión válida (cualquier rol) ---
+  const [authChecked, setAuthChecked] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    const sess = readSessionSafely();
+    if (!sess) {
+      setHasSession(false);
+      setAuthChecked(true);
+      return;
+    }
+    setHasSession(true);
+    setAuthChecked(true);
+  }, []);
+
+  // --- Estados de datos ---
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [counts, setCounts] = useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
+  const [counts, setCounts] =
+    useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
   const [pendingEntregado, setPendingEntregado] = useState(0);
 
   const mountedRef = useRef(true);
@@ -68,18 +131,23 @@ export default function BasePage() {
     setLoading(true);
     setErr(null);
     try {
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_pedido_counts');
+      const { data: rpcData, error: rpcError } =
+        await supabase.rpc('get_pedido_counts');
       const next = { ...EMPTY_COUNTS };
 
       if (!rpcError && Array.isArray(rpcData)) {
         (rpcData as { estado: string; n: number }[]).forEach((row) => {
-          const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
+          const key = (row.estado || '')
+            .toUpperCase()
+            .trim() as EstadoKey;
           if (key && key in next) next[key] = Number(row.n) || 0;
         });
         next.GUARDAR = 0;
         if (mountedRef.current) setCounts(next);
       } else {
-        const { data, error } = await supabase.from('pedido').select('estado');
+        const { data, error } = await supabase
+          .from('pedido')
+          .select('estado');
         if (error) throw error;
         (data as PedidoRow[]).forEach((row) => {
           const estado = normalizeEstado(row.estado);
@@ -96,40 +164,68 @@ export default function BasePage() {
         .eq('estado', 'ENTREGADO')
         .eq('pagado', false);
       if (pendErr) throw pendErr;
-      if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
-
+      if (mountedRef.current)
+        setPendingEntregado(pendCount ?? 0);
     } catch (e: any) {
-      if (mountedRef.current) setErr(e?.message ?? 'Error desconocido al cargar');
+      if (mountedRef.current)
+        setErr(e?.message ?? 'Error desconocido al cargar');
       console.error('fetchCounts error:', e);
     } finally {
       if (mountedRef.current) setLoading(false);
     }
   };
 
+  // Suscripción realtime SOLO si hay sesión
   useEffect(() => {
+    if (!hasSession) return;
+
     (async () => {
       await fetchCounts();
     })();
 
     let channel: RealtimeChannel | null = supabase
       .channel('pedido-counts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedido' }, () => {
-        fetchCounts();
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedido' },
+        () => {
+          fetchCounts();
+        },
+      )
       .subscribe();
 
     return () => {
       if (channel) supabase.removeChannel(channel);
       channel = null;
     };
-  }, []);
+  }, [hasSession]);
 
   const tiles = useMemo(
     () => [
-      { title: 'Lavar', key: 'LAVAR' as EstadoKey, icon: Droplet, href: '/base/lavar' },
-      { title: 'Lavando', key: 'LAVANDO' as EstadoKey, icon: WashingMachine, href: '/base/lavando' },
-      { title: 'Editar', key: null, icon: Archive, href: '/editar' },
-      { title: 'Guardado', key: 'GUARDADO' as EstadoKey, icon: CheckCircle2, href: '/base/guardado' },
+      {
+        title: 'Lavar',
+        key: 'LAVAR' as EstadoKey,
+        icon: Droplet,
+        href: '/base/lavar',
+      },
+      {
+        title: 'Lavando',
+        key: 'LAVANDO' as EstadoKey,
+        icon: WashingMachine,
+        href: '/base/lavando',
+      },
+      {
+        title: 'Editar',
+        key: null,
+        icon: Archive,
+        href: '/editar',
+      },
+      {
+        title: 'Guardado',
+        key: 'GUARDADO' as EstadoKey,
+        icon: CheckCircle2,
+        href: '/base/guardado',
+      },
       {
         title: 'Entregado',
         key: 'ENTREGADO' as EstadoKey,
@@ -137,12 +233,21 @@ export default function BasePage() {
         href: '/base/entregado',
         subtitle: `P. pago ${pendingEntregado}`,
       },
-      { title: 'Entregar', key: 'ENTREGAR' as EstadoKey, icon: Truck, href: '/base/entregar' },
-
+      {
+        title: 'Entregar',
+        key: 'ENTREGAR' as EstadoKey,
+        icon: Truck,
+        href: '/base/entregar',
+      },
       // 🔹 NUEVO TILE: Imp Rotulo (sin contador)
-      { title: 'Imp Rótulo', key: null, icon: Printer, href: '/rotulos' },
+      {
+        title: 'Imp Rótulo',
+        key: null,
+        icon: Printer,
+        href: '/rotulos',
+      },
     ],
-    [pendingEntregado]
+    [pendingEntregado],
   );
 
   const shortcuts = [
@@ -152,13 +257,58 @@ export default function BasePage() {
     { name: 'Config', icon: Settings, href: '/config' },
   ];
 
+  /* =========================
+     Renders según seguridad
+  ========================== */
+
+  if (!authChecked) {
+    // Verificando UUD
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="animate-spin" size={26} />
+          <span className="text-sm opacity-80">
+            Verificando acceso UUD…
+          </span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!hasSession) {
+    // Sin sesión válida: NO se redirige, solo mensaje
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-6 text-center">
+        <div className="max-w-xs space-y-3">
+          <h1 className="text-lg font-extrabold">
+            Acceso restringido LF-UUD
+          </h1>
+          <p className="text-sm text-white/80">
+            Esta pantalla solo está disponible para usuarios con
+            sesión activa en la aplicación.
+          </p>
+          <p className="text-[11px] text-white/60">
+            Abre la app Lavandería Fabiola, inicia sesión y vuelve
+            a intentar ingresar a <strong>/base</strong>.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  /* =========================
+     Página normal (con sesión)
+  ========================== */
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       {/* HEADER */}
       <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
-        <h1 className="font-bold text-xl sm:text-2xl">Base de Pedidos</h1>
+        <h1 className="font-bold text-xl sm:text-2xl">
+          Base de Pedidos
+        </h1>
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={fetchCounts}
@@ -166,10 +316,16 @@ export default function BasePage() {
             className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
             aria-busy={loading}
           >
-            <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+            <RefreshCw
+              className={loading ? 'animate-spin' : ''}
+              size={16}
+            />
             {loading ? 'Actualizando…' : 'Actualizar'}
           </button>
-          <button onClick={() => router.push('/menu')} className="text-sm text-white/90 hover:text-white">
+          <button
+            onClick={() => router.push('/menu')}
+            className="text-sm text-white/90 hover:text-white"
+          >
             ← Volver
           </button>
         </div>
@@ -180,7 +336,9 @@ export default function BasePage() {
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
-            <span>No se pudieron cargar los contadores: {err}</span>
+            <span>
+              No se pudieron cargar los contadores: {err}
+            </span>
           </div>
         </div>
       )}
@@ -213,7 +371,9 @@ export default function BasePage() {
                 aria-label={item.name}
               >
                 <item.icon size={18} className="mb-1" />
-                <span className="text-sm font-medium">{item.name}</span>
+                <span className="text-sm font-medium">
+                  {item.name}
+                </span>
               </button>
             ))}
           </div>
@@ -235,7 +395,9 @@ function Tile({
 }: {
   title: string;
   count: number | null;
-  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  Icon: React.ComponentType<
+    React.SVGProps<SVGSVGElement>
+  >;
   onClick: () => void;
   subtitle?: React.ReactNode;
 }) {
