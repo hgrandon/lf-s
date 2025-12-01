@@ -15,6 +15,10 @@ import {
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+/* =========================
+   Tipos
+========================= */
+
 type Pedido = {
   nro: number;
   total: number | null;
@@ -24,8 +28,73 @@ type Pedido = {
 
 type Filtro = 'HOY' | 'SEMANA' | 'MES' | 'AÑO' | 'TODO';
 
+type AuthMode = 'clave' | 'usuario';
+
+type LfSession = {
+  mode: AuthMode;
+  display: string;
+  rol?: string | null;
+  ts: number;
+  ttl: number;
+};
+
+/* =========================
+   Util UUD
+========================= */
+
+function readSessionSafely(): LfSession | null {
+  try {
+    const raw = localStorage.getItem('lf_auth');
+    if (!raw) return null;
+    const s = JSON.parse(raw) as LfSession;
+    if (!s || !s.ts || !s.ttl) return null;
+    const expired = Date.now() - s.ts > s.ttl;
+    if (expired) {
+      localStorage.removeItem('lf_auth');
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+/* =========================
+   Página
+========================= */
+
 export default function FinanzasPage() {
   const router = useRouter();
+
+  // --- Seguridad: solo ADMIN ---
+  const [authChecked, setAuthChecked] = useState(false);
+  const [roleOk, setRoleOk] = useState(false);
+
+  useEffect(() => {
+    const sess = readSessionSafely();
+
+    if (!sess) {
+      // sin sesión -> ir a login
+      router.replace('/login?next=/finanzas');
+      setRoleOk(false);
+      setAuthChecked(true);
+      return;
+    }
+
+    // solo ADMIN puede ver finanzas
+    if ((sess.rol || '').toUpperCase() !== 'ADMIN') {
+      // lo mandamos al menú base (o donde quieras)
+      router.replace('/base');
+      setRoleOk(false);
+      setAuthChecked(true);
+      return;
+    }
+
+    setRoleOk(true);
+    setAuthChecked(true);
+  }, [router]);
+
+  // --- Estados normales de la página ---
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [filtro, setFiltro] = useState<Filtro>('MES');
   const [loading, setLoading] = useState(false);
@@ -84,9 +153,10 @@ export default function FinanzasPage() {
   }
 
   useEffect(() => {
+    if (!roleOk) return; // solo cargar si pasó la seguridad
     cargarDatos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtro]);
+  }, [filtro, roleOk]);
 
   const totalPagado = pedidos
     .filter((p) => p.pagado)
@@ -110,20 +180,50 @@ export default function FinanzasPage() {
     ],
   };
 
+  /* =========================
+     Renders según seguridad
+  ========================== */
+
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin" size={28} />
+          <span className="text-sm opacity-80">Verificando acceso UUD…</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!roleOk) {
+    // Mientras hace el replace muestra algo suave
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+        <span className="text-sm opacity-80">
+          Acceso restringido. Redirigiendo…
+        </span>
+      </main>
+    );
+  }
+
+  /* =========================
+     Página visible solo ADMIN
+  ========================== */
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-4 py-4">
       {/* HEADER */}
       <header className="flex items-center gap-3 mb-4">
         <button
           onClick={() => router.push('/base')}
-          className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30"
+          className="rounded-full bg-white/10 hover:bg白/20 p-2 border border-white/30"
         >
           <ChevronLeft size={18} />
         </button>
         <div>
           <h1 className="font-bold text-lg">Finanzas</h1>
           <p className="text-xs text-white/80">
-            Resumen de ingresos y pagos
+            Resumen de ingresos y pagos (solo ADMIN)
           </p>
         </div>
       </header>
