@@ -1,7 +1,13 @@
 // app/base/page.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -19,6 +25,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Printer,
+  Search, // 🔍 NUEVO ICONO
 } from 'lucide-react';
 
 /* =========================
@@ -64,10 +71,7 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
-type PedidoRow = {
-  estado: string | null;
-  pagado: boolean | null;
-};
+type PedidoRow = { estado: string | null };
 
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
@@ -128,38 +132,44 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteos directamente desde pedido (sin RPC) */
+  /** Carga de conteo (RPC o fallback SELECT) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
-
     try {
+      const { data: rpcData, error: rpcError } =
+        await supabase.rpc('get_pedido_counts');
       const next = { ...EMPTY_COUNTS };
-      let pendientes = 0;
 
-      const { data, error } = await supabase
+      if (!rpcError && Array.isArray(rpcData)) {
+        (rpcData as { estado: string; n: number }[]).forEach((row) => {
+          const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
+          if (key && key in next) next[key] = Number(row.n) || 0;
+        });
+        next.GUARDAR = 0;
+        if (mountedRef.current) setCounts(next);
+      } else {
+        const { data, error } = await supabase
+          .from('pedido')
+          .select('estado');
+        if (error) throw error;
+        (data as PedidoRow[]).forEach((row) => {
+          const estado = normalizeEstado(row.estado);
+          if (estado && estado in next) next[estado] += 1;
+        });
+        next.GUARDAR = 0;
+        if (mountedRef.current) setCounts(next);
+      }
+
+      // ENTREGADO pendientes de pago
+      const { count: pendCount, error: pendErr } = await supabase
         .from('pedido')
-        .select('estado,pagado');
-
-      if (error) throw error;
-
-      (data as PedidoRow[]).forEach((row) => {
-        const estado = normalizeEstado(row.estado);
-        if (estado && estado in next) {
-          next[estado] += 1;
-        }
-        if (estado === 'ENTREGADO' && row.pagado === false) {
-          pendientes += 1;
-        }
-      });
-
-      // Si hubiera algún GUARDAR, lo forzamos a 0 porque no se muestra en tiles
-      next.GUARDAR = 0;
-
-      if (!mountedRef.current) return;
-      setCounts(next);
-      setPendingEntregado(pendientes);
+        .select('*', { count: 'exact', head: true })
+        .eq('estado', 'ENTREGADO')
+        .eq('pagado', false);
+      if (pendErr) throw pendErr;
+      if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
     } catch (e: any) {
       if (mountedRef.current)
         setErr(e?.message ?? 'Error desconocido al cargar');
@@ -193,6 +203,71 @@ export default function BasePage() {
       channel = null;
     };
   }, [hasSession]);
+
+  /* =========================
+     Buscador de pedido
+  ========================== */
+
+  const [searchNro, setSearchNro] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+
+  const handleSearch = async (e: FormEvent) => {
+    e.preventDefault();
+    const nroNum = Number(searchNro.replace(/\D/g, ''));
+    if (!nroNum) {
+      setSearchErr('Ingresa un número de pedido.');
+      return;
+    }
+
+    setSearchErr(null);
+    setSearchLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('pedido')
+        .select('nro, estado')
+        .eq('nro', nroNum)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        setSearchErr('Pedido no encontrado.');
+        return;
+      }
+
+      const estado = normalizeEstado(data.estado);
+      let dest = '/editar';
+
+      switch (estado) {
+        case 'LAVAR':
+          dest = '/base/lavar';
+          break;
+        case 'LAVANDO':
+          dest = '/base/lavando';
+          break;
+        case 'GUARDADO':
+          dest = '/base/guardado';
+          break;
+        case 'ENTREGAR':
+          dest = '/base/entregar';
+          break;
+        case 'ENTREGADO':
+          dest = '/base/entregado';
+          break;
+        default:
+          dest = '/editar';
+          break;
+      }
+
+      router.push(`${dest}?nro=${nroNum}`);
+    } catch (e: any) {
+      console.error(e);
+      setSearchErr(e?.message ?? 'No se pudo buscar el pedido.');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const tiles = useMemo(
     () => [
@@ -255,6 +330,7 @@ export default function BasePage() {
   ========================== */
 
   if (!authChecked) {
+    // Verificando UUD
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
         <div className="flex flex-col items-center gap-3">
@@ -268,6 +344,7 @@ export default function BasePage() {
   }
 
   if (!hasSession) {
+    // Sin sesión válida: NO se redirige, solo mensaje
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-6 text-center">
         <div className="max-w-xs space-y-3">
@@ -275,12 +352,12 @@ export default function BasePage() {
             Acceso restringido LF-UUD
           </h1>
           <p className="text-sm text-white/80">
-            Esta pantalla solo está disponible para usuarios con sesión
-            activa en la aplicación.
+            Esta pantalla solo está disponible para usuarios con
+            sesión activa en la aplicación.
           </p>
           <p className="text-[11px] text-white/60">
-            Abre la app Lavandería Fabiola, inicia sesión y vuelve a intentar
-            ingresar.
+            Abre la app Lavandería Fabiola, inicia sesión y vuelve
+            a intentar ingresar.
           </p>
         </div>
       </main>
@@ -295,37 +372,47 @@ export default function BasePage() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* HEADER */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
-        <h1 className="font-bold text-xl sm:text-2xl">Base de Pedidos</h1>
-        <div className="flex items-center gap-2 sm:gap-3">
+      {/* BUSCADOR DE PEDIDO */}
+      <section className="relative z-10 mx-auto max-w-6xl px-4 pt-4 mb-4">
+        <form
+          onSubmit={handleSearch}
+          className="flex items-center gap-2 sm:gap-3"
+        >
+          <input
+            value={searchNro}
+            onChange={(e) =>
+              setSearchNro(e.target.value.replace(/[^0-9]/g, ''))
+            }
+            inputMode="numeric"
+            placeholder="N° de pedido"
+            className="flex-1 rounded-2xl bg-white/10 border border-white/20 px-4 py-3 text-lg font-extrabold tracking-wide text-white placeholder:text-white/50 outline-none focus:ring-2 focus:ring-white/60"
+          />
           <button
-            onClick={fetchCounts}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-            aria-busy={loading}
+            type="submit"
+            disabled={searchLoading}
+            className="rounded-2xl bg-white/90 text-violet-700 px-4 py-3 flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.25)] disabled:opacity-60"
+            aria-label="Buscar pedido"
           >
-            <RefreshCw
-              className={loading ? 'animate-spin' : ''}
-              size={16}
-            />
-            {loading ? 'Actualizando…' : 'Actualizar'}
+            {searchLoading ? (
+              <RefreshCw className="animate-spin" size={22} />
+            ) : (
+              <Search size={22} />
+            )}
           </button>
-          <button
-            onClick={() => router.push('/menu')}
-            className="text-sm text-white/90 hover:text-white"
-          >
-            ← Volver
-          </button>
-        </div>
-      </header>
+        </form>
+        {searchErr && (
+          <p className="mt-2 text-xs text-amber-200">{searchErr}</p>
+        )}
+      </section>
 
-      {/* ERROR */}
+      {/* ERROR GLOBAL DE CONTEOS */}
       {err && (
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
-            <span>No se pudieron cargar los contadores: {err}</span>
+            <span>
+              No se pudieron cargar los contadores: {err}
+            </span>
           </div>
         </div>
       )}
@@ -358,7 +445,9 @@ export default function BasePage() {
                 aria-label={item.name}
               >
                 <item.icon size={18} className="mb-1" />
-                <span className="text-sm font-medium">{item.name}</span>
+                <span className="text-sm font-medium">
+                  {item.name}
+                </span>
               </button>
             ))}
           </div>
@@ -380,7 +469,9 @@ function Tile({
 }: {
   title: string;
   count: number | null;
-  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  Icon: React.ComponentType<
+    React.SVGProps<SVGSVGElement>
+  >;
   onClick: () => void;
   subtitle?: React.ReactNode;
 }) {
