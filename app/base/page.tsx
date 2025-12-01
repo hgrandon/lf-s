@@ -18,7 +18,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
-  Printer, // 👈 NUEVO ICONO
+  Printer,
 } from 'lucide-react';
 
 /* =========================
@@ -55,6 +55,7 @@ function readSessionSafely(): LfSession | null {
 /* =========================
    Tipos y constantes
 ========================= */
+
 type EstadoKey =
   | 'LAVAR'
   | 'LAVANDO'
@@ -63,7 +64,10 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
-type PedidoRow = { estado: string | null };
+type PedidoRow = {
+  estado: string | null;
+  pagado: boolean | null;
+};
 
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
@@ -107,8 +111,7 @@ export default function BasePage() {
   // --- Estados de datos ---
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [counts, setCounts] =
-    useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
+  const [counts, setCounts] = useState<Record<EstadoKey, number>>(EMPTY_COUNTS);
   const [pendingEntregado, setPendingEntregado] = useState(0);
 
   const mountedRef = useRef(true);
@@ -125,47 +128,38 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteo (RPC o fallback SELECT) */
+  /** Carga de conteos directamente desde pedido (sin RPC) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
+
     try {
-      const { data: rpcData, error: rpcError } =
-        await supabase.rpc('get_pedido_counts');
       const next = { ...EMPTY_COUNTS };
+      let pendientes = 0;
 
-      if (!rpcError && Array.isArray(rpcData)) {
-        (rpcData as { estado: string; n: number }[]).forEach((row) => {
-          const key = (row.estado || '')
-            .toUpperCase()
-            .trim() as EstadoKey;
-          if (key && key in next) next[key] = Number(row.n) || 0;
-        });
-        next.GUARDAR = 0;
-        if (mountedRef.current) setCounts(next);
-      } else {
-        const { data, error } = await supabase
-          .from('pedido')
-          .select('estado');
-        if (error) throw error;
-        (data as PedidoRow[]).forEach((row) => {
-          const estado = normalizeEstado(row.estado);
-          if (estado && estado in next) next[estado] += 1;
-        });
-        next.GUARDAR = 0;
-        if (mountedRef.current) setCounts(next);
-      }
-
-      // ENTREGADO pendientes de pago
-      const { count: pendCount, error: pendErr } = await supabase
+      const { data, error } = await supabase
         .from('pedido')
-        .select('*', { count: 'exact', head: true })
-        .eq('estado', 'ENTREGADO')
-        .eq('pagado', false);
-      if (pendErr) throw pendErr;
-      if (mountedRef.current)
-        setPendingEntregado(pendCount ?? 0);
+        .select('estado,pagado');
+
+      if (error) throw error;
+
+      (data as PedidoRow[]).forEach((row) => {
+        const estado = normalizeEstado(row.estado);
+        if (estado && estado in next) {
+          next[estado] += 1;
+        }
+        if (estado === 'ENTREGADO' && row.pagado === false) {
+          pendientes += 1;
+        }
+      });
+
+      // Si hubiera algún GUARDAR, lo forzamos a 0 porque no se muestra en tiles
+      next.GUARDAR = 0;
+
+      if (!mountedRef.current) return;
+      setCounts(next);
+      setPendingEntregado(pendientes);
     } catch (e: any) {
       if (mountedRef.current)
         setErr(e?.message ?? 'Error desconocido al cargar');
@@ -239,7 +233,6 @@ export default function BasePage() {
         icon: Truck,
         href: '/base/entregar',
       },
-      // 🔹 NUEVO TILE: Imp Rotulo (sin contador)
       {
         title: 'Imp Rótulo',
         key: null,
@@ -262,7 +255,6 @@ export default function BasePage() {
   ========================== */
 
   if (!authChecked) {
-    // Verificando UUD
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
         <div className="flex flex-col items-center gap-3">
@@ -276,7 +268,6 @@ export default function BasePage() {
   }
 
   if (!hasSession) {
-    // Sin sesión válida: NO se redirige, solo mensaje
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-6 text-center">
         <div className="max-w-xs space-y-3">
@@ -284,12 +275,12 @@ export default function BasePage() {
             Acceso restringido LF-UUD
           </h1>
           <p className="text-sm text-white/80">
-            Esta pantalla solo está disponible para usuarios con
-            sesión activa en la aplicación.
+            Esta pantalla solo está disponible para usuarios con sesión
+            activa en la aplicación.
           </p>
           <p className="text-[11px] text-white/60">
-            Abre la app Lavandería Fabiola, inicia sesión y vuelve
-            a intentar ingresar
+            Abre la app Lavandería Fabiola, inicia sesión y vuelve a intentar
+            ingresar.
           </p>
         </div>
       </main>
@@ -306,9 +297,7 @@ export default function BasePage() {
 
       {/* HEADER */}
       <header className="relative z-10 flex items-center justify-between px-4 py-4 max-w-6xl mx-auto">
-        <h1 className="font-bold text-xl sm:text-2xl">
-          Base de Pedidos
-        </h1>
+        <h1 className="font-bold text-xl sm:text-2xl">Base de Pedidos</h1>
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={fetchCounts}
@@ -336,9 +325,7 @@ export default function BasePage() {
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
-            <span>
-              No se pudieron cargar los contadores: {err}
-            </span>
+            <span>No se pudieron cargar los contadores: {err}</span>
           </div>
         </div>
       )}
@@ -371,9 +358,7 @@ export default function BasePage() {
                 aria-label={item.name}
               >
                 <item.icon size={18} className="mb-1" />
-                <span className="text-sm font-medium">
-                  {item.name}
-                </span>
+                <span className="text-sm font-medium">{item.name}</span>
               </button>
             ))}
           </div>
@@ -395,9 +380,7 @@ function Tile({
 }: {
   title: string;
   count: number | null;
-  Icon: React.ComponentType<
-    React.SVGProps<SVGSVGElement>
-  >;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   onClick: () => void;
   subtitle?: React.ReactNode;
 }) {
