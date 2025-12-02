@@ -25,7 +25,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Printer,
-  Search, // 🔍
+  Search,
 } from 'lucide-react';
 
 /* =========================
@@ -71,8 +71,6 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
-type PedidoRow = { estado: string | null; pagado: boolean | null };
-
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
   'LAVANDO',
@@ -97,7 +95,7 @@ const EMPTY_COUNTS: Record<EstadoKey, number> = {
 export default function BasePage() {
   const router = useRouter();
 
-  // --- Seguridad UUD: requiere sesión válida (cualquier rol) ---
+  // --- Seguridad UUD ---
   const [authChecked, setAuthChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
 
@@ -132,35 +130,38 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteo directo desde `pedido` (sin RPC) */
+  /** Carga de conteos desde Supabase usando COUNT (igual que tu SQL) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
 
     try {
-      const { data, error } = await supabase
-        .from('pedido')
-        .select('estado, pagado');
-
-      if (error) throw error;
-
       const next = { ...EMPTY_COUNTS };
-      let pendientesPagoEntregado = 0;
 
-      (data as PedidoRow[]).forEach((row) => {
-        const estado = normalizeEstado(row.estado);
-        if (estado && estado in next) {
-          next[estado] += 1;
-          if (estado === 'ENTREGADO' && row.pagado === false) {
-            pendientesPagoEntregado += 1;
-          }
-        }
-      });
+      // Conteo por cada estado: LAVAR, LAVANDO, GUARDAR, GUARDADO, ENTREGADO, ENTREGAR
+      for (const estado of ESTADOS) {
+        const { count, error } = await supabase
+          .from('pedido')
+          .select('nro', { count: 'exact', head: true })
+          .eq('estado', estado);
+
+        if (error) throw error;
+        next[estado] = count ?? 0;
+      }
+
+      // ENTREGADO pendientes de pago
+      const { count: pendCount, error: pendErr } = await supabase
+        .from('pedido')
+        .select('nro', { count: 'exact', head: true })
+        .eq('estado', 'ENTREGADO')
+        .eq('pagado', false);
+
+      if (pendErr) throw pendErr;
 
       if (mountedRef.current) {
         setCounts(next);
-        setPendingEntregado(pendientesPagoEntregado);
+        setPendingEntregado(pendCount ?? 0);
       }
     } catch (e: any) {
       if (mountedRef.current) {
@@ -327,7 +328,6 @@ export default function BasePage() {
   ========================== */
 
   if (!authChecked) {
-    // Verificando UUD
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
         <div className="flex flex-col items-center gap-3">
@@ -341,7 +341,6 @@ export default function BasePage() {
   }
 
   if (!hasSession) {
-    // Sin sesión válida: NO se redirige, solo mensaje
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-6 text-center">
         <div className="max-w-xs space-y-3">
@@ -434,7 +433,6 @@ export default function BasePage() {
             <Tile
               key={`${t.title}-${t.href}`}
               title={t.title}
-              // 👇 siempre mostramos el número si hay key; Editar/Imp Rótulo van sin key => sin número
               count={t.key ? counts[t.key] : null}
               onClick={() => router.push(t.href)}
               Icon={t.icon}
@@ -521,4 +519,3 @@ function Tile({
     </button>
   );
 }
-
