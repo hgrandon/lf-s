@@ -220,85 +220,72 @@ function NuevoClienteModal({
     }
   }
 
-  if (!open) return null;
+if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-2 sm:px-4">
-      <div className="w-full max-w-md rounded-t-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b">
-          <div className="font-bold text-sm sm:text-base">Nuevo cliente</div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
-          >
-            <X size={18} />
-          </button>
+return (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+    {/* ahora siempre centrado, con un poco más de alto disponible */}
+    <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden max-h-[80vh]">
+      {/* header más compacto */}
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
+        <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
+        <button
+          onClick={onClose}
+          className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* cuerpo con altura limitada y scroll interno */}
+      <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
+        <div className="grid gap-1">
+          <label className="text-xs sm:text-sm font-medium">Nombre</label>
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
+            placeholder="Ej: COBERTOR KING"
+          />
         </div>
-        <div className="px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
-          <div className="grid gap-1">
-            <label className="text-xs sm:text-sm font-medium">Teléfono</label>
-            <input
-              ref={refFirst}
-              value={form.telefono}
-              onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
-                  telefono: e.target.value.replace(/\D/g, ''),
-                }))
-              }
-              inputMode="tel"
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="9 dígitos…"
-            />
-          </div>
-          <div className="grid gap-1">
-            <label className="text-xs sm:text-sm font-medium">Nombre</label>
-            <input
-              value={form.nombre}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, nombre: e.target.value }))
-              }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="NOMBRE Y APELLIDO"
-            />
-          </div>
-          <div className="grid gap-1">
-            <label className="text-xs sm:text-sm font-medium">Dirección</label>
-            <input
-              value={form.direccion}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, direccion: e.target.value }))
-              }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="CALLE Y NÚMERO"
-            />
-          </div>
-          {error && (
-            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
-              {error}
-            </div>
-          )}
+        <div className="grid gap-1">
+          <label className="text-xs sm:text-sm font-medium">Precio (CLP)</label>
+          <input
+            value={String(precio)}
+            onChange={(e) => setPrecio(Number(e.target.value || 0))}
+            inputMode="numeric"
+            className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm text-right"
+            placeholder="0"
+          />
         </div>
-        <div className="px-5 py-3 border-t flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-xl px-3 py-2 text-sm hover:bg-slate-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-            Guardar
-          </button>
-        </div>
+        {error && (
+          <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* footer compacto */}
+      <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="rounded-xl px-3 py-2 text-xs sm:text-sm hover:bg-slate-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-xs sm:text-sm disabled:opacity-60"
+        >
+          {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+          Guardar
+        </button>
       </div>
     </div>
-  );
-}
+  </div>
+);
+
 
 /** Modal de detalle artículo (ajustado para móvil y edición cómoda) */
 function DetalleArticuloModal({
