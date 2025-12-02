@@ -130,7 +130,7 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteos desde Supabase usando COUNT (igual que tu SQL) */
+  /** Carga de conteos usando GROUP BY (igual a tu SQL de Supabase) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
@@ -139,29 +139,36 @@ export default function BasePage() {
     try {
       const next = { ...EMPTY_COUNTS };
 
-      // Conteo por cada estado: LAVAR, LAVANDO, GUARDAR, GUARDADO, ENTREGADO, ENTREGAR
-      for (const estado of ESTADOS) {
-        const { count, error } = await supabase
-          .from('pedido')
-          .select('nro', { count: 'exact', head: true })
-          .eq('estado', estado);
+      // SELECT estado, count(*) FROM pedido GROUP BY estado;
+      const { data, error } = await supabase
+        .from('pedido')
+        .select('estado, count:count(*)')
+        .group('estado');
 
-        if (error) throw error;
-        next[estado] = count ?? 0;
-      }
+      if (error) throw error;
+
+      (data ?? []).forEach((row: any) => {
+        const estadoNorm = normalizeEstado(row.estado ?? null);
+        if (estadoNorm) {
+          next[estadoNorm] = Number(row.count ?? 0);
+        }
+      });
 
       // ENTREGADO pendientes de pago
-      const { count: pendCount, error: pendErr } = await supabase
+      const { data: pendRows, error: pendErr } = await supabase
         .from('pedido')
-        .select('nro', { count: 'exact', head: true })
+        .select('count:count(*)')
         .eq('estado', 'ENTREGADO')
-        .eq('pagado', false);
+        .eq('pagado', false)
+        .single();
 
       if (pendErr) throw pendErr;
 
+      const pendCount = Number((pendRows as any)?.count ?? 0);
+
       if (mountedRef.current) {
         setCounts(next);
-        setPendingEntregado(pendCount ?? 0);
+        setPendingEntregado(pendCount);
       }
     } catch (e: any) {
       if (mountedRef.current) {
@@ -416,7 +423,7 @@ export default function BasePage() {
         </div>
       </section>
 
-      {/* ERROR GLOBAL DE CONTEOS */}
+  {/* ERROR GLOBAL DE CONTEOS */}
       {err && (
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
@@ -494,7 +501,7 @@ function Tile({
     >
       <div className="h-full flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <Icon className="w-6 h-6 text-white/90 shrink-0" />
+          <Icon className="w-6 h-6 text:white/90 shrink-0" />
           <div className="min-w-0">
             <span className="block text-base sm:text-lg font-extrabold tracking-tight truncate">
               {title}
