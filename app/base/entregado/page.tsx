@@ -654,13 +654,14 @@ export default function EntregadoPage() {
       {/* Barra de acciones (Entregado) */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md">
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
+          
           <div className="grid grid-cols-6 gap-3">
-
-              <IconBtn
-                title="Volver al Menú"
-                onClick={() => router.push('/base')}
-                Icon={Home}
-              />
+            {/* 🔙 Botón Regresar */}
+            <IconBtn
+              title="Volver al Menú"
+              onClick={() => router.push('/base')}
+              Icon={Home}
+            />
 
             <IconBtn
               title="Guardado"
@@ -703,11 +704,7 @@ export default function EntregadoPage() {
               Icon={Droplet}
             />
             <IconBtn
-              title={
-                pedidoAbierto?.pagado
-                  ? 'Pagado'
-                  : 'Pendiente de Pago'
-              }
+              title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
               onClick={() =>
                 pedidoAbierto &&
@@ -717,6 +714,8 @@ export default function EntregadoPage() {
               Icon={CreditCard}
             />
           </div>
+
+
 
           {pedidoAbierto ? (
             <div className="mt-2 text-center text-xs text-white/90">
