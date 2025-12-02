@@ -772,16 +772,6 @@ export default function LavandoPage() {
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-5 gap-3">
             <IconBtn
-              title="Lavando"
-              disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'LAVANDO')
-              }
-              active={pedidoAbierto?.estado === 'LAVANDO'}
-              Icon={WashingMachine}
-            />
-            <IconBtn
               title="Guardado"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
@@ -791,6 +781,15 @@ export default function LavandoPage() {
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
             />
+              <IconBtn
+                title="Lavar"
+                disabled={!pedidoAbierto || saving}
+                onClick={() =>
+                  pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')
+                }
+                active={pedidoAbierto?.estado === 'LAVAR'}
+                Icon={Droplet}
+  />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
