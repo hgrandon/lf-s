@@ -350,11 +350,11 @@ function RotuloCard({
         break-inside-avoid
         print:border-violet-700
       "
-      style={{
-        width: '8.5cm',
-        height: '2.5cm',
-        padding: '0.2cm',
-      }}
+        style={{
+          width: '8.3cm',
+          height: '2.5cm',
+          padding: '0.2cm',
+        }}
     >
       {/* LOGO + NOMBRE + NRO + FRACCIÓN */}
       <div className="flex items-center justify-between w-full">
