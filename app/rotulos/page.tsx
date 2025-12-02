@@ -349,7 +349,7 @@ function RotuloCard({
         print:border-violet-700
       "
       style={{
-        width: '8.5cm', // <--- NUEVO TAMAÑO
+        width: '8.5cm',
         height: '2.5cm',
         padding: '0.2cm',
       }}
@@ -370,16 +370,16 @@ function RotuloCard({
               {pedido.clienteNombre || 'SIN NOMBRE'}
             </span>
 
-            {/* Número de servicio ENORME */}
-            <span className="text-[2.0rem] leading-none text-violet-700 font-black">
+            {/* NÚMERO DE PEDIDO MÁS GRANDE */}
+            <span className="text-[2.8rem] leading-none text-violet-700 font-black">
               {pedido.nro}
             </span>
           </div>
         </div>
 
-        {/* Fracción grande a la derecha (solo si >1 bolsa) */}
+        {/* FRACCIÓN DE BOLSAS MÁS GRANDE */}
         {fraccionTexto && (
-          <div className="pl-3 pr-1 text-violet-700 font-black text-[1.4rem] whitespace-nowrap">
+          <div className="pl-3 pr-1 text-violet-700 font-black text-[1.9rem] whitespace-nowrap">
             {fraccionTexto}
           </div>
         )}
