@@ -71,8 +71,6 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
-type PedidoRow = { estado: string | null; pagado: boolean | null };
-
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
   'LAVANDO',
@@ -132,35 +130,44 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteos leyendo todas las filas y contando en JS */
+  /** Carga de conteos desde función RPC get_pedido_counts (igual que tu SQL) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
 
     try {
-      const { data, error } = await supabase
-        .from('pedido')
-        .select('estado, pagado');
-
-      if (error) throw error;
-
+      // 1) Conteos por estado desde la función SQL
       const next = { ...EMPTY_COUNTS };
-      let pendientesPagoEntregado = 0;
 
-      (data ?? []).forEach((row: PedidoRow) => {
-        const estado = normalizeEstado(row.estado);
-        if (estado && estado in next) {
-          next[estado] += 1;
-          if (estado === 'ENTREGADO' && row.pagado === false) {
-            pendientesPagoEntregado += 1;
-          }
-        }
-      });
+      const { data: rpcData, error: rpcError } =
+        await supabase.rpc('get_pedido_counts');
+
+      if (rpcError) throw rpcError;
+
+      if (Array.isArray(rpcData)) {
+        (rpcData as { estado: string; n: number }[]).forEach(
+          (row) => {
+            const key = normalizeEstado(row.estado);
+            if (key) {
+              next[key] = Number(row.n ?? 0) || 0;
+            }
+          },
+        );
+      }
+
+      // 2) ENTREGADO pendientes de pago (solo para el subtítulo)
+      const { count: pendCount, error: pendErr } = await supabase
+        .from('pedido')
+        .select('nro', { count: 'exact', head: true })
+        .eq('estado', 'ENTREGADO')
+        .eq('pagado', false);
+
+      if (pendErr) throw pendErr;
 
       if (mountedRef.current) {
         setCounts(next);
-        setPendingEntregado(pendientesPagoEntregado);
+        setPendingEntregado(pendCount ?? 0);
       }
     } catch (e: any) {
       if (mountedRef.current) {
