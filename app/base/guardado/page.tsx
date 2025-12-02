@@ -420,7 +420,7 @@ function GuardadoPageInner() {
       )}`;
 
       const texto = [
-        '🧾 *Lavandería Fabiola*',
+        '*SERVCIO N° *',p.id,
         'Tu comprobante está aquí:',
         link,
         '',
