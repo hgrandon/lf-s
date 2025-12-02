@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useMemo, useState, type ChangeEvent } from 'react';
 
 export type Articulo = {
   id: number;
@@ -40,13 +40,29 @@ export default function Articulos({
   // usamos sel solo para poder resetear el select al placeholder
   const [sel, setSel] = useState('');
 
+  // 1) QUEDARSE SOLO CON NOMBRES ÚNICOS (SIN DUPLICAR LISTADO)
+  // 2) LIMITAR A LAS 20 PRIMERAS OPCIONES (LAS MÁS USADAS)
+  const topArticulos = useMemo(() => {
+    const vistos = new Set<string>();
+
+    const unicos = catalogo.filter((a) => {
+      const key = a.nombre.trim().toUpperCase();
+      if (!key) return false;
+      if (vistos.has(key)) return false;
+      vistos.add(key);
+      return true;
+    });
+
+    return unicos.slice(0, 20); // solo las 20 más usadas
+  }, [catalogo]);
+
   function handleChangeSelect(e: ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (!value) {
       setSel('');
       return;
     }
-    // reset al placeholder para que se pueda volver a elegir el mismo artículo
+    // reset al placeholder para poder volver a elegir el mismo artículo
     setSel('');
     onSelectArticulo(value);
   }
@@ -72,6 +88,7 @@ export default function Articulos({
             focus:ring-2 focus:ring-white/70 focus:border-white
           "
         >
+          {/* Placeholder */}
           <option
             value=""
             className="bg-fuchsia-200 text-slate-900 font-semibold"
@@ -79,7 +96,16 @@ export default function Articulos({
             SELECCIONAR UN ARTÍCULO
           </option>
 
-          {catalogo.map((a) => (
+          {/* 1) OTRO (+) SIEMPRE AL INICIO DEL LISTADO REAL */}
+          <option
+            value="__OTRO__"
+            className="bg-fuchsia-100 text-slate-900 font-semibold"
+          >
+            OTRO (+)
+          </option>
+
+          {/* 2 + 3 + 4: SOLO TOP 20, SIN DUPLICADOS */}
+          {topArticulos.map((a) => (
             <option
               key={a.id}
               value={a.nombre}
@@ -88,13 +114,6 @@ export default function Articulos({
               {a.nombre}
             </option>
           ))}
-
-          <option
-            value="__OTRO__"
-            className="bg-fuchsia-100 text-slate-900 font-semibold"
-          >
-            OTRO (+)
-          </option>
         </select>
       </div>
 
