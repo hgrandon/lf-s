@@ -37,12 +37,7 @@ type LineaHistorico = {
   cantidad: number | null;
 };
 
-type PedidoEstado =
-  | 'LAVAR'
-  | 'LAVANDO'
-  | 'GUARDADO'
-  | 'ENTREGAR'
-  | 'ENTREGADO';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGAR' | 'ENTREGADO';
 
 // === Seguridad UUD (basada en lf_auth del login) ===
 type AuthMode = 'clave' | 'usuario';
@@ -147,7 +142,7 @@ function getEstadoConfig(e: PedidoEstado) {
    Modales reutilizables
 ========================= */
 
-/** Modal para nuevo cliente (ajustado para móvil) */
+/** Modal para nuevo/editar cliente (ajustado para móvil) */
 function NuevoClienteModal({
   open,
   telefono,
@@ -172,8 +167,7 @@ function NuevoClienteModal({
 
   useEffect(() => {
     if (open) {
-      const telBase =
-        (clienteActual?.telefono || telefono || '').replace(/\D/g, '');
+      const telBase = (clienteActual?.telefono || telefono || '').replace(/\D/g, '');
       setForm({
         telefono: telBase,
         nombre: (clienteActual?.nombre || '').toString(),
@@ -220,72 +214,100 @@ function NuevoClienteModal({
     }
   }
 
-if (!open) return null;
+  if (!open) return null;
 
-return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
-    {/* ahora siempre centrado, con un poco más de alto disponible */}
-    <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden max-h-[80vh]">
-      {/* header más compacto */}
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
-        <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
-        <button
-          onClick={onClose}
-          className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* cuerpo con altura limitada y scroll interno */}
-      <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
-        <div className="grid gap-1">
-          <label className="text-xs sm:text-sm font-medium">Nombre</label>
-          <input
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-            placeholder="Ej: COBERTOR KING"
-          />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs sm:text-sm font-medium">Precio (CLP)</label>
-          <input
-            value={String(precio)}
-            onChange={(e) => setPrecio(Number(e.target.value || 0))}
-            inputMode="numeric"
-            className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm text-right"
-            placeholder="0"
-          />
-        </div>
-        {error && (
-          <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
-            {error}
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+      <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden max-h-[80vh]">
+        {/* header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
+          <div className="font-bold text-sm sm:text-base">
+            {clienteActual ? 'Editar cliente' : 'Nuevo cliente'}
           </div>
-        )}
-      </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
-      {/* footer compacto */}
-      <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
-        <button
-          onClick={onClose}
-          className="rounded-xl px-3 py-2 text-xs sm:text-sm hover:bg-slate-50"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-xs sm:text-sm disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-          Guardar
-        </button>
+        {/* cuerpo */}
+        <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
+          <div className="grid gap-1">
+            <label className="text-xs sm:text-sm font-medium">Teléfono</label>
+            <input
+              ref={refFirst}
+              value={form.telefono}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  telefono: e.target.value.replace(/\D/g, ''),
+                }))
+              }
+              inputMode="tel"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
+              placeholder="Ej: 991234567"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label className="text-xs sm:text-sm font-medium">Nombre</label>
+            <input
+              value={form.nombre}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  nombre: e.target.value.toUpperCase(),
+                }))
+              }
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+              placeholder="Ej: JUAN PÉREZ"
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <label className="text-xs sm:text-sm font-medium">Dirección</label>
+            <input
+              value={form.direccion}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  direccion: e.target.value.toUpperCase(),
+                }))
+              }
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+              placeholder="Ej: LOS CARRERA 1234"
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* footer */}
+        <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-3 py-2 text-xs sm:text-sm hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-xs sm:text-sm disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+            Guardar
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
-
+  );
 }
 
 /** Modal de detalle artículo (ajustado para móvil y edición cómoda) */
@@ -309,7 +331,7 @@ function DetalleArticuloModal({
       setValorStr(
         articulo.precio != null && !Number.isNaN(articulo.precio)
           ? String(articulo.precio)
-          : ''
+          : '',
       );
     }
   }, [open, articulo]);
@@ -342,9 +364,7 @@ function DetalleArticuloModal({
             <label className="text-sm font-semibold text-left">Valor</label>
             <input
               value={valorStr}
-              onChange={(e) =>
-                setValorStr(e.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(e) => setValorStr(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
               className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
               placeholder="0"
@@ -355,9 +375,7 @@ function DetalleArticuloModal({
             <label className="text-sm font-semibold text-left">Cantidad</label>
             <input
               value={qtyStr}
-              onChange={(e) =>
-                setQtyStr(e.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(e) => setQtyStr(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
               className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
               placeholder="1"
@@ -404,8 +422,8 @@ function DeleteItemModal({
         </div>
         <div className="px-6 py-5 text-center text-sm text-slate-700">
           <p>
-            <span className="font-semibold">&quot;{articulo}&quot;</span> será eliminado
-            del pedido.
+            <span className="font-semibold">&quot;{articulo}&quot;</span> será eliminado del
+            pedido.
           </p>
         </div>
         <div className="px-6 py-4 border-t flex gap-3 justify-center">
@@ -542,10 +560,6 @@ function NuevoArticuloModal({
   );
 }
 
-
-
-
-
 /** Modal para preguntar cantidad de bolsas */
 function BolsasModal({
   open,
@@ -592,9 +606,7 @@ function BolsasModal({
             <label className="text-sm font-medium">Cantidad de bolsas</label>
             <input
               value={valorStr}
-              onChange={(e) =>
-                setValorStr(e.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(e) => setValorStr(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-base text-center"
               placeholder="1"
@@ -649,7 +661,7 @@ export default function PedidoPage() {
 
   // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-
+  const [nombre, setNombre] = useState(''); // actualmente no usado, pero declarado por si lo necesitas luego
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -818,7 +830,7 @@ export default function PedidoPage() {
     const nombreNormalizado = nombreSel.trim().toUpperCase();
 
     const found = catalogo.find(
-      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado,
     );
 
     if (!found) {
@@ -834,7 +846,7 @@ export default function PedidoPage() {
     const nombreNormalizado = d.articulo.trim().toUpperCase();
 
     const artCatalogo = catalogo.find(
-      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado
+      (a) => a.nombre.trim().toUpperCase() === nombreNormalizado,
     );
 
     if (artCatalogo && Number(artCatalogo.precio || 0) !== Number(d.valor || 0)) {
@@ -842,16 +854,13 @@ export default function PedidoPage() {
         prev.map((a) =>
           a.nombre.trim().toUpperCase() === nombreNormalizado
             ? { ...a, precio: d.valor }
-            : a
-        )
+            : a,
+        ),
       );
 
       (async () => {
         try {
-          await supabase
-            .from('articulo')
-            .update({ precio: d.valor })
-            .eq('id', artCatalogo.id);
+          await supabase.from('articulo').update({ precio: d.valor }).eq('id', artCatalogo.id);
         } catch (e) {
           console.error('No se pudo actualizar el precio del artículo', e);
         }
@@ -860,7 +869,7 @@ export default function PedidoPage() {
 
     setItems((prev) => {
       const index = prev.findIndex(
-        (x) => x.articulo === d.articulo && x.valor === d.valor
+        (x) => x.articulo === d.articulo && x.valor === d.valor,
       );
 
       if (index >= 0) {
@@ -1002,9 +1011,7 @@ export default function PedidoPage() {
   }
 
   const articuloAEliminar =
-    deleteIndex !== null && items[deleteIndex]
-      ? items[deleteIndex].articulo
-      : '';
+    deleteIndex !== null && items[deleteIndex] ? items[deleteIndex].articulo : '';
 
   const estadoConfig = getEstadoConfig(estado);
 
@@ -1035,9 +1042,7 @@ export default function PedidoPage() {
   if (!authOk) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
-        <span className="text-sm opacity-80">
-          Redirigiendo a login…
-        </span>
+        <span className="text-sm opacity-80">Redirigiendo a login…</span>
       </main>
     );
   }
@@ -1095,7 +1100,6 @@ export default function PedidoPage() {
       </section>
 
       {/* Botón guardar fijo abajo + iconos de estado/tipo entrega */}
-      {/* Botón guardar fijo abajo + iconos de estado/tipo entrega */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
           {/* Menú + Guardar */}
@@ -1116,11 +1120,7 @@ export default function PedidoPage() {
               disabled={saving || !nextInfo}
               className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
             >
-              {saving ? (
-                <Loader2 className="animate-spin" size={18} />
-              ) : (
-                <Save size={18} />
-              )}
+              {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
               Guardar
             </button>
           </div>
@@ -1133,8 +1133,7 @@ export default function PedidoPage() {
               onClick={() =>
                 setEstado((prev) => {
                   const idx = ESTADOS_ORDEN.indexOf(prev);
-                  const next =
-                    ESTADOS_ORDEN[(idx + 1) % ESTADOS_ORDEN.length];
+                  const next = ESTADOS_ORDEN[(idx + 1) % ESTADOS_ORDEN.length];
                   return next;
                 })
               }
@@ -1178,9 +1177,7 @@ export default function PedidoPage() {
               <CreditCard
                 size={32}
                 className={
-                  pagado
-                    ? 'text-green-400 drop-shadow'
-                    : 'text-red-400 drop-shadow'
+                  pagado ? 'text-green-400 drop-shadow' : 'text-red-400 drop-shadow'
                 }
               />
               <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
@@ -1190,7 +1187,6 @@ export default function PedidoPage() {
           </div>
         </div>
       </footer>
-
 
       {/* Modales */}
       <NuevoClienteModal
