@@ -71,6 +71,8 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
+type PedidoRow = { estado: string | null; pagado: boolean | null };
+
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
   'LAVANDO',
@@ -130,45 +132,35 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteos usando GROUP BY (igual a tu SQL de Supabase) */
+  /** Carga de conteos leyendo todas las filas y contando en JS */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
 
     try {
-      const next = { ...EMPTY_COUNTS };
-
-      // SELECT estado, count(*) FROM pedido GROUP BY estado;
       const { data, error } = await supabase
         .from('pedido')
-        .select('estado, count:count(*)')
-        .group('estado');
+        .select('estado, pagado');
 
       if (error) throw error;
 
-      (data ?? []).forEach((row: any) => {
-        const estadoNorm = normalizeEstado(row.estado ?? null);
-        if (estadoNorm) {
-          next[estadoNorm] = Number(row.count ?? 0);
+      const next = { ...EMPTY_COUNTS };
+      let pendientesPagoEntregado = 0;
+
+      (data ?? []).forEach((row: PedidoRow) => {
+        const estado = normalizeEstado(row.estado);
+        if (estado && estado in next) {
+          next[estado] += 1;
+          if (estado === 'ENTREGADO' && row.pagado === false) {
+            pendientesPagoEntregado += 1;
+          }
         }
       });
 
-      // ENTREGADO pendientes de pago
-      const { data: pendRows, error: pendErr } = await supabase
-        .from('pedido')
-        .select('count:count(*)')
-        .eq('estado', 'ENTREGADO')
-        .eq('pagado', false)
-        .single();
-
-      if (pendErr) throw pendErr;
-
-      const pendCount = Number((pendRows as any)?.count ?? 0);
-
       if (mountedRef.current) {
         setCounts(next);
-        setPendingEntregado(pendCount);
+        setPendingEntregado(pendientesPagoEntregado);
       }
     } catch (e: any) {
       if (mountedRef.current) {
@@ -423,7 +415,7 @@ export default function BasePage() {
         </div>
       </section>
 
-  {/* ERROR GLOBAL DE CONTEOS */}
+      {/* ERROR GLOBAL DE CONTEOS */}
       {err && (
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
@@ -501,7 +493,7 @@ function Tile({
     >
       <div className="h-full flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <Icon className="w-6 h-6 text:white/90 shrink-0" />
+          <Icon className="w-6 h-6 text-white/90 shrink-0" />
           <div className="min-w-0">
             <span className="block text-base sm:text-lg font-extrabold tracking-tight truncate">
               {title}
