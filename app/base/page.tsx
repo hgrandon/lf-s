@@ -25,7 +25,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Printer,
-  Search, // 🔍 NUEVO ICONO
+  Search, // 🔍
 } from 'lucide-react';
 
 /* =========================
@@ -71,7 +71,7 @@ type EstadoKey =
   | 'ENTREGADO'
   | 'ENTREGAR';
 
-type PedidoRow = { estado: string | null };
+type PedidoRow = { estado: string | null; pagado: boolean | null };
 
 const ESTADOS: EstadoKey[] = [
   'LAVAR',
@@ -132,47 +132,40 @@ export default function BasePage() {
     return ESTADOS.includes(key as EstadoKey) ? (key as EstadoKey) : null;
   };
 
-  /** Carga de conteo (RPC o fallback SELECT) */
+  /** Carga de conteo directo desde `pedido` (sin RPC) */
   const fetchCounts = async () => {
     if (!mountedRef.current) return;
     setLoading(true);
     setErr(null);
+
     try {
-      const { data: rpcData, error: rpcError } =
-        await supabase.rpc('get_pedido_counts');
-      const next = { ...EMPTY_COUNTS };
-
-      if (!rpcError && Array.isArray(rpcData)) {
-        (rpcData as { estado: string; n: number }[]).forEach((row) => {
-          const key = (row.estado || '').toUpperCase().trim() as EstadoKey;
-          if (key && key in next) next[key] = Number(row.n) || 0;
-        });
-        next.GUARDAR = 0;
-        if (mountedRef.current) setCounts(next);
-      } else {
-        const { data, error } = await supabase
-          .from('pedido')
-          .select('estado');
-        if (error) throw error;
-        (data as PedidoRow[]).forEach((row) => {
-          const estado = normalizeEstado(row.estado);
-          if (estado && estado in next) next[estado] += 1;
-        });
-        next.GUARDAR = 0;
-        if (mountedRef.current) setCounts(next);
-      }
-
-      // ENTREGADO pendientes de pago
-      const { count: pendCount, error: pendErr } = await supabase
+      const { data, error } = await supabase
         .from('pedido')
-        .select('*', { count: 'exact', head: true })
-        .eq('estado', 'ENTREGADO')
-        .eq('pagado', false);
-      if (pendErr) throw pendErr;
-      if (mountedRef.current) setPendingEntregado(pendCount ?? 0);
+        .select('estado, pagado');
+
+      if (error) throw error;
+
+      const next = { ...EMPTY_COUNTS };
+      let pendientesPagoEntregado = 0;
+
+      (data as PedidoRow[]).forEach((row) => {
+        const estado = normalizeEstado(row.estado);
+        if (estado && estado in next) {
+          next[estado] += 1;
+          if (estado === 'ENTREGADO' && row.pagado === false) {
+            pendientesPagoEntregado += 1;
+          }
+        }
+      });
+
+      if (mountedRef.current) {
+        setCounts(next);
+        setPendingEntregado(pendientesPagoEntregado);
+      }
     } catch (e: any) {
-      if (mountedRef.current)
+      if (mountedRef.current) {
         setErr(e?.message ?? 'Error desconocido al cargar');
+      }
       console.error('fetchCounts error:', e);
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -269,6 +262,10 @@ export default function BasePage() {
     }
   };
 
+  const handleRefreshClick = () => {
+    fetchCounts();
+  };
+
   const tiles = useMemo(
     () => [
       {
@@ -352,12 +349,10 @@ export default function BasePage() {
             Acceso restringido LF-UUD
           </h1>
           <p className="text-sm text-white/80">
-            Esta pantalla solo está disponible para usuarios con
-            sesión activa en la aplicación.
+            Esta pantalla solo está disponible para usuarios con sesión activa en la aplicación.
           </p>
           <p className="text-[11px] text-white/60">
-            Abre la app Lavandería Fabiola, inicia sesión y vuelve
-            a intentar ingresar.
+            Abre la app Lavandería Fabiola, inicia sesión y vuelve a intentar ingresar.
           </p>
         </div>
       </main>
@@ -400,9 +395,26 @@ export default function BasePage() {
             )}
           </button>
         </form>
+
         {searchErr && (
           <p className="mt-2 text-xs text-amber-200">{searchErr}</p>
         )}
+
+        {/* Botón de actualizar conteos */}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={handleRefreshClick}
+            disabled={loading}
+            className="inline-flex items-center gap-1 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/15 disabled:opacity-60"
+          >
+            <RefreshCw
+              size={14}
+              className={loading ? 'animate-spin' : ''}
+            />
+            <span>Actualizar</span>
+          </button>
+        </div>
       </section>
 
       {/* ERROR GLOBAL DE CONTEOS */}
@@ -410,9 +422,7 @@ export default function BasePage() {
         <div className="relative z-10 mx-auto max-w-6xl px-4">
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-red-100">
             <AlertTriangle size={16} />
-            <span>
-              No se pudieron cargar los contadores: {err}
-            </span>
+            <span>No se pudieron cargar los contadores: {err}</span>
           </div>
         </div>
       )}
@@ -424,7 +434,8 @@ export default function BasePage() {
             <Tile
               key={`${t.title}-${t.href}`}
               title={t.title}
-              count={loading || !t.key ? null : counts[t.key]}
+              // 👇 siempre mostramos el número si hay key; Editar/Imp Rótulo van sin key => sin número
+              count={t.key ? counts[t.key] : null}
               onClick={() => router.push(t.href)}
               Icon={t.icon}
               subtitle={t.subtitle}
@@ -469,9 +480,7 @@ function Tile({
 }: {
   title: string;
   count: number | null;
-  Icon: React.ComponentType<
-    React.SVGProps<SVGSVGElement>
-  >;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   onClick: () => void;
   subtitle?: React.ReactNode;
 }) {
