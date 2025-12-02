@@ -297,13 +297,15 @@ export default function RotulosPage() {
           </div>
         )}
 
-        <div
-          className="
-            grid gap-3 sm:gap-3
-            grid-cols-1 sm:grid-cols-2
-            print:grid-cols-2 print:gap-2
-          "
-        >
+          <div
+            className="
+              grid gap-3 sm:gap-3
+              grid-cols-1 sm:grid-cols-2
+              print:grid-cols-2
+              print:gap-y-2
+              print:gap-x-0
+            "
+          >
           {rotulos.map((r) => (
             <RotuloCard
               key={`${r.pedido.nro}-${r.bolsaIndex}`}
