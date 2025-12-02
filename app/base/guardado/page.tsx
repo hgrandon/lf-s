@@ -784,28 +784,30 @@ function GuardadoPageInner() {
                             }
                             title="Doble clic para cambiar la imagen"
                           >
-                            <Image
-                              src={p.foto_url!}
-                              alt={`Foto pedido ${p.id}`}
-                              width={0}
-                              height={0}
-                              sizes="100vw"
-                              style={{
-                                width: '100%',
-                                height: 'auto',
-                                objectFit: 'contain',
-                                maxHeight: '70vh',
-                              }}
-                              onError={() =>
-                                setImageError((prev) => ({
-                                  ...prev,
-                                  [p.id]: true,
-                                }))
-                              }
-                              priority={false}
-                              crossOrigin="anonymous"
-                              unoptimized
-                            />
+                            {/* 🔥 Contenedor con proporción fija 4:3 para que TODAS las fotos se vean iguales */}
+                            <div
+                              className="relative w-full max-h-[70vh]"
+                              style={{ paddingTop: '75%' }} // 4:3
+                            >
+                              <Image
+                                src={p.foto_url!}
+                                alt={`Foto pedido ${p.id}`}
+                                fill
+                                sizes="(max-width: 768px) 100vw, 600px"
+                                style={{
+                                  objectFit: 'cover',
+                                }}
+                                onError={() =>
+                                  setImageError((prev) => ({
+                                    ...prev,
+                                    [p.id]: true,
+                                  }))
+                                }
+                                priority={false}
+                                crossOrigin="anonymous"
+                                unoptimized
+                              />
+                            </div>
                           </div>
                         ) : (
                           <button
