@@ -419,10 +419,16 @@ export default function EntregadoPage() {
   }
 
   return (
-    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
+  <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
+
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
+      <header
+        className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between
+                   px-4 lg:px-10 py-3 lg:py-4
+                   bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
+                   backdrop-blur-md border-b border-white/10"
+      >
         <h1 className="font-bold text-base lg:text-xl">Entregado</h1>
         <button
           onClick={() => router.push('/base')}
@@ -431,6 +437,7 @@ export default function EntregadoPage() {
           ← Volver
         </button>
       </header>
+
 
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4">
         <ErrorBoundary>
@@ -860,8 +867,8 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active
-          ? 'bg-white/20 border-white/30 text:white'
+      active
+        ? 'bg-white/20 border-white/30 text-white'
           : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
