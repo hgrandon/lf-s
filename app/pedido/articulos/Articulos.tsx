@@ -37,6 +37,7 @@ export default function Articulos({
   onSelectArticulo,
   onRowClick,
 }: Props) {
+  // usamos sel solo para poder resetear el select al placeholder
   const [sel, setSel] = useState('');
 
   function handleChangeSelect(e: ChangeEvent<HTMLSelectElement>) {
@@ -45,6 +46,7 @@ export default function Articulos({
       setSel('');
       return;
     }
+    // reset al placeholder para que se pueda volver a elegir el mismo artículo
     setSel('');
     onSelectArticulo(value);
   }
@@ -53,20 +55,46 @@ export default function Articulos({
     <div className="space-y-4">
       {/* === SELECTOR DE ARTÍCULOS === */}
       <div className="space-y-1">
-
-
         <select
+          aria-label="Seleccionar un artículo"
           value={sel}
           onChange={handleChangeSelect}
-          className="w-full rounded-xl border border-white/40 bg-white/10 text-white px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-fuchsia-300"
+          className="
+            w-full
+            rounded-2xl
+            border border-white/40
+            bg-gradient-to-b from-fuchsia-500/70 via-fuchsia-400/60 to-pink-300/50
+            text-white font-semibold
+            px-4 py-3
+            text-sm
+            shadow-md
+            outline-none
+            focus:ring-2 focus:ring-white/70 focus:border-white
+          "
         >
-          <option value="">SELECCIONAR UN ARTÍCULO</option>
+          <option
+            value=""
+            className="bg-fuchsia-200 text-slate-900 font-semibold"
+          >
+            SELECCIONAR UN ARTÍCULO
+          </option>
+
           {catalogo.map((a) => (
-            <option key={a.id} value={a.nombre}>
+            <option
+              key={a.id}
+              value={a.nombre}
+              className="bg-fuchsia-100 text-slate-900 font-semibold"
+            >
               {a.nombre}
             </option>
           ))}
-          <option value="__OTRO__">OTRO (+)</option>
+
+          <option
+            value="__OTRO__"
+            className="bg-fuchsia-100 text-slate-900 font-semibold"
+          >
+            OTRO (+)
+          </option>
         </select>
       </div>
 
@@ -86,7 +114,10 @@ export default function Articulos({
             <tbody className="divide-y divide-white/10">
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-4 text-center text-white/80">
+                  <td
+                    colSpan={4}
+                    className="px-4 py-4 text-center text-white/80"
+                  >
                     Sin artículos aún…
                   </td>
                 </tr>
@@ -96,20 +127,22 @@ export default function Articulos({
                 <tr
                   key={`${idx}-${it.articulo}`}
                   onClick={() => onRowClick(idx)}
-                  className="cursor-pointer hover:bg-white/10"
+                  className="cursor-pointer hover:bg-white/10 transition-colors"
                 >
-                  {/* MÁXIMO 18 CARACTERES, MAYÚSCULAS, CON "…" */}
+                  {/* MÁXIMO 19 CARACTERES, MAYÚSCULAS, CON “…” */}
                   <td
-                    className="px-4 py-2 max-w-[120px] truncate whitespace-nowrap font-semibold"
+                    className="px-4 py-2 max-w-[140px] truncate whitespace-nowrap font-semibold"
                     title={it.articulo}
                   >
                     {it.articulo.length > 19
-                      ? it.articulo.slice(0, 19).toUpperCase() + '.'
+                      ? `${it.articulo.slice(0, 19).toUpperCase()}…`
                       : it.articulo.toUpperCase()}
                   </td>
 
                   <td className="px-2 py-2 text-center">{it.qty}</td>
-                  <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {CLP.format(it.valor)}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {CLP.format(it.subtotal)}
                   </td>
