@@ -286,6 +286,7 @@ return (
   </div>
 );
 
+}
 
 /** Modal de detalle artículo (ajustado para móvil y edición cómoda) */
 function DetalleArticuloModal({
@@ -494,15 +495,15 @@ function NuevoArticuloModal({
 
         {/* cuerpo con altura limitada y scroll interno */}
         <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
-          <div className="grid gap-1">
-            <label className="text-xs sm:text-sm font-medium">Nombre</label>
-            <input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="Ej: COBERTOR KING"
-            />
-          </div>
+            <div className="grid gap-1">
+              <label className="text-xs sm:text-sm font-medium">Nombre</label>
+              <input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value.toUpperCase())}
+                className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+                placeholder="Ej: COBERTOR KING"
+              />
+            </div>
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Precio (CLP)</label>
             <input
