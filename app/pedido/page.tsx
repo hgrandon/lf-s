@@ -427,8 +427,6 @@ function DeleteItemModal({
   );
 }
 
-/** Modal para nuevo artículo */
-/** Modal para nuevo artículo (versión más pequeña y tipo “bottom sheet” en celular) */
 /** Modal para nuevo artículo (versión más pequeña y tipo “bottom sheet” en celular) */
 function NuevoArticuloModal({
   open,
@@ -480,9 +478,9 @@ function NuevoArticuloModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-2 sm:px-4">
-      {/* en celular: bottom sheet; en pantallas grandes: modal centrado */}
-      <div className="w-full max-w-sm sm:max-w-md rounded-t-3xl sm:rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+      {/* modal centrado en todas las pantallas */}
+      <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
         {/* header más compacto */}
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
           <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
@@ -543,6 +541,8 @@ function NuevoArticuloModal({
     </div>
   );
 }
+
+
 
 
 
