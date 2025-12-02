@@ -1105,17 +1105,37 @@ export default function PedidoPage() {
       </section>
 
       {/* Botón guardar fijo abajo + iconos de estado/tipo entrega */}
+      {/* Botón guardar fijo abajo + iconos de estado/tipo entrega */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 pb-5 pt-2 bg-gradient-to-t from-violet-900/90 via-violet-900/40 to-transparent">
         <div className="mx-auto max-w-6xl flex items-center gap-4">
-          <button
-            onClick={handleClickGuardar}
-            disabled={saving || !nextInfo}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
-          >
-            {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-            Guardar
-          </button>
+          {/* Menú + Guardar */}
+          <div className="flex flex-1 items-center gap-3">
+            {/* Botón MENÚ */}
+            <button
+              type="button"
+              onClick={() => router.push('/menu')}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-500 hover:bg-violet-600 text-white font-semibold px-4 py-3 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+            >
+              <Home size={18} />
+              <span className="hidden sm:inline">Menú</span>
+            </button>
 
+            {/* Botón GUARDAR */}
+            <button
+              onClick={handleClickGuardar}
+              disabled={saving || !nextInfo}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
+            >
+              {saving ? (
+                <Loader2 className="animate-spin" size={18} />
+              ) : (
+                <Save size={18} />
+              )}
+              Guardar
+            </button>
+          </div>
+
+          {/* Estado / Tipo entrega / Pago */}
           <div className="flex items-center gap-4 ml-2">
             {/* Estado */}
             <button
@@ -1123,7 +1143,8 @@ export default function PedidoPage() {
               onClick={() =>
                 setEstado((prev) => {
                   const idx = ESTADOS_ORDEN.indexOf(prev);
-                  const next = ESTADOS_ORDEN[(idx + 1) % ESTADOS_ORDEN.length];
+                  const next =
+                    ESTADOS_ORDEN[(idx + 1) % ESTADOS_ORDEN.length];
                   return next;
                 })
               }
@@ -1139,7 +1160,9 @@ export default function PedidoPage() {
             <button
               type="button"
               onClick={() =>
-                setTipoEntrega((prev) => (prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO'))
+                setTipoEntrega((prev) =>
+                  prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
+                )
               }
               className="flex flex-col items-center text-xs focus:outline-none"
             >
@@ -1165,7 +1188,9 @@ export default function PedidoPage() {
               <CreditCard
                 size={32}
                 className={
-                  pagado ? 'text-green-400 drop-shadow' : 'text-red-400 drop-shadow'
+                  pagado
+                    ? 'text-green-400 drop-shadow'
+                    : 'text-red-400 drop-shadow'
                 }
               />
               <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
@@ -1175,6 +1200,7 @@ export default function PedidoPage() {
           </div>
         </div>
       </footer>
+
 
       {/* Modales */}
       <NuevoClienteModal
