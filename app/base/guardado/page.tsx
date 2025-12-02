@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -35,7 +35,7 @@ type Pedido = {
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
-  token_servicio?: string | null; // 👈 NUEVO
+  token_servicio?: string | null; // 👈 link seguro
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -52,7 +52,9 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
+          return arr[0] as string;
+        }
         return null;
       } catch {
         return null;
@@ -60,7 +62,9 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
+    return input[0] as string;
+  }
   return null;
 }
 
@@ -83,6 +87,7 @@ function getBaseUrl() {
 
 export default function GuardadoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -102,6 +107,9 @@ export default function GuardadoPage() {
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
+  // Para abrir/scroll al pedido desde ?nro=...
+  const [initialScrollDone, setInitialScrollDone] = useState(false);
+
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
     [pedidos, openId],
@@ -114,11 +122,11 @@ export default function GuardadoPage() {
         setLoading(true);
         setErrMsg(null);
 
-            const { data: rows, error: e1 } = await supabase
-              .from('pedido')
-              .select('id:nro, telefono, total, estado, detalle, pagado, foto_url, token_servicio')
-              .eq('estado', 'GUARDADO')
-              .order('nro', { ascending: false });
+        const { data: rows, error: e1 } = await supabase
+          .from('pedido')
+          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url, token_servicio')
+          .eq('estado', 'GUARDADO')
+          .order('nro', { ascending: false });
 
         if (e1) throw e1;
 
@@ -192,22 +200,22 @@ export default function GuardadoPage() {
           }
         });
 
-          const mapped: Pedido[] = (rows ?? []).map((r: any) => {
-            const tel = r.telefono ? String(r.telefono) : null;
-            const nombre = tel ? nombreByTel.get(tel) || '' : '';
-            return {
-              id: r.id,
-              cliente: nombre || tel || 'SIN NOMBRE',
-              telefono: tel,
-              total: r.total ?? null,
-              estado: r.estado,
-              detalle: r.detalle ?? null,
-              foto_url: fotoByPedido.get(r.id) ?? null,
-              pagado: r.pagado ?? false,
-              items: itemsByPedido.get(r.id) ?? [],
-              token_servicio: r.token_servicio ?? null, // 👈 NUEVO
-            };
-          });
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          const tel = r.telefono ? String(r.telefono) : null;
+          const nombre = tel ? nombreByTel.get(tel) || '' : '';
+          return {
+            id: r.id,
+            cliente: nombre || tel || 'SIN NOMBRE',
+            telefono: tel,
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: fotoByPedido.get(r.id) ?? null,
+            pagado: r.pagado ?? false,
+            items: itemsByPedido.get(r.id) ?? [],
+            token_servicio: r.token_servicio ?? null,
+          };
+        });
 
         if (!cancelled) {
           setPedidos(mapped);
@@ -226,6 +234,32 @@ export default function GuardadoPage() {
       cancelled = true;
     };
   }, []);
+
+  // 👉 Abrir y hacer scroll al pedido indicado en ?nro=XXXX
+  useEffect(() => {
+    if (!pedidos.length || initialScrollDone) return;
+
+    const nroParam = searchParams.get('nro');
+    if (!nroParam) return;
+
+    const nroNum = Number(nroParam);
+    if (!nroNum) return;
+
+    const target = pedidos.find((p) => p.id === nroNum);
+    if (!target) return;
+
+    setOpenId(target.id);
+    setOpenDetail((prev) => ({ ...prev, [target.id]: true }));
+
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-pedido-id="${target.id}"]`,
+      );
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+
+    setInitialScrollDone(true);
+  }, [pedidos, searchParams, initialScrollDone]);
 
   function snack(msg: string) {
     setNotice(msg);
@@ -273,78 +307,77 @@ export default function GuardadoPage() {
     setSaving(false);
   }
 
-/** Genera (si hace falta) y devuelve un token UUID seguro para el pedido */
-async function ensureServicioToken(p: Pedido): Promise<string | null> {
-  if (p.token_servicio) return p.token_servicio;
+  /** Genera (si hace falta) y devuelve un token UUID seguro para el pedido */
+  async function ensureServicioToken(p: Pedido): Promise<string | null> {
+    if (p.token_servicio) return p.token_servicio;
 
-  const newToken =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${p.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newToken =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${p.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-  const { error } = await supabase
-    .from('pedido')
-    .update({ token_servicio: newToken })
-    .eq('nro', p.id);
+    const { error } = await supabase
+      .from('pedido')
+      .update({ token_servicio: newToken })
+      .eq('nro', p.id);
 
-  if (error) {
-    console.error('No se pudo guardar token_servicio:', error);
-    snack('No se pudo generar un link seguro para este pedido.');
-    return null;
-  }
-
-  setPedidos((prev) =>
-    prev.map((x) => (x.id === p.id ? { ...x, token_servicio: newToken } : x)),
-  );
-
-  return newToken;
-}
-
-/** Enviar link del servicio/comprobante por WhatsApp usando token UUID seguro */
-async function sendComprobanteLink(p?: Pedido | null) {
-  if (!p) return;
-
-  setSaving(true);
-  try {
-    const token = await ensureServicioToken(p);
-    if (!token) return;
-
-    const base = getBaseUrl();
-    const link = `${base}/servicio?token=${encodeURIComponent(token)}`;
-
-    const texto = [
-      '🧾 *Lavandería Fabiola*',
-      'Tu comprobante está aquí:',
-      link,
-      '',
-      'Gracias por preferirnos 💜',
-    ].join('\n');
-
-    const backup = (process.env.NEXT_PUBLIC_WA_BACKUP || '56991335828').trim();
-    const telE164 = toE164CL(p.telefono) || toE164CL(backup);
-    if (!telE164) {
-      navigator.clipboard?.writeText(link);
-      alert('No hay teléfono. Copié el link al portapapeles.');
-      return;
+    if (error) {
+      console.error('No se pudo guardar token_servicio:', error);
+      snack('No se pudo generar un link seguro para este pedido.');
+      return null;
     }
 
-    const encoded = encodeURIComponent(texto);
-    const waUrl = `https://wa.me/${telE164}?text=${encoded}`;
-    const w = window.open(waUrl, '_blank');
+    setPedidos((prev) =>
+      prev.map((x) => (x.id === p.id ? { ...x, token_servicio: newToken } : x)),
+    );
 
-    if (!w || w.closed || typeof w.closed === 'undefined') {
-      const apiUrl = `https://api.whatsapp.com/send?phone=${telE164}&text=${encoded}`;
-      const w2 = window.open(apiUrl, '_blank');
-      if (!w2) {
-        navigator.clipboard?.writeText(`${texto}\n`);
-        alert('No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.');
+    return newToken;
+  }
+
+  /** Enviar link del servicio/comprobante por WhatsApp usando token UUID seguro */
+  async function sendComprobanteLink(p?: Pedido | null) {
+    if (!p) return;
+
+    setSaving(true);
+    try {
+      const token = await ensureServicioToken(p);
+      if (!token) return;
+
+      const base = getBaseUrl();
+      const link = `${base}/servicio?token=${encodeURIComponent(token)}`;
+
+      const texto = [
+        '🧾 *Lavandería Fabiola*',
+        'Tu comprobante está aquí:',
+        link,
+        '',
+        'Gracias por preferirnos 💜',
+      ].join('\n');
+
+      const backup = (process.env.NEXT_PUBLIC_WA_BACKUP || '56991335828').trim();
+      const telE164 = toE164CL(p.telefono) || toE164CL(backup);
+      if (!telE164) {
+        navigator.clipboard?.writeText(link);
+        alert('No hay teléfono. Copié el link al portapapeles.');
+        return;
       }
-    }
-  } finally {
-    setSaving(false);
-  }
-}
 
+      const encoded = encodeURIComponent(texto);
+      const waUrl = `https://wa.me/${telE164}?text=${encoded}`;
+      const w = window.open(waUrl, '_blank');
+
+      if (!w || w.closed || typeof w.closed === 'undefined') {
+        const apiUrl = `https://api.whatsapp.com/send?phone=${telE164}&text=${encoded}`;
+        const w2 = window.open(apiUrl, '_blank');
+        if (!w2) {
+          navigator.clipboard?.writeText(`${texto}\n`);
+          alert('No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.');
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // ------- Cargar/Adjuntar foto -------
   function openPickerFor(pid: number) {
@@ -422,7 +455,7 @@ async function sendComprobanteLink(p?: Pedido | null) {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
+      <header className="relative z-10 flex items-center justify_between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Guardado</h1>
         <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
           ← Volver
@@ -459,6 +492,7 @@ async function sendComprobanteLink(p?: Pedido | null) {
             return (
               <div
                 key={p.id}
+                data-pedido-id={p.id} // 👈 para scroll desde /base
                 className={[
                   'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                   isOpen ? 'border-white/40' : 'border-white/15',
@@ -581,7 +615,12 @@ async function sendComprobanteLink(p?: Pedido | null) {
                               width={0}
                               height={0}
                               sizes="100vw"
-                              style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                maxHeight: '70vh',
+                              }}
                               onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
                               priority={false}
                               crossOrigin="anonymous"
@@ -608,7 +647,10 @@ async function sendComprobanteLink(p?: Pedido | null) {
       </section>
 
       {/* Barra de acciones */}
-      <nav className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md" data-no-print="true">
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-20 px-4 sm:px-6 lg:px-10 pt-2 pb-4 backdrop-blur-md"
+        data-no-print="true"
+      >
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="grid grid-cols-6 gap-3">
             <IconBtn
@@ -665,7 +707,9 @@ async function sendComprobanteLink(p?: Pedido | null) {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">Abre un pedido para habilitar las acciones.</div>
+            <div className="mt-2 text-center text-xs text-white/70">
+              Abre un pedido para habilitar las acciones.
+            </div>
           )}
         </div>
       </nav>
@@ -688,10 +732,17 @@ async function sendComprobanteLink(p?: Pedido | null) {
             className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-1">Editar pedido #{askEditForId}</h3>
-            <p className="text-sm text-black/70 mb-4">¿Desea editar este pedido?</p>
+            <h3 className="text-lg font-semibold mb-1">
+              Editar pedido #{askEditForId}
+            </h3>
+            <p className="text-sm text-black/70 mb-4">
+              ¿Desea editar este pedido?
+            </p>
             <div className="flex gap-2">
-              <button onClick={() => goEdit()} className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700">
+              <button
+                onClick={() => goEdit()}
+                className="flex-1 rounded-xl bg-violet-600 text-white px-4 py-3 hover:bg-violet-700"
+              >
                 Editar
               </button>
               <button
@@ -709,7 +760,9 @@ async function sendComprobanteLink(p?: Pedido | null) {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Agregar imagen al pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -725,7 +778,10 @@ async function sendComprobanteLink(p?: Pedido | null) {
                 <ImagePlus size={18} />
                 Buscar en archivos
               </button>
-              <button onClick={() => setPickerForPedido(null)} className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50">
+              <button
+                onClick={() => setPickerForPedido(null)}
+                className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
                 Cancelar
               </button>
             </div>
@@ -742,7 +798,13 @@ async function sendComprobanteLink(p?: Pedido | null) {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
@@ -771,8 +833,15 @@ function IconBtn({
       ? 'bg-white/20 border-white/30 text-white'
       : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10';
   const dis = disabled ? 'opacity-50 cursor-not-allowed' : '';
+
   return (
-    <button onClick={onClick} disabled={disabled} aria-label={title} title={title} className={[base, styles, dis].join(' ')}>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={title}
+      title={title}
+      className={[base, styles, dis].join(' ')}
+    >
       <Icon size={18} />
     </button>
   );
