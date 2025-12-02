@@ -1,3 +1,4 @@
+// app/clientes/ClientesApp.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -63,7 +64,7 @@ function useDebounced<T>(value: T, delay = 320) {
 }
 
 /* =========================
-   Componente
+   Componente principal
 ========================= */
 export default function ClientesApp() {
   const router = useRouter();
@@ -101,21 +102,22 @@ export default function ClientesApp() {
 
         const q = debQuery.trim();
         if (q) {
-          // Búsqueda por nombre/dirección/telefono (case-insensitive)
-          // Nota: usando or() con ilike para 3 campos
           const { data, error } = await base.or(
-            `nombre.ilike.%${q}%,direccion.ilike.%${q}%,telefono.ilike.%${q}%`
+            `nombre.ilike.%${q}%,direccion.ilike.%${q}%,telefono.ilike.%${q}%`,
           );
           if (error) throw error;
-          if (!cancelled && mountedRef.current) setClientes((data ?? []) as Cliente[]);
+          if (!cancelled && mountedRef.current)
+            setClientes((data ?? []) as Cliente[]);
         } else {
           const { data, error } = await base.limit(60);
           if (error) throw error;
-          if (!cancelled && mountedRef.current) setClientes((data ?? []) as Cliente[]);
+          if (!cancelled && mountedRef.current)
+            setClientes((data ?? []) as Cliente[]);
         }
       } catch (e: any) {
         console.error(e);
-        if (!cancelled && mountedRef.current) setError(e?.message ?? 'No se pudieron cargar clientes');
+        if (!cancelled && mountedRef.current)
+          setError(e?.message ?? 'No se pudieron cargar clientes');
       } finally {
         if (!cancelled && mountedRef.current) setLoading(false);
       }
@@ -130,8 +132,9 @@ export default function ClientesApp() {
   async function toggleOpen(telefono: string) {
     setOpenTel((prev) => (prev === telefono ? null : telefono));
 
-    // Si ya lo cargamos antes, no vuelvas a consultar
-    if (pedidosByTel[telefono]?.items?.length || pedidosByTel[telefono]?.loading) return;
+    // Si ya lo cargamos antes o está cargando, no vuelvas a consultar
+    if (pedidosByTel[telefono]?.items?.length || pedidosByTel[telefono]?.loading)
+      return;
 
     setPedidosByTel((prev) => ({
       ...prev,
@@ -139,7 +142,6 @@ export default function ClientesApp() {
     }));
 
     try {
-      // Consulta directa a la tabla "pedido" por telefono
       const { data, error } = await supabase
         .from('pedido')
         .select('nro, fecha, entrega, estado, total, estado_pago')
@@ -165,13 +167,17 @@ export default function ClientesApp() {
       console.error(e);
       setPedidosByTel((prev) => ({
         ...prev,
-        [telefono]: { loading: false, error: e?.message ?? 'No se pudieron cargar pedidos', items: [] },
+        [telefono]: {
+          loading: false,
+          error: e?.message ?? 'No se pudieron cargar pedidos',
+          items: [],
+        },
       }));
     }
   }
 
+  /* -------- Filtro extra en memoria -------- */
   const filtered = useMemo(() => {
-    // Filtro adicional en cliente para que se sienta ultra-reactivo
     const q = normalize(debQuery);
     if (!q) return clientes;
     return clientes.filter((c) => {
@@ -183,11 +189,16 @@ export default function ClientesApp() {
     });
   }, [clientes, debQuery]);
 
+  /* =========================
+     Render
+  ========================= */
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
+      {/* Glow superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      <header className="relative z-10 mx-auto max-w-5xl flex items-center justify-between px-4 py-4">
+      {/* CABECERA */}
+      <header className="relative z-10 mx-auto max-w-5xl flex items-center justify-between px-4 pt-4 pb-2">
         <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
         <button
           onClick={() => router.push('/menu')}
@@ -197,32 +208,40 @@ export default function ClientesApp() {
         </button>
       </header>
 
+      {/* CONTENIDO */}
       <section className="relative z-10 mx-auto max-w-5xl px-4">
-        <div className="mb-3 flex items-center gap-2">
+        {/* Botón Agregar + filtro/busqueda (igual a la imagen) */}
+        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <button
             onClick={() => router.push('/clientes/nuevo')}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm hover:bg-white/15"
+            className="inline-flex items-center gap-2 rounded-2xl bg-white/15 border border-white/25 px-4 py-2 text-sm font-medium hover:bg-white/25 shadow-sm"
           >
-            <UserPlus size={16} /> Agregar cliente
+            <UserPlus size={18} /> Agregar cliente
           </button>
         </div>
 
+        {/* Buscar (filtro) */}
         <div className="relative mb-4">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70" />
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70"
+          />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar por nombre, teléfono o dirección…"
-            className="w-full rounded-2xl bg-white/10 border border-white/15 pl-9 pr-3 py-2 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            className="w-full rounded-2xl bg-white/10 border border-white/15 pl-9 pr-3 py-2.5 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]"
           />
         </div>
 
+        {/* Error */}
         {error && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
+        {/* Lista de clientes con acordeón de pedidos */}
         {loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -235,7 +254,7 @@ export default function ClientesApp() {
         ) : filtered.length === 0 ? (
           <div className="text-white/80">Sin resultados.</div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-3 pb-6">
             {filtered.map((c) => {
               const abierto = openTel === c.telefono;
               const cache = pedidosByTel[c.telefono];
@@ -245,6 +264,7 @@ export default function ClientesApp() {
                   key={c.telefono}
                   className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]"
                 >
+                  {/* HEADER CLIENTE (fila click) */}
                   <button
                     onClick={() => toggleOpen(c.telefono)}
                     className="w-full flex items-center justify-between gap-3 px-4 py-3"
@@ -254,16 +274,23 @@ export default function ClientesApp() {
                         <User2 size={18} />
                       </span>
                       <div className="text-left">
-                        <div className="font-extrabold leading-tight">{c.nombre}</div>
+                        <div className="font-extrabold leading-tight">
+                          {c.nombre || 'SIN NOMBRE'}
+                        </div>
                         <div className="text-[11px] text-white/85">
-                          +56 {c.telefono}{' '}
-                          {c.direccion ? `• ${c.direccion}` : ''}
+                          +56 {c.telefono}
+                          {c.direccion ? ` • ${c.direccion}` : ''}
                         </div>
                       </div>
                     </div>
-                    {abierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    {abierto ? (
+                      <ChevronDown size={18} />
+                    ) : (
+                      <ChevronRight size={18} />
+                    )}
                   </button>
 
+                  {/* ACORDEÓN: PEDIDOS DEL CLIENTE */}
                   {abierto && (
                     <div className="px-4 pb-4">
                       {/* Estado de carga / error */}
@@ -273,7 +300,7 @@ export default function ClientesApp() {
                         </div>
                       )}
                       {cache?.error && (
-                        <div className="rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
+                        <div className="mt-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
                           <AlertCircle size={16} className="inline mr-1" />
                           {cache.error}
                         </div>
@@ -291,28 +318,40 @@ export default function ClientesApp() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Package size={16} />
-                                    <span className="font-semibold">Pedido #{p.nro}</span>
+                                    <span className="font-semibold">
+                                      Pedido #{p.nro}
+                                    </span>
                                   </div>
                                   <span className="text-sm font-bold">
-                                    {p.total != null ? CLP.format(p.total) : '—'}
+                                    {p.total != null
+                                      ? CLP.format(p.total)
+                                      : '—'}
                                   </span>
                                 </div>
+
                                 <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
                                   <div className="flex items-center gap-1">
-                                    <Calendar size={12} /> Fec. {p.fecha ?? '—'}
+                                    <Calendar size={12} /> Fec.{' '}
+                                    {p.fecha ?? '—'}
                                   </div>
                                   <div className="flex items-center gap-1 justify-end">
-                                    <Calendar size={12} /> Ent. {p.entrega ?? '—'}
+                                    <Calendar size={12} /> Ent.{' '}
+                                    {p.entrega ?? '—'}
                                   </div>
                                 </div>
+
                                 <div className="mt-2 flex items-center justify-between">
                                   <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px]">
-                                    Estado: <b className="ml-1">{p.estado ?? '—'}</b>
+                                    Estado:{' '}
+                                    <b className="ml-1">
+                                      {p.estado ?? '—'}
+                                    </b>
                                   </span>
                                   <span
                                     className={[
                                       'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
-                                      (p.estado_pago ?? '').toUpperCase() === 'PAGADO'
+                                      (p.estado_pago ?? '').toUpperCase() ===
+                                      'PAGADO'
                                         ? 'bg-emerald-500/20 border-emerald-300/30'
                                         : 'bg-amber-500/20 border-amber-300/30',
                                     ].join(' ')}
