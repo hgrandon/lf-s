@@ -1,8 +1,8 @@
 // app/base/entregado/page.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation'; // ⭐ useSearchParams
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -56,7 +56,8 @@ function firstFotoFromMixed(input: unknown): string | null {
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') return arr[0] as string;
+        if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string')
+          return arr[0] as string;
         return null;
       } catch {
         return null;
@@ -64,12 +65,13 @@ function firstFotoFromMixed(input: unknown): string | null {
     }
     return s;
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') return input[0] as string;
+  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string')
+    return input[0] as string;
   return null;
 }
 
 /* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
-function ErrorBoundary({ children }: { children: React.ReactNode }) {
+function ErrorBoundary({ children }: { children: ReactNode }) {
   const [err, setErr] = useState<Error | null>(null);
   if (err) {
     return (
@@ -93,14 +95,9 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
 
 export default function EntregadoPage() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // ⭐
 
-  // ⭐ Nro que viene por query: /base/entregado?nro=6333
-  const initialNro = useMemo(() => {
-    const raw = searchParams?.get('nro') ?? '';
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }, [searchParams]);
+  // Nro que viene por query: /base/entregado?nro=6333 (lo leemos desde window.location)
+  const [initialNro, setInitialNro] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -124,6 +121,19 @@ export default function EntregadoPage() {
     () => pedidos.find((p) => p.id === openId) ?? null,
     [pedidos, openId],
   );
+
+  // 🔍 Leer ?nro= desde la URL solo en el cliente (sin useSearchParams)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const raw = sp.get('nro') ?? '';
+      const n = Number(raw);
+      setInitialNro(Number.isFinite(n) && n > 0 ? n : null);
+    } catch {
+      setInitialNro(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,11 +223,7 @@ export default function EntregadoPage() {
         });
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.pedido_id ?? f.nro);
-          if (
-            !fotoByPedido.has(pid) &&
-            typeof f.url === 'string' &&
-            f.url
-          ) {
+          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
             fotoByPedido.set(pid, f.url);
           }
         });
@@ -329,11 +335,7 @@ export default function EntregadoPage() {
       return;
     }
 
-    snack(
-      `Pedido #${id} marcado como ${
-        !actual ? 'Pagado' : 'Pendiente'
-      }`,
-    );
+    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
     setSaving(false);
   }
 
@@ -461,25 +463,20 @@ export default function EntregadoPage() {
               const detOpen = !!openDetail[p.id];
               const totalCalc =
                 Array.isArray(p.items) && p.items.length
-                  ? p.items.reduce(
-                      (a, it) => a + it.qty * it.valor,
-                      0,
-                    )
+                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
                   : p.total ?? 0;
 
               return (
                 <div
                   key={p.id}
-                  data-pedido-id={p.id} // ⭐ para hacer scroll desde /base
+                  data-pedido-id={p.id}
                   className={[
                     'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                     isOpen ? 'border-white/40' : 'border-white/15',
                   ].join(' ')}
                 >
                   <button
-                    onClick={() =>
-                      setOpenId(isOpen ? null : p.id)
-                    }
+                    onClick={() => setOpenId(isOpen ? null : p.id)}
                     className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                   >
                     <div className="flex items-center gap-3">
@@ -500,8 +497,7 @@ export default function EntregadoPage() {
                           N° {p.id}
                         </div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                          {p.cliente}{' '}
-                          {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
                       </div>
                     </div>
@@ -509,11 +505,7 @@ export default function EntregadoPage() {
                       <div className="font-extrabold text-white/95 text-sm lg:text-base">
                         {CLP.format(totalCalc)}
                       </div>
-                      {isOpen ? (
-                        <ChevronDown size={18} />
-                      ) : (
-                        <ChevronRight size={18} />
-                      )}
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
                   </button>
 
@@ -531,12 +523,9 @@ export default function EntregadoPage() {
                         >
                           <div className="flex items-center gap-2">
                             <Table size={16} />
-                            <span className="font-semibold">
-                              Detalle Pedido
-                            </span>
+                            <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* 👉 Botón Editar + chevron, igual que en Guardado */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -547,17 +536,10 @@ export default function EntregadoPage() {
                               className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
                                 bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
                             >
-                              <Archive
-                                size={14}
-                                className="text-violet-50"
-                              />
+                              <Archive size={14} className="text-violet-50" />
                               <span>Editar</span>
                             </button>
-                            {detOpen ? (
-                              <ChevronDown size={16} />
-                            ) : (
-                              <ChevronRight size={16} />
-                            )}
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </div>
                         </button>
 
@@ -567,43 +549,27 @@ export default function EntregadoPage() {
                               <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
-                                    <th className="text-left px-3 py-2 w-[40%]">
-                                      Artículo
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[15%]">
-                                      Can.
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[20%]">
-                                      Valor
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[25%]">
-                                      Subtotal
-                                    </th>
+                                    <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/10">
-                                  {Array.isArray(p.items) &&
-                                  p.items.length ? (
+                                  {Array.isArray(p.items) && p.items.length ? (
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
                                           {it.articulo.length > 15
-                                            ? it.articulo.slice(
-                                                0,
-                                                15,
-                                              ) + '.'
+                                            ? it.articulo.slice(0, 15) + '.'
                                             : it.articulo}
                                         </td>
-                                        <td className="px-3 py-2 text-right">
-                                          {it.qty}
-                                        </td>
+                                        <td className="px-3 py-2 text-right">{it.qty}</td>
                                         <td className="px-3 py-2 text-right">
                                           {CLP.format(it.valor)}
                                         </td>
                                         <td className="px-3 py-2 text-right">
-                                          {CLP.format(
-                                            it.qty * it.valor,
-                                          )}
+                                          {CLP.format(it.qty * it.valor)}
                                         </td>
                                       </tr>
                                     ))
@@ -623,9 +589,7 @@ export default function EntregadoPage() {
                               <div
                                 className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
                                 title="Doble clic para editar pedido"
-                                onDoubleClick={() =>
-                                  askEdit(p.id)
-                                }
+                                onDoubleClick={() => askEdit(p.id)}
                               >
                                 Total: {CLP.format(totalCalc)}
                               </div>
@@ -639,9 +603,7 @@ export default function EntregadoPage() {
                           !imageError[p.id] ? (
                             <div
                               className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() =>
-                                openPickerFor(p.id)
-                              }
+                              onDoubleClick={() => openPickerFor(p.id)}
                               title="Doble clic para cambiar la imagen"
                             >
                               <Image
@@ -667,9 +629,7 @@ export default function EntregadoPage() {
                             </div>
                           ) : (
                             <button
-                              onClick={() =>
-                                openPickerFor(p.id)
-                              }
+                              onClick={() => openPickerFor(p.id)}
                               className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
                               title="Agregar imagen"
                             >
@@ -894,7 +854,7 @@ function IconBtn({
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
         active
-          ? 'bg-white/20 border-white/30 text-white'
+          ? 'bg-white/20 border-white/30 text:white'
           : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
