@@ -323,7 +323,7 @@ export default function BasePage() {
   );
 
       const shortcuts = [
-        { name: 'Menú principal', icon: LayoutDashboard, href: '/menu' },
+        { name: 'Menú', icon: LayoutDashboard, href: '/menu' },
         { name: 'Clientes', icon: User, href: '/clientes' },
         { name: 'Finanzas', icon: PiggyBank, href: '/finanzas' },
         { name: 'Config', icon: Settings, href: '/config' },
