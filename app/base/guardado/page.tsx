@@ -149,6 +149,7 @@ function GuardadoPageInner() {
 
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
+  const [askPaidForId, setAskPaidForId] = useState<number | null>(null);
 
   // Para abrir/scroll al pedido desde ?nro=...
   const [initialScrollDone, setInitialScrollDone] = useState(false);
@@ -553,6 +554,29 @@ function GuardadoPageInner() {
     router.push(`/editar?nro=${targetId}`);
   }
 
+
+        async function handleEntregadoConfirm(forceMarkPaid: boolean) {
+          const pid = askPaidForId;
+          if (!pid) return;
+
+          // Cerramos el modal
+          setAskPaidForId(null);
+
+          // Si el usuario indicó "Pagado", marcamos pagado=TRUE antes de entregar
+          if (forceMarkPaid) {
+            const p = pedidos.find((x) => x.id === pid);
+            if (p && !p.pagado) {
+              await togglePago(pid); // usa la misma función que ya tienes
+            }
+          }
+
+          // En todos los casos se pasa a ENTREGADO
+          await changeEstado(pid, 'ENTREGADO');
+        }
+
+
+
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
@@ -865,21 +889,23 @@ function GuardadoPageInner() {
               }
               Icon={Truck}
             />
-            <IconBtn
-              title="Entregado"
-              disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto &&
-                changeEstado(
-                  pedidoAbierto.id,
-                  'ENTREGADO',
-                )
-              }
-              active={
-                pedidoAbierto?.estado === 'ENTREGADO'
-              }
-              Icon={PackageCheck}
-            />
+              <IconBtn
+                title="Entregado"
+                disabled={!pedidoAbierto || saving}
+                onClick={() => {
+                  if (!pedidoAbierto || saving) return;
+
+                  // Si ya está pagado, pasa directo a ENTREGADO
+                  if (pedidoAbierto.pagado) {
+                    changeEstado(pedidoAbierto.id, 'ENTREGADO');
+                  } else {
+                    // Si está pendiente, mostramos el modal de "¿pagado?"
+                    setAskPaidForId(pedidoAbierto.id);
+                  }
+                }}
+                active={pedidoAbierto?.estado === 'ENTREGADO'}
+                Icon={PackageCheck}
+              />
             <IconBtn
               title="Lavar"
               disabled={!pedidoAbierto || saving}
@@ -986,6 +1012,46 @@ function GuardadoPageInner() {
           </div>
         </div>
       )}
+
+
+          {askPaidForId && (
+            <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
+              <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
+                <h3 className="text-lg font-semibold mb-1">
+                  Pasar a ENTREGADO #{askPaidForId}
+                </h3>
+                <p className="text-sm text-black/70 mb-4">
+                  El pedido está marcado como <b>PENDIENTE</b>. ¿Está pagado?
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Marca pagado y entrega */}
+                  <button
+                    onClick={() => handleEntregadoConfirm(true)}
+                    className="flex-1 rounded-xl bg-emerald-600 text-white px-4 py-3 hover:bg-emerald-700"
+                  >
+                    Pagado
+                  </button>
+
+                  {/* Entrega sin cambiar el estado de pago */}
+                  <button
+                    onClick={() => handleEntregadoConfirm(false)}
+                    className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+                  >
+                    Aceptar
+                  </button>
+                </div>
+
+                <p className="mt-3 text-[11px] text-black/55">
+                  Si solo presionas <b>Aceptar</b>, el pedido se moverá a
+                  <b> ENTREGADO</b> manteniendo el pago como pendiente.
+                </p>
+              </div>
+            </div>
+          )}
+
+
+
 
       {/* Modal para elegir cámara/archivo */}
       {pickerForPedido && (
