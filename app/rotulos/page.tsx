@@ -373,7 +373,7 @@ function RotuloCard({
             </span>
 
             {/* NÚMERO DE PEDIDO MÁS GRANDE */}
-            <span className="text-[2.8rem] leading-none text-violet-700 font-black">
+            <span className="text-[3.3rem] leading-none text-violet-700 font-black">
               {pedido.nro}
             </span>
           </div>
