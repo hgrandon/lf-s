@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, ChevronLeft } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
 import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -160,7 +160,7 @@ export default function FinanzasPage() {
 
   // --- Estados normales de la página ---
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [filtro, setFiltro] = useState<Filtro>('HOY'); // 👉 siempre parte en HOY
+  const [filtro, setFiltro] = useState<Filtro>('HOY'); // siempre parte en HOY
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -168,6 +168,9 @@ export default function FinanzasPage() {
   const [hist, setHist] = useState<Pedido[]>([]);
   const [histLoaded, setHistLoaded] = useState(false);
   const [histError, setHistError] = useState<string | null>(null);
+
+  // acordeón del gráfico circular
+  const [showPie, setShowPie] = useState(true);
 
   /* ------- Carga para el filtro seleccionado (HOY / SEMANA / etc.) ------- */
   async function cargarDatos() {
@@ -320,7 +323,6 @@ export default function FinanzasPage() {
     ];
 
     // Proyección fin de mes (usando TOTAL de este mes, pagado + pendiente)
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
     const diasMes = daysInMonth(hoy);
     const diaActual = hoy.getDate();
 
@@ -385,9 +387,15 @@ export default function FinanzasPage() {
       {
         label: 'Total día (pagado + pendiente)',
         data: comparacionMontos,
-        borderWidth: 2,
+        borderColor: '#ffffff',            // línea blanca
+        borderWidth: 2.5,
         tension: 0.35,
-        pointRadius: 4,
+        pointBackgroundColor: '#facc15',   // puntos amarillos
+        pointBorderColor: '#000000',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointHoverBorderWidth: 2.5,
       },
     ],
   };
@@ -398,9 +406,15 @@ export default function FinanzasPage() {
       {
         label: 'Total mensual (pagado + pendiente)',
         data: mesesMontos,
-        borderWidth: 2,
+        borderColor: '#ffffff',            // línea blanca
+        borderWidth: 2.5,
         tension: 0.25,
-        pointRadius: 4,
+        pointBackgroundColor: '#facc15',   // puntos amarillos
+        pointBorderColor: '#000000',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointHoverBorderWidth: 2.5,
       },
     ],
   };
@@ -555,22 +569,39 @@ export default function FinanzasPage() {
           </div>
         </div>
 
-        {/* GRÁFICO DONUT PAGADO / PENDIENTE */}
-        <div className="rounded-2xl bg-black/20 border border-white/20 p-4">
-          {loading ? (
-            <div className="flex items-center gap-2 text-white/90">
-              <Loader2 className="animate-spin" size={18} />
-              Cargando…
-            </div>
-          ) : (
-            <>
-              {loadError && (
-                <div className="mb-2 text-xs text-amber-200">
-                  {loadError}
+        {/* GRÁFICO DONUT EN ACORDEÓN */}
+        <div className="rounded-2xl bg-black/20 border border-white/20">
+          <button
+            type="button"
+            onClick={() => setShowPie((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium
+                       bg-white/5 hover:bg-white/10 border-b border-white/15"
+          >
+            <span>Distribución de pagos (Pagado vs Pendiente)</span>
+            <ChevronDown
+              size={18}
+              className={`transition-transform ${showPie ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {showPie && (
+            <div className="p-4">
+              {loading ? (
+                <div className="flex items-center gap-2 text-white/90">
+                  <Loader2 className="animate-spin" size={18} />
+                  Cargando…
                 </div>
+              ) : (
+                <>
+                  {loadError && (
+                    <div className="mb-2 text-xs text-amber-200">
+                      {loadError}
+                    </div>
+                  )}
+                  <Doughnut data={chartData} />
+                </>
               )}
-              <Doughnut data={chartData} />
-            </>
+            </div>
           )}
         </div>
 
