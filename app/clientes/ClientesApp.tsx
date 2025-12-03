@@ -316,7 +316,7 @@ export default function ClientesApp() {
 
                   {/* acordeón pedidos */}
                       {abierto && (
-                        <div className="w-full max-w-xs sm:max-w-sm mx-auto px-1 sm:px-4 pb-4">
+                        <div className="w-full px-2 sm:px-4 pb-4">
 
                       {cache?.loading && (
                         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90">
