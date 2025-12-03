@@ -72,12 +72,18 @@ function readSessionSafely(): LfSession | null {
   }
 }
 
-/** Normaliza un string de fecha a Date (o null) */
+/**
+ * Normaliza un string de fecha a Date local SIN problemas de zona horaria.
+ * Asume formato "AAAA-MM-DD" o ISO y usa solo los primeros 10 caracteres.
+ */
 function parseFecha(fecha: string | null): Date | null {
   if (!fecha) return null;
-  const d = new Date(fecha);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
+  const s = fecha.slice(0, 10); // "2025-12-02"
+  const [y, m, d] = s.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d);
+  dt.setHours(0, 0, 0, 0);
+  return dt;
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -316,11 +322,7 @@ export default function FinanzasPage() {
       }),
     ];
 
-    const montosComp = [
-      montoMismoDiaMesAnterior,
-      montoAyer,
-      montoHoy,
-    ];
+    const montosComp = [montoMismoDiaMesAnterior, montoAyer, montoHoy];
 
     // Proyección fin de mes (usando TOTAL de este mes, pagado + pendiente)
     const diasMes = daysInMonth(hoy);
@@ -344,11 +346,7 @@ export default function FinanzasPage() {
     // Últimos 5 meses (incluyendo el actual)
     const meses: { key: string; label: string }[] = [];
     for (let i = 4; i >= 0; i--) {
-      const base = new Date(
-        hoy.getFullYear(),
-        hoy.getMonth() - i,
-        1,
-      );
+      const base = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
       meses.push({
         key: monthKey(base),
         label: base.toLocaleString('es-CL', {
@@ -367,9 +365,7 @@ export default function FinanzasPage() {
       montosPorMes.set(key, prev + (p.total ?? 0));
     });
 
-    const montosMeses = meses.map(
-      (m) => montosPorMes.get(m.key) ?? 0,
-    );
+    const montosMeses = meses.map((m) => montosPorMes.get(m.key) ?? 0);
     const labelsMeses = meses.map((m) => m.label);
 
     return {
@@ -387,10 +383,10 @@ export default function FinanzasPage() {
       {
         label: 'Total día (pagado + pendiente)',
         data: comparacionMontos,
-        borderColor: '#ffffff',            // línea blanca
+        borderColor: '#ffffff',
         borderWidth: 2.5,
         tension: 0.35,
-        pointBackgroundColor: '#facc15',   // puntos amarillos
+        pointBackgroundColor: '#facc15',
         pointBorderColor: '#000000',
         pointBorderWidth: 2,
         pointRadius: 5,
@@ -406,10 +402,10 @@ export default function FinanzasPage() {
       {
         label: 'Total mensual (pagado + pendiente)',
         data: mesesMontos,
-        borderColor: '#ffffff',            // línea blanca
+        borderColor: '#ffffff',
         borderWidth: 2.5,
         tension: 0.25,
-        pointBackgroundColor: '#facc15',   // puntos amarillos
+        pointBackgroundColor: '#facc15',
         pointBorderColor: '#000000',
         pointBorderWidth: 2,
         pointRadius: 5,
