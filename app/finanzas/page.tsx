@@ -1,19 +1,31 @@
 // app/finanzas/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, ChevronLeft } from 'lucide-react';
-import { Doughnut } from 'react-chartjs-2';
+import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   ArcElement,
   Tooltip,
   Legend,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
 } from 'chart.js';
 
-ChartJS.register(ArcElement, Tooltip, Legend);
+ChartJS.register(
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+);
 
 /* =========================
    Tipos
@@ -60,6 +72,22 @@ function readSessionSafely(): LfSession | null {
   }
 }
 
+/** Normaliza un string de fecha a Date (o null) */
+function parseFecha(fecha: string | null): Date | null {
+  if (!fecha) return null;
+  const d = new Date(fecha);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
 /** Devuelve la fecha "desde" según filtro, o null si es TODO */
 function getDesdeISO(filtro: Filtro): string | null {
   const hoy = new Date();
@@ -86,6 +114,16 @@ function getDesdeISO(filtro: Filtro): string | null {
     default:
       return null;
   }
+}
+
+/** Cantidad de días del mes de una fecha dada */
+function daysInMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+/** Llave AAAA-MM para agrupar por mes */
+function monthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 /* =========================
@@ -122,10 +160,16 @@ export default function FinanzasPage() {
 
   // --- Estados normales de la página ---
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [filtro, setFiltro] = useState<Filtro>('HOY'); // 👉 arranca siempre en HOY
+  const [filtro, setFiltro] = useState<Filtro>('HOY'); // 👉 siempre parte en HOY
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Dataset histórico (para comparaciones y 5 meses)
+  const [hist, setHist] = useState<Pedido[]>([]);
+  const [histLoaded, setHistLoaded] = useState(false);
+  const [histError, setHistError] = useState<string | null>(null);
+
+  /* ------- Carga para el filtro seleccionado (HOY / SEMANA / etc.) ------- */
   async function cargarDatos() {
     try {
       setLoading(true);
@@ -159,13 +203,47 @@ export default function FinanzasPage() {
     }
   }
 
+  /* ------- Carga histórica para comparaciones y 5 meses ------- */
+  async function cargarHist() {
+    try {
+      setHistError(null);
+      const hoy = new Date();
+      // desde 5 meses atrás (inicio de mes)
+      const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
+
+      const { data, error } = await supabase
+        .from('pedido')
+        .select('nro, total, pagado, fecha_ingreso')
+        .gte('fecha_ingreso', desde.toISOString());
+
+      if (error) {
+        console.error('Error cargando histórico finanzas', error);
+        setHist([]);
+        setHistError(error.message ?? 'No se pudo cargar histórico.');
+      } else {
+        setHist((data ?? []) as Pedido[]);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setHist([]);
+      setHistError(e?.message ?? 'No se pudo cargar histórico.');
+    } finally {
+      setHistLoaded(true);
+    }
+  }
+
   useEffect(() => {
     if (!roleOk) return;
     cargarDatos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtro, roleOk]);
 
-  // Totales
+  useEffect(() => {
+    if (!roleOk || histLoaded) return;
+    cargarHist();
+  }, [roleOk, histLoaded]);
+
+  // Totales para el filtro actual
   const totalPagado = pedidos
     .filter((p) => p.pagado)
     .reduce((acc, p) => acc + (p.total ?? 0), 0);
@@ -187,6 +265,166 @@ export default function FinanzasPage() {
       },
     ],
   };
+
+  /* =========================
+     Comparación HOY vs AYER vs MISMO DÍA MES ANTERIOR
+  ========================== */
+
+  const {
+    comparacionLabels,
+    comparacionMontos,
+    proyeccionFinDeMes,
+    mesesLabels,
+    mesesMontos,
+  } = useMemo(() => {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const ayer = new Date(hoy);
+    ayer.setDate(hoy.getDate() - 1);
+
+    const mismoDiaMesAnterior = new Date(hoy);
+    mismoDiaMesAnterior.setMonth(mismoDiaMesAnterior.getMonth() - 1);
+
+    const sumForDay = (target: Date) =>
+      hist
+        .filter((p) => {
+          const d = parseFecha(p.fecha_ingreso);
+          return d ? isSameDay(d, target) : false;
+        })
+        .reduce((acc, p) => acc + (p.total ?? 0), 0);
+
+    const montoHoy = sumForDay(hoy);
+    const montoAyer = sumForDay(ayer);
+    const montoMismoDiaMesAnterior = sumForDay(mismoDiaMesAnterior);
+
+    const labelsComp = [
+      mismoDiaMesAnterior.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+      }),
+      ayer.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+      }),
+      hoy.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+      }),
+    ];
+
+    const montosComp = [
+      montoMismoDiaMesAnterior,
+      montoAyer,
+      montoHoy,
+    ];
+
+    // Proyección fin de mes (usando TOTAL de este mes, pagado + pendiente)
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const diasMes = daysInMonth(hoy);
+    const diaActual = hoy.getDate();
+
+    const totalMes = hist
+      .filter((p) => {
+        const d = parseFecha(p.fecha_ingreso);
+        if (!d) return false;
+        return (
+          d.getFullYear() === hoy.getFullYear() &&
+          d.getMonth() === hoy.getMonth()
+        );
+      })
+      .reduce((acc, p) => acc + (p.total ?? 0), 0);
+
+    const diasTranscurridos = Math.max(1, diaActual);
+    const promedioDiario = totalMes / diasTranscurridos;
+    const proy = promedioDiario * diasMes;
+
+    // Últimos 5 meses (incluyendo el actual)
+    const meses: { key: string; label: string }[] = [];
+    for (let i = 4; i >= 0; i--) {
+      const base = new Date(
+        hoy.getFullYear(),
+        hoy.getMonth() - i,
+        1,
+      );
+      meses.push({
+        key: monthKey(base),
+        label: base.toLocaleString('es-CL', {
+          month: 'short',
+          year: '2-digit',
+        }),
+      });
+    }
+
+    const montosPorMes = new Map<string, number>();
+    hist.forEach((p) => {
+      const d = parseFecha(p.fecha_ingreso);
+      if (!d) return;
+      const key = monthKey(d);
+      const prev = montosPorMes.get(key) ?? 0;
+      montosPorMes.set(key, prev + (p.total ?? 0));
+    });
+
+    const montosMeses = meses.map(
+      (m) => montosPorMes.get(m.key) ?? 0,
+    );
+    const labelsMeses = meses.map((m) => m.label);
+
+    return {
+      comparacionLabels: labelsComp,
+      comparacionMontos: montosComp,
+      proyeccionFinDeMes: proy,
+      mesesLabels: labelsMeses,
+      mesesMontos: montosMeses,
+    };
+  }, [hist]);
+
+  const comparacionLineData = {
+    labels: comparacionLabels,
+    datasets: [
+      {
+        label: 'Total día (pagado + pendiente)',
+        data: comparacionMontos,
+        borderWidth: 2,
+        tension: 0.35,
+        pointRadius: 4,
+      },
+    ],
+  };
+
+  const mesesLineData = {
+    labels: mesesLabels,
+    datasets: [
+      {
+        label: 'Total mensual (pagado + pendiente)',
+        data: mesesMontos,
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: 4,
+      },
+    ],
+  };
+
+  const lineOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        labels: {
+          color: '#ffffff',
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { color: '#ffffff' },
+        grid: { color: 'rgba(255,255,255,0.08)' },
+      },
+      y: {
+        ticks: { color: '#ffffff' },
+        grid: { color: 'rgba(255,255,255,0.08)' },
+      },
+    },
+  } as const;
 
   /* =========================
      Renders según seguridad
@@ -219,21 +457,33 @@ export default function FinanzasPage() {
      Página visible solo ADMIN
   ========================== */
 
+  const hoyTexto = new Date().toLocaleDateString('es-CL', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-4 py-4">
       {/* HEADER */}
-      <header className="flex items-center gap-3 mb-4">
-        <button
-          onClick={() => router.push('/base')}
-          className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div>
-          <h1 className="font-bold text-lg">Finanzas</h1>
-          <p className="text-xs text-white/80">
-            Resumen de ingresos y pagos (solo ADMIN)
-          </p>
+      <header className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/base')}
+            className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div>
+            <h1 className="font-bold text-lg">Finanzas</h1>
+            <p className="text-xs text-white/80">
+              Resumen de ingresos y pagos (solo ADMIN)
+            </p>
+            <p className="text-[11px] text-white/70">
+              Hoy: {hoyTexto}
+            </p>
+          </div>
         </div>
       </header>
 
@@ -256,7 +506,7 @@ export default function FinanzasPage() {
           ))}
         </div>
 
-        {/* RESUMEN */}
+        {/* RESUMEN RÁPIDO DEL RANGO SELECCIONADO */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="rounded-2xl bg-emerald-500/90 text-white px-4 py-3">
             <div className="text-[11px] uppercase tracking-wide">
@@ -284,7 +534,28 @@ export default function FinanzasPage() {
           </div>
         </div>
 
-        {/* GRÁFICO */}
+        {/* PROYECCIÓN A FIN DE MES */}
+        <div className="rounded-2xl bg-black/25 border border-emerald-400/40 px-4 py-3 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-emerald-200">
+                Proyección fin de mes (total)
+              </div>
+              <div className="text-xl font-extrabold text-emerald-100">
+                $
+                {Math.round(proyeccionFinDeMes || 0).toLocaleString(
+                  'es-CL',
+                )}
+              </div>
+            </div>
+            <div className="text-[11px] text-white/70 text-right">
+              Basado en el promedio diario del mes actual
+              (ingresos pagados + pendientes).
+            </div>
+          </div>
+        </div>
+
+        {/* GRÁFICO DONUT PAGADO / PENDIENTE */}
         <div className="rounded-2xl bg-black/20 border border-white/20 p-4">
           {loading ? (
             <div className="flex items-center gap-2 text-white/90">
@@ -303,7 +574,41 @@ export default function FinanzasPage() {
           )}
         </div>
 
-        {/* TABLA */}
+        {/* GRÁFICO LÍNEA: HOY vs AYER vs MISMO DÍA MES ANTERIOR */}
+        <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
+          <div className="mb-2 text-xs text-white/80">
+            Comparación diaria (monto total del día, pagado + pendiente):
+          </div>
+          {histLoaded && hist.length > 0 ? (
+            <Line data={comparacionLineData} options={lineOptions} />
+          ) : (
+            <div className="text-xs text-white/70">
+              Aún no hay histórico suficiente para la comparación.
+              {histError && (
+                <div className="mt-1 text-amber-200">{histError}</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* GRÁFICO LÍNEA: ÚLTIMOS 5 MESES */}
+        <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
+          <div className="mb-2 text-xs text-white/80">
+            Últimos 5 meses (total mensual, pagado + pendiente):
+          </div>
+          {histLoaded && hist.length > 0 ? (
+            <Line data={mesesLineData} options={lineOptions} />
+          ) : (
+            <div className="text-xs text-white/70">
+              Sin datos para los últimos meses.
+              {histError && (
+                <div className="mt-1 text-amber-200">{histError}</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* TABLA DEL RANGO SELECCIONADO */}
         <div className="rounded-2xl bg-black/20 border border-white/20 p-3 text-xs overflow-auto max-h-[40vh]">
           <table className="w-full">
             <thead className="text-white/80 border-b border-white/20">
@@ -318,7 +623,11 @@ export default function FinanzasPage() {
                 <tr key={p.nro} className="border-b border-white/10">
                   <td className="py-1">#{p.nro}</td>
                   <td className="py-1 text-right">
-                    ${(p.total ?? 0).toLocaleString('es-CL')}
+                    {(p.total ?? 0).toLocaleString('es-CL', {
+                      style: 'currency',
+                      currency: 'CLP',
+                      maximumFractionDigits: 0,
+                    })}
                   </td>
                   <td className="py-1 text-center">
                     {p.pagado ? 'Pagado' : 'Pendiente'}
@@ -327,7 +636,10 @@ export default function FinanzasPage() {
               ))}
               {pedidos.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={3} className="py-3 text-center text-white/70">
+                  <td
+                    colSpan={3}
+                    className="py-3 text-center text-white/70"
+                  >
                     Sin datos en este rango.
                   </td>
                 </tr>
