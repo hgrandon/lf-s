@@ -15,6 +15,7 @@ import {
   Coins,
   AlertCircle,
   ArrowLeft,
+  Truck,
 } from 'lucide-react';
 
 /* =========================
@@ -32,7 +33,8 @@ type PedidoResumen = {
   entrega: string | null;
   estado: string | null;
   total: number | null;
-  estado_pago: string | null;
+  pagado: boolean | null;
+  tipo_entrega: string | null;
 };
 
 type PedidosCache = Record<
@@ -149,11 +151,11 @@ export default function ClientesApp() {
     }));
 
     try {
-      // OJO: columnas reales de la tabla pedido
+      // columnas REALES: fecha_ingreso, fecha_entrega, pagado, tipo_entrega
       const { data, error } = await supabase
         .from('pedido')
         .select(
-          'nro, fecha_ingreso, fecha_entrega, estado, total, estado_pago',
+          'nro, fecha_ingreso, fecha_entrega, estado, total, pagado, tipo_entrega',
         )
         .eq('telefono', telefono)
         .order('nro', { ascending: false });
@@ -166,7 +168,8 @@ export default function ClientesApp() {
         entrega: r.fecha_entrega ?? null,
         estado: r.estado ?? null,
         total: r.total ?? null,
-        estado_pago: r.estado_pago ?? null,
+        pagado: r.pagado ?? null,
+        tipo_entrega: r.tipo_entrega ?? null,
       }));
 
       setPedidosByTel((prev) => ({
@@ -206,7 +209,7 @@ export default function ClientesApp() {
       {/* brillo superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* 🔵 CABECERA + FILTRO FIJOS */}
+      {/* CABECERA + FILTRO FIJOS */}
       <header className="sticky top-0 z-30 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur border-b border-white/15">
         <div className="mx-auto max-w-5xl px-4 lg:px-10 py-3">
           {/* fila: título + agregar + volver */}
@@ -228,7 +231,7 @@ export default function ClientesApp() {
             </button>
           </div>
 
-          {/* buscador dentro de la cabecera */}
+          {/* buscador */}
           <div className="relative mt-3 mb-1">
             <Search
               size={16}
@@ -246,14 +249,12 @@ export default function ClientesApp() {
 
       {/* CONTENIDO SCROLLEABLE */}
       <section className="relative z-10 mx-auto max-w-5xl px-4">
-        {/* Errores generales de clientes */}
         {error && (
           <div className="mt-3 mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
-        {/* Lista de clientes */}
         {loading ? (
           <div className="mt-2 grid gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -317,54 +318,74 @@ export default function ClientesApp() {
                       {!cache?.loading && !cache?.error && (
                         <div className="mt-2 grid gap-2">
                           {cache?.items?.length ? (
-                            cache.items.map((p) => (
-                              <div
-                                key={p.nro}
-                                className="rounded-xl bg-white/5 border border-white/10 p-3"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Package size={16} />
-                                    <span className="font-semibold text-sm">
-                                      Pedido #{p.nro}
+                            cache.items.map((p) => {
+                              const pagado = !!p.pagado;
+                              const pagoText = pagado
+                                ? 'PAGADO'
+                                : 'PENDIENTE';
+                              const entregaText =
+                                (p.tipo_entrega ?? '').toUpperCase() ||
+                                '—';
+
+                              return (
+                                <div
+                                  key={p.nro}
+                                  className="rounded-xl bg-white/5 border border-white/10 p-3"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Package size={16} />
+                                      <span className="font-semibold text-sm">
+                                        Pedido #{p.nro}
+                                      </span>
+                                    </div>
+                                    <span className="text-sm font-bold">
+                                      {p.total != null
+                                        ? CLP.format(p.total)
+                                        : '—'}
                                     </span>
                                   </div>
-                                  <span className="text-sm font-bold">
-                                    {p.total != null
-                                      ? CLP.format(p.total)
-                                      : '—'}
-                                  </span>
-                                </div>
-                                <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
-                                  <div className="flex items-center gap-1">
-                                    <Calendar size={12} /> Fec. {p.fecha ?? '—'}
+
+                                  <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
+                                    <div className="flex items-center gap-1">
+                                      <Calendar size={12} /> Fec.{' '}
+                                      {p.fecha ?? '—'}
+                                    </div>
+                                    <div className="flex items-center gap-1 justify-end">
+                                      <Calendar size={12} /> Ent.{' '}
+                                      {p.entrega ?? '—'}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1 justify-end">
-                                    <Calendar size={12} /> Ent. {p.entrega ?? '—'}
+
+                                  <div className="mt-2 flex items-center justify-between text-[11px]">
+                                    <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
+                                      Estado:{' '}
+                                      <b className="ml-1">
+                                        {p.estado ?? '—'}
+                                      </b>
+                                    </span>
+
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
+                                        <Truck size={11} className="mr-1" />
+                                        {entregaText}
+                                      </span>
+                                      <span
+                                        className={[
+                                          'inline-flex items-center rounded-lg px-2 py-1 border text-[11px]',
+                                          pagado
+                                            ? 'bg-emerald-500/20 border-emerald-300/30'
+                                            : 'bg-amber-500/20 border-amber-300/30',
+                                        ].join(' ')}
+                                      >
+                                        <Coins size={12} className="mr-1" />
+                                        {pagoText}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="mt-2 flex items-center justify-between text-[11px]">
-                                  <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
-                                    Estado:{' '}
-                                    <b className="ml-1">
-                                      {p.estado ?? '—'}
-                                    </b>
-                                  </span>
-                                  <span
-                                    className={[
-                                      'inline-flex items-center rounded-lg px-2 py-1 border text-[11px]',
-                                      (p.estado_pago ?? '').toUpperCase() ===
-                                      'PAGADO'
-                                        ? 'bg-emerald-500/20 border-emerald-300/30'
-                                        : 'bg-amber-500/20 border-amber-300/30',
-                                    ].join(' ')}
-                                  >
-                                    <Coins size={12} className="mr-1" />
-                                    {p.estado_pago ?? '—'}
-                                  </span>
-                                </div>
-                              </div>
-                            ))
+                              );
+                            })
                           ) : (
                             <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85">
                               Sin pedidos para este cliente.
