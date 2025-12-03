@@ -39,7 +39,7 @@ type LfSession = {
 };
 
 /* =========================
-   Util UUD
+   Utilidades UUD
 ========================= */
 
 function readSessionSafely(): LfSession | null {
@@ -48,6 +48,7 @@ function readSessionSafely(): LfSession | null {
     if (!raw) return null;
     const s = JSON.parse(raw) as LfSession;
     if (!s || !s.ts || !s.ttl) return null;
+
     const expired = Date.now() - s.ts > s.ttl;
     if (expired) {
       localStorage.removeItem('lf_auth');
@@ -56,6 +57,34 @@ function readSessionSafely(): LfSession | null {
     return s;
   } catch {
     return null;
+  }
+}
+
+/** Devuelve la fecha "desde" según filtro, o null si es TODO */
+function getDesdeISO(filtro: Filtro): string | null {
+  const hoy = new Date();
+
+  switch (filtro) {
+    case 'HOY': {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+      return d.toISOString();
+    }
+    case 'SEMANA': {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() - 7);
+      return d.toISOString();
+    }
+    case 'MES': {
+      const d = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return d.toISOString();
+    }
+    case 'AÑO': {
+      const d = new Date(hoy.getFullYear(), 0, 1);
+      return d.toISOString();
+    }
+    case 'TODO':
+    default:
+      return null;
   }
 }
 
@@ -74,16 +103,13 @@ export default function FinanzasPage() {
     const sess = readSessionSafely();
 
     if (!sess) {
-      // sin sesión -> ir a login
       router.replace('/login?next=/finanzas');
       setRoleOk(false);
       setAuthChecked(true);
       return;
     }
 
-    // solo ADMIN puede ver finanzas
     if ((sess.rol || '').toUpperCase() !== 'ADMIN') {
-      // lo mandamos al menú base (o donde quieras)
       router.replace('/base');
       setRoleOk(false);
       setAuthChecked(true);
@@ -96,68 +122,50 @@ export default function FinanzasPage() {
 
   // --- Estados normales de la página ---
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [filtro, setFiltro] = useState<Filtro>('MES');
+  const [filtro, setFiltro] = useState<Filtro>('HOY'); // 👉 arranca siempre en HOY
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function cargarDatos() {
-    setLoading(true);
+    try {
+      setLoading(true);
+      setLoadError(null);
 
-    const hoy = new Date();
-    let desde: string | null = null;
+      const desde = getDesdeISO(filtro);
 
-    switch (filtro) {
-      case 'HOY': {
-        const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-        desde = d.toISOString();
-        break;
+      let query = supabase
+        .from('pedido')
+        .select('nro, total, pagado, fecha_ingreso');
+
+      if (desde) {
+        query = query.gte('fecha_ingreso', desde);
       }
-      case 'SEMANA': {
-        const d = new Date(hoy);
-        d.setDate(hoy.getDate() - 7);
-        desde = d.toISOString();
-        break;
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error cargando pedidos finanzas', error);
+        setPedidos([]);
+        setLoadError(error.message ?? 'No se pudieron cargar los datos.');
+      } else {
+        setPedidos((data ?? []) as Pedido[]);
       }
-      case 'MES': {
-        const d = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-        desde = d.toISOString();
-        break;
-      }
-      case 'AÑO': {
-        const d = new Date(hoy.getFullYear(), 0, 1);
-        desde = d.toISOString();
-        break;
-      }
-      case 'TODO':
-        desde = null;
-        break;
-    }
-
-    let query = supabase
-      .from('pedido')
-      .select('nro, total, pagado, fecha_ingreso');
-
-    if (desde) {
-      query = query.gte('fecha_ingreso', desde);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error cargando pedidos finanzas', error);
+    } catch (e: any) {
+      console.error(e);
       setPedidos([]);
-    } else {
-      setPedidos((data ?? []) as Pedido[]);
+      setLoadError(e?.message ?? 'No se pudieron cargar los datos.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   useEffect(() => {
-    if (!roleOk) return; // solo cargar si pasó la seguridad
+    if (!roleOk) return;
     cargarDatos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtro, roleOk]);
 
+  // Totales
   const totalPagado = pedidos
     .filter((p) => p.pagado)
     .reduce((acc, p) => acc + (p.total ?? 0), 0);
@@ -189,14 +197,15 @@ export default function FinanzasPage() {
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="animate-spin" size={28} />
-          <span className="text-sm opacity-80">Verificando acceso UUD…</span>
+          <span className="text-sm opacity-80">
+            Verificando acceso UUD…
+          </span>
         </div>
       </main>
     );
   }
 
   if (!roleOk) {
-    // Mientras hace el replace muestra algo suave
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
         <span className="text-sm opacity-80">
@@ -216,7 +225,7 @@ export default function FinanzasPage() {
       <header className="flex items-center gap-3 mb-4">
         <button
           onClick={() => router.push('/base')}
-          className="rounded-full bg-white/10 hover:bg白/20 p-2 border border-white/30"
+          className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30"
         >
           <ChevronLeft size={18} />
         </button>
@@ -236,7 +245,7 @@ export default function FinanzasPage() {
               key={f}
               onClick={() => setFiltro(f)}
               className={[
-                'px-3 py-2 rounded-2xl text-xs border',
+                'px-3 py-2 rounded-2xl text-xs border whitespace-nowrap',
                 filtro === f
                   ? 'bg-white text-violet-700 border-white'
                   : 'bg-white/10 border-white/30 text-white/90',
@@ -283,7 +292,14 @@ export default function FinanzasPage() {
               Cargando…
             </div>
           ) : (
-            <Doughnut data={chartData} />
+            <>
+              {loadError && (
+                <div className="mb-2 text-xs text-amber-200">
+                  {loadError}
+                </div>
+              )}
+              <Doughnut data={chartData} />
+            </>
           )}
         </div>
 
