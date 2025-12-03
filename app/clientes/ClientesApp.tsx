@@ -71,7 +71,6 @@ function useDebounced<T>(value: T, delay = 350) {
 
 function formatFechaDDMMYYYY(value: string | null): string {
   if (!value) return '—';
-  // intento con Date
   const d = new Date(value);
   if (!Number.isNaN(d.getTime())) {
     const dd = String(d.getDate()).padStart(2, '0');
@@ -79,7 +78,6 @@ function formatFechaDDMMYYYY(value: string | null): string {
     const yy = d.getFullYear();
     return `${dd}-${mm}-${yy}`;
   }
-  // fallback rápido para formato YYYY-MM-DD
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
   return value;
@@ -168,7 +166,6 @@ export default function ClientesApp() {
     }));
 
     try {
-      // columnas reales de la tabla pedido
       const { data, error } = await supabase
         .from('pedido')
         .select(
@@ -222,7 +219,7 @@ export default function ClientesApp() {
      Render
   ========================== */
   return (
-    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
+    <main className="relative min-h-screen overflow-x-hidden text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
       {/* brillo superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
@@ -358,21 +355,21 @@ export default function ClientesApp() {
                               ].join(' ');
 
                               const estadoPillClasses = [
-                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[10px] sm:text-[11px] border',
                                 enProceso
                                   ? 'bg-emerald-500/30 border-emerald-200/60 text-emerald-50'
                                   : 'bg-white/10 border-white/25 text-white',
                               ].join(' ');
 
                               const pagoPillClasses = [
-                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[10px] sm:text-[11px] border',
                                 pagado
                                   ? 'bg-emerald-500/25 border-emerald-300/60 text-emerald-50'
                                   : 'bg-amber-500/25 border-amber-300/60 text-amber-50',
                               ].join(' ');
 
                               const entregaPillClasses =
-                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border bg-white/10 border-white/25 text-white';
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[10px] sm:text-[11px] border bg-white/10 border-white/25 text-white';
 
                               return (
                                 <div key={p.nro} className={cardClasses}>
@@ -380,7 +377,6 @@ export default function ClientesApp() {
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <Package size={16} />
-                                      {/* solo número de pedido */}
                                       <span className="font-semibold text-sm">
                                         {p.nro}
                                       </span>
@@ -404,13 +400,13 @@ export default function ClientesApp() {
                                     </div>
                                   </div>
 
-                                  {/* estado / entrega / pago */}
-                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                  {/* estado / entrega / pago – responsive para móvil */}
+                                  <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                     <span className={estadoPillClasses}>
                                       {estado || 'SIN ESTADO'}
                                     </span>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                       <span className={entregaPillClasses}>
                                         <CardEntregaIcon
                                           size={11}
@@ -445,3 +441,4 @@ export default function ClientesApp() {
     </main>
   );
 }
+
