@@ -63,14 +63,24 @@ export default function GuardadoMenuPage() {
           className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
                      p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
         >
-          <Archive size={48} />
-          <span className="font-bold text-lg tracking-wide">LOCAL</span>
           {loading ? (
-            <Loader2 className="animate-spin" size={20} />
+            <Loader2 className="animate-spin" size={24} />
           ) : (
-            <span className="text-white/80 text-sm">
-              {localCount} pedidos guardados
-            </span>
+            <>
+              {/* Número grande + icono al lado derecho */}
+              <div className="flex items-center gap-4">
+                <span className="text-4xl lg:text-5xl font-black leading-none">
+                  {localCount}
+                </span>
+                <Archive size={48} />
+              </div>
+              <span className="mt-2 font-bold text-lg tracking-wide">
+                LOCAL
+              </span>
+              <span className="text-white/80 text-xs uppercase tracking-wide">
+                pedidos guardados
+              </span>
+            </>
           )}
         </button>
 
@@ -80,14 +90,23 @@ export default function GuardadoMenuPage() {
           className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
                      p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
         >
-          <Truck size={48} />
-          <span className="font-bold text-lg tracking-wide">DOMICILIO</span>
           {loading ? (
-            <Loader2 className="animate-spin" size={20} />
+            <Loader2 className="animate-spin" size={24} />
           ) : (
-            <span className="text-white/80 text-sm">
-              {domCount} pedidos guardados
-            </span>
+            <>
+              <div className="flex items-center gap-4">
+                <span className="text-4xl lg:text-5xl font-black leading-none">
+                  {domCount}
+                </span>
+                <Truck size={48} />
+              </div>
+              <span className="mt-2 font-bold text-lg tracking-wide">
+                DOMICILIO
+              </span>
+              <span className="text-white/80 text-xs uppercase tracking-wide">
+                pedidos guardados
+              </span>
+            </>
           )}
         </button>
       </section>
