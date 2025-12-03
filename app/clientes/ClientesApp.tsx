@@ -34,7 +34,7 @@ type PedidoResumen = {
   entrega: string | null;
   estado: string | null;
   total: number | null;
-  estado_pago: string | null;
+  pagado: boolean | null;
   tipo_entrega: string | null;
 };
 
@@ -69,13 +69,20 @@ function useDebounced<T>(value: T, delay = 350) {
   return deb;
 }
 
-/** Fecha YYYY-MM-DD → DD-MM-YYYY (si viene con hora, se ignora) */
-function formatFecha(fecha: string | null): string {
-  if (!fecha) return '—';
-  const s = fecha.slice(0, 10);
-  const [y, m, d] = s.split('-');
-  if (y && m && d) return `${d}-${m}-${y}`;
-  return fecha;
+function formatFechaDDMMYYYY(value: string | null): string {
+  if (!value) return '—';
+  // intento con Date
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = d.getFullYear();
+    return `${dd}-${mm}-${yy}`;
+  }
+  // fallback rápido para formato YYYY-MM-DD
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return value;
 }
 
 /* =========================
@@ -161,11 +168,11 @@ export default function ClientesApp() {
     }));
 
     try {
-      // OJO: columnas reales de la tabla pedido
+      // columnas reales de la tabla pedido
       const { data, error } = await supabase
         .from('pedido')
         .select(
-          'nro, fecha_ingreso, fecha_entrega, estado, total, estado_pago, tipo_entrega',
+          'nro, fecha_ingreso, fecha_entrega, estado, total, pagado, tipo_entrega',
         )
         .eq('telefono', telefono)
         .order('nro', { ascending: false });
@@ -178,7 +185,7 @@ export default function ClientesApp() {
         entrega: r.fecha_entrega ?? null,
         estado: r.estado ?? null,
         total: r.total ?? null,
-        estado_pago: r.estado_pago ?? null,
+        pagado: r.pagado ?? null,
         tipo_entrega: r.tipo_entrega ?? null,
       }));
 
@@ -219,10 +226,9 @@ export default function ClientesApp() {
       {/* brillo superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* 🔵 CABECERA + FILTRO FIJOS */}
+      {/* CABECERA + FILTRO FIJOS */}
       <header className="sticky top-0 z-30 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur border-b border-white/15">
         <div className="mx-auto max-w-5xl px-4 lg:px-10 py-3">
-          {/* fila: título + agregar + volver */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
@@ -241,7 +247,6 @@ export default function ClientesApp() {
             </button>
           </div>
 
-          {/* buscador dentro de la cabecera */}
           <div className="relative mt-3 mb-1">
             <Search
               size={16}
@@ -258,15 +263,13 @@ export default function ClientesApp() {
       </header>
 
       {/* CONTENIDO SCROLLEABLE */}
-      <section className="relative z-10 mx-auto max-w-5xl px-3 sm:px-4">
-        {/* Errores generales de clientes */}
+      <section className="relative z-10 mx-auto max-w-5xl px-4">
         {error && (
           <div className="mt-3 mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
-        {/* Lista de clientes */}
         {loading ? (
           <div className="mt-2 grid gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -308,16 +311,12 @@ export default function ClientesApp() {
                         </div>
                       </div>
                     </div>
-                    {abierto ? (
-                      <ChevronDown size={18} />
-                    ) : (
-                      <ChevronRight size={18} />
-                    )}
+                    {abierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </button>
 
                   {/* acordeón pedidos */}
                   {abierto && (
-                    <div className="px-3 pb-4">
+                    <div className="px-4 pb-4">
                       {cache?.loading && (
                         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90">
                           Cargando pedidos…
@@ -336,30 +335,52 @@ export default function ClientesApp() {
                           {cache?.items?.length ? (
                             cache.items.map((p) => {
                               const estado = (p.estado ?? '').toUpperCase();
-                              const pago = (p.estado_pago ?? '').toUpperCase();
-                              const tipo = (p.tipo_entrega ?? '').toUpperCase();
-                              const esProceso = [
-                                'LAVAR',
-                                'LAVANDO',
-                                'GUARDAR',
-                                'GUARDADO',
-                              ].includes(estado);
+                              const enProceso =
+                                estado === 'LAVAR' ||
+                                estado === 'LAVANDO' ||
+                                estado === 'GUARDAR' ||
+                                estado === 'GUARDADO';
 
-                              const cardBase =
-                                'rounded-2xl border p-3 text-[11px] sm:text-xs';
-                              const cardColors = esProceso
-                                ? 'bg-emerald-600/25 border-emerald-300/40'
-                                : 'bg-white/5 border-white/10';
+                              const pagado = !!p.pagado;
+                              const pagoText = pagado ? 'PAGADO' : 'PENDIENTE';
+
+                              const tipo = (p.tipo_entrega ?? '').toUpperCase();
+                              const isLocal = tipo === 'LOCAL';
+                              const entregaLabel = tipo || 'SIN TIPO';
+
+                              const CardEntregaIcon = isLocal ? Home : Truck;
+
+                              const cardClasses = [
+                                'rounded-xl border p-3 transition-colors',
+                                enProceso
+                                  ? 'bg-emerald-500/20 border-emerald-300/40'
+                                  : 'bg-white/5 border-white/10',
+                              ].join(' ');
+
+                              const estadoPillClasses = [
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                enProceso
+                                  ? 'bg-emerald-500/30 border-emerald-200/60 text-emerald-50'
+                                  : 'bg-white/10 border-white/25 text-white',
+                              ].join(' ');
+
+                              const pagoPillClasses = [
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                pagado
+                                  ? 'bg-emerald-500/25 border-emerald-300/60 text-emerald-50'
+                                  : 'bg-amber-500/25 border-amber-300/60 text-amber-50',
+                              ].join(' ');
+
+                              const entregaPillClasses =
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border bg-white/10 border-white/25 text-white';
 
                               return (
-                                <div
-                                  key={p.nro}
-                                  className={`${cardBase} ${cardColors}`}
-                                >
-                                  {/* fila nro + total */}
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div key={p.nro} className={cardClasses}>
+                                  {/* fila principal: N° + total */}
+                                  <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                      <Package size={14} />
+                                      <Package size={16} />
+                                      {/* solo número de pedido */}
                                       <span className="font-semibold text-sm">
                                         {p.nro}
                                       </span>
@@ -372,49 +393,36 @@ export default function ClientesApp() {
                                   </div>
 
                                   {/* fechas */}
-                                  <div className="mt-1 grid grid-cols-2 gap-2 text-[10px] sm:text-[11px] text-white/90">
+                                  <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
                                     <div className="flex items-center gap-1">
-                                      <Calendar size={11} /> Fec.{' '}
-                                      {formatFecha(p.fecha)}
+                                      <Calendar size={12} /> Fec.{' '}
+                                      {formatFechaDDMMYYYY(p.fecha)}
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
-                                      <Calendar size={11} /> Ent.{' '}
-                                      {formatFecha(p.entrega)}
+                                      <Calendar size={12} /> Ent.{' '}
+                                      {formatFechaDDMMYYYY(p.entrega)}
                                     </div>
                                   </div>
 
-                                  {/* estado + entrega + pago */}
-                                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    {/* estado en recuadro gris */}
-                                    <span className="inline-flex items-center rounded-lg bg-slate-100/10 border border-slate-200/30 px-2 py-1 text-[10px] sm:text-[11px] uppercase tracking-wide">
-                                      {estado || '—'}
+                                  {/* estado / entrega / pago */}
+                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                    <span className={estadoPillClasses}>
+                                      {estado || 'SIN ESTADO'}
                                     </span>
 
-                                    {/* tipo entrega */}
-                                    <span className="inline-flex items-center rounded-lg bg-white/10 border border-white/20 px-2 py-1 text-[10px] sm:text-[11px] gap-1">
-                                      {tipo === 'DOMICILIO' ? (
-                                        <>
-                                          <Truck size={12} /> DOMICILIO
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Home size={12} /> LOCAL
-                                        </>
-                                      )}
-                                    </span>
-
-                                    {/* pago */}
-                                    <span
-                                      className={[
-                                        'inline-flex items-center rounded-lg px-2 py-1 text-[10px] sm:text-[11px] gap-1 border',
-                                        pago === 'PAGADO'
-                                          ? 'bg-emerald-500/30 border-emerald-300/50 text-emerald-50'
-                                          : 'bg-amber-500/25 border-amber-300/50 text-amber-50',
-                                      ].join(' ')}
-                                    >
-                                      <Coins size={12} />
-                                      {pago || 'PENDIENTE'}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className={entregaPillClasses}>
+                                        <CardEntregaIcon
+                                          size={11}
+                                          className="mr-1"
+                                        />
+                                        {entregaLabel}
+                                      </span>
+                                      <span className={pagoPillClasses}>
+                                        <Coins size={12} className="mr-1" />
+                                        {pagoText}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               );
