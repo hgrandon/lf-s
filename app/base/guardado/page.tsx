@@ -753,15 +753,10 @@ function GuardadoPageInner() {
                                 {p.items?.length ? (
                                   p.items.map((it, idx) => (
                                     <tr key={idx}>
-                                      <td className="px-3 py-2 truncate">
-                                        {it.articulo.length >
-                                        30
-                                          ? it.articulo.slice(
-                                              0,
-                                              30,
-                                            ) + '…'
-                                          : it.articulo}
-                                      </td>
+                                        <td className="px-3 py-2 truncate">
+                                          {it.articulo.length > 18 ? it.articulo.slice(0, 18) + '.' : it.articulo}
+                                        </td>
+
                                       <td className="px-3 py-2 text-right">
                                         {it.qty}
                                       </td>
