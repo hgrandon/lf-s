@@ -50,11 +50,14 @@ const CLP = new Intl.NumberFormat('es-CL', {
 });
 
 function normalize(q: string) {
-  return q.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+  return q
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
 }
 
-/* Debounce simple */
-function useDebounced<T>(value: T, delay = 320) {
+function useDebounced<T>(value: T, delay = 350) {
   const [deb, setDeb] = useState(value);
   useEffect(() => {
     const t = setTimeout(() => setDeb(value), delay);
@@ -64,7 +67,7 @@ function useDebounced<T>(value: T, delay = 320) {
 }
 
 /* =========================
-   Componente principal
+   Componente
 ========================= */
 export default function ClientesApp() {
   const router = useRouter();
@@ -87,7 +90,7 @@ export default function ClientesApp() {
     };
   }, []);
 
-  /* -------- Carga de clientes (con búsqueda) -------- */
+  /* -------- Carga de clientes -------- */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -95,31 +98,36 @@ export default function ClientesApp() {
         setLoading(true);
         setError(null);
 
+        const q = debQuery.trim();
         const base = supabase
           .from('clientes')
           .select('telefono, nombre, direccion')
           .order('nombre', { ascending: true });
 
-        const q = debQuery.trim();
         if (q) {
           const { data, error } = await base.or(
             `nombre.ilike.%${q}%,direccion.ilike.%${q}%,telefono.ilike.%${q}%`,
           );
           if (error) throw error;
-          if (!cancelled && mountedRef.current)
+          if (!cancelled && mountedRef.current) {
             setClientes((data ?? []) as Cliente[]);
+          }
         } else {
-          const { data, error } = await base.limit(60);
+          const { data, error } = await base.limit(80);
           if (error) throw error;
-          if (!cancelled && mountedRef.current)
+          if (!cancelled && mountedRef.current) {
             setClientes((data ?? []) as Cliente[]);
+          }
         }
       } catch (e: any) {
         console.error(e);
-        if (!cancelled && mountedRef.current)
+        if (!cancelled && mountedRef.current) {
           setError(e?.message ?? 'No se pudieron cargar clientes');
+        }
       } finally {
-        if (!cancelled && mountedRef.current) setLoading(false);
+        if (!cancelled && mountedRef.current) {
+          setLoading(false);
+        }
       }
     })();
 
@@ -128,13 +136,12 @@ export default function ClientesApp() {
     };
   }, [debQuery]);
 
-  /* -------- Abrir cliente (acordeón) y lazy-load pedidos -------- */
+  /* -------- Abrir cliente y cargar pedidos -------- */
   async function toggleOpen(telefono: string) {
     setOpenTel((prev) => (prev === telefono ? null : telefono));
 
-    // Si ya lo cargamos antes o está cargando, no vuelvas a consultar
-    if (pedidosByTel[telefono]?.items?.length || pedidosByTel[telefono]?.loading)
-      return;
+    const cache = pedidosByTel[telefono];
+    if (cache?.items?.length || cache?.loading) return;
 
     setPedidosByTel((prev) => ({
       ...prev,
@@ -150,14 +157,14 @@ export default function ClientesApp() {
 
       if (error) throw error;
 
-      const items = (data ?? []).map((r: any) => ({
+      const items: PedidoResumen[] = (data ?? []).map((r: any) => ({
         nro: Number(r.nro),
         fecha: r.fecha ?? null,
         entrega: r.entrega ?? null,
         estado: r.estado ?? null,
         total: r.total ?? null,
         estado_pago: r.estado_pago ?? null,
-      })) as PedidoResumen[];
+      }));
 
       setPedidosByTel((prev) => ({
         ...prev,
@@ -176,7 +183,6 @@ export default function ClientesApp() {
     }
   }
 
-  /* -------- Filtro extra en memoria -------- */
   const filtered = useMemo(() => {
     const q = normalize(debQuery);
     if (!q) return clientes;
@@ -191,14 +197,23 @@ export default function ClientesApp() {
 
   /* =========================
      Render
-  ========================= */
+  ========================== */
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-28">
-      {/* Glow superior */}
+      {/* brillo superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* CABECERA */}
-      <header className="relative z-10 mx-auto max-w-5xl flex items-center justify-between px-4 pt-4 pb-2">
+      {/* 🔵 CABECERA FIJA */}
+      <header
+        className="
+          sticky top-0 z-30
+          px-4 lg:px-10 py-4
+          flex items-center justify-between
+          bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
+          backdrop-blur
+          border-b border-white/15
+        "
+      >
         <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
         <button
           onClick={() => router.push('/menu')}
@@ -210,17 +225,17 @@ export default function ClientesApp() {
 
       {/* CONTENIDO */}
       <section className="relative z-10 mx-auto max-w-5xl px-4">
-        {/* Botón Agregar + filtro/busqueda (igual a la imagen) */}
-        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        {/* Botón agregar */}
+        <div className="mb-3 flex items-center gap-2 pt-2">
           <button
             onClick={() => router.push('/clientes/nuevo')}
-            className="inline-flex items-center gap-2 rounded-2xl bg-white/15 border border-white/25 px-4 py-2 text-sm font-medium hover:bg-white/25 shadow-sm"
+            className="inline-flex items-center gap-2 rounded-xl bg-white/15 border border-white/20 px-4 py-2 text-sm font-medium hover:bg-white/25 shadow-sm"
           >
-            <UserPlus size={18} /> Agregar cliente
+            <UserPlus size={16} /> Agregar cliente
           </button>
         </div>
 
-        {/* Buscar (filtro) */}
+        {/* Buscar */}
         <div className="relative mb-4">
           <Search
             size={16}
@@ -229,19 +244,19 @@ export default function ClientesApp() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nombre, teléfono o dirección…"
-            className="w-full rounded-2xl bg-white/10 border border-white/15 pl-9 pr-3 py-2.5 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.05)]"
+            placeholder="Buscar por nombre, teléfono o dirección..."
+            className="w-full rounded-2xl bg-white/10 border border-white/20 pl-9 pr-3 py-2 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/35"
           />
         </div>
 
-        {/* Error */}
+        {/* Errores */}
         {error && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
-        {/* Lista de clientes con acordeón de pedidos */}
+        {/* Lista de clientes */}
         {loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -254,7 +269,7 @@ export default function ClientesApp() {
         ) : filtered.length === 0 ? (
           <div className="text-white/80">Sin resultados.</div>
         ) : (
-          <div className="grid gap-3 pb-6">
+          <div className="grid gap-3 pb-8">
             {filtered.map((c) => {
               const abierto = openTel === c.telefono;
               const cache = pedidosByTel[c.telefono];
@@ -264,7 +279,7 @@ export default function ClientesApp() {
                   key={c.telefono}
                   className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]"
                 >
-                  {/* HEADER CLIENTE (fila click) */}
+                  {/* fila cliente */}
                   <button
                     onClick={() => toggleOpen(c.telefono)}
                     className="w-full flex items-center justify-between gap-3 px-4 py-3"
@@ -274,31 +289,27 @@ export default function ClientesApp() {
                         <User2 size={18} />
                       </span>
                       <div className="text-left">
-                        <div className="font-extrabold leading-tight">
+                        <div className="font-extrabold leading-tight uppercase text-sm">
                           {c.nombre || 'SIN NOMBRE'}
                         </div>
-                        <div className="text-[11px] text-white/85">
-                          +56 {c.telefono}
-                          {c.direccion ? ` • ${c.direccion}` : ''}
+                        <div className="text-[11px] text-white/85 truncate">
+                          +56 {c.telefono}{' '}
+                          {c.direccion ? `• ${c.direccion}` : ''}
                         </div>
                       </div>
                     </div>
-                    {abierto ? (
-                      <ChevronDown size={18} />
-                    ) : (
-                      <ChevronRight size={18} />
-                    )}
+                    {abierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                   </button>
 
-                  {/* ACORDEÓN: PEDIDOS DEL CLIENTE */}
+                  {/* acordeón pedidos */}
                   {abierto && (
                     <div className="px-4 pb-4">
-                      {/* Estado de carga / error */}
                       {cache?.loading && (
                         <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90">
                           Cargando pedidos…
                         </div>
                       )}
+
                       {cache?.error && (
                         <div className="mt-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
                           <AlertCircle size={16} className="inline mr-1" />
@@ -306,7 +317,6 @@ export default function ClientesApp() {
                         </div>
                       )}
 
-                      {/* Lista de pedidos */}
                       {!cache?.loading && !cache?.error && (
                         <div className="mt-2 grid gap-2">
                           {cache?.items?.length ? (
@@ -318,7 +328,7 @@ export default function ClientesApp() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Package size={16} />
-                                    <span className="font-semibold">
+                                    <span className="font-semibold text-sm">
                                       Pedido #{p.nro}
                                     </span>
                                   </div>
@@ -328,20 +338,16 @@ export default function ClientesApp() {
                                       : '—'}
                                   </span>
                                 </div>
-
                                 <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
                                   <div className="flex items-center gap-1">
-                                    <Calendar size={12} /> Fec.{' '}
-                                    {p.fecha ?? '—'}
+                                    <Calendar size={12} /> Fec. {p.fecha ?? '—'}
                                   </div>
                                   <div className="flex items-center gap-1 justify-end">
-                                    <Calendar size={12} /> Ent.{' '}
-                                    {p.entrega ?? '—'}
+                                    <Calendar size={12} /> Ent. {p.entrega ?? '—'}
                                   </div>
                                 </div>
-
-                                <div className="mt-2 flex items-center justify-between">
-                                  <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[11px]">
+                                <div className="mt-2 flex items-center justify-between text-[11px]">
+                                  <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
                                     Estado:{' '}
                                     <b className="ml-1">
                                       {p.estado ?? '—'}
@@ -349,7 +355,7 @@ export default function ClientesApp() {
                                   </span>
                                   <span
                                     className={[
-                                      'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                      'inline-flex items-center rounded-lg px-2 py-1 border text-[11px]',
                                       (p.estado_pago ?? '').toUpperCase() ===
                                       'PAGADO'
                                         ? 'bg-emerald-500/20 border-emerald-300/30'
