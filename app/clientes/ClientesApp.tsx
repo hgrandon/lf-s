@@ -305,10 +305,19 @@ export default function ClientesApp() {
                         <div className="font-extrabold leading-tight uppercase text-sm">
                           {c.nombre || 'SIN NOMBRE'}
                         </div>
-                        <div className="text-[11px] text-white/85 truncate">
-                          +56 {c.telefono}{' '}
-                          {c.direccion ? `• ${c.direccion}` : ''}
-                        </div>
+                              {/* Teléfono */}
+                              <div className="text-[11px] text-white/85">
+                                +56 {c.telefono}
+                              </div>
+
+                              {/* Dirección truncada */}
+                              {c.direccion && (
+                                <div className="text-[11px] text-white/70 truncate">
+                                  {c.direccion.length > 30
+                                    ? c.direccion.slice(0, 30) + '…'
+                                    : c.direccion}
+                                </div>
+                              )}
                       </div>
                     </div>
                     {abierto ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
