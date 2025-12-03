@@ -77,9 +77,7 @@ export default function GuardadoMenuPage() {
               <span className="mt-2 font-bold text-lg tracking-wide">
                 LOCAL
               </span>
-              <span className="text-white/80 text-xs uppercase tracking-wide">
-                pedidos guardados
-              </span>
+
             </>
           )}
         </button>
@@ -103,9 +101,7 @@ export default function GuardadoMenuPage() {
               <span className="mt-2 font-bold text-lg tracking-wide">
                 DOMICILIO
               </span>
-              <span className="text-white/80 text-xs uppercase tracking-wide">
-                pedidos guardados
-              </span>
+
             </>
           )}
         </button>
