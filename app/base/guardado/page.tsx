@@ -16,14 +16,14 @@ export default function GuardadoMenuPage() {
     (async () => {
       setLoading(true);
 
-      // LOCAL
+      // GUARDADO LOCAL: tipo_entrega NULL o LOCAL
       const { data: localRows } = await supabase
         .from('pedido')
         .select('nro')
         .eq('estado', 'GUARDADO')
         .or('tipo_entrega.is.null,tipo_entrega.eq.LOCAL');
 
-      // DOMICILIO
+      // GUARDADO DOMICILIO
       const { data: domRows } = await supabase
         .from('pedido')
         .select('nro')
@@ -42,7 +42,6 @@ export default function GuardadoMenuPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-20">
-      
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-20 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur-md px-6 py-4 border-b border-white/10">
         <div className="flex items-center justify-between">
@@ -58,12 +57,11 @@ export default function GuardadoMenuPage() {
 
       {/* Menú Tarjetas */}
       <section className="pt-24 px-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        
-        {/* Tarjeta LOCAL */}
+        {/* LOCAL */}
         <button
           onClick={() => go('local')}
           className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
-                     p-6 flex flex-col items-center gap-4 hover:bg-white/20 transition"
+                     p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
         >
           <Archive size={48} />
           <span className="font-bold text-lg tracking-wide">LOCAL</span>
@@ -76,11 +74,11 @@ export default function GuardadoMenuPage() {
           )}
         </button>
 
-        {/* Tarjeta DOMICILIO */}
+        {/* DOMICILIO */}
         <button
           onClick={() => go('domicilio')}
           className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
-                     p-6 flex flex-col items-center gap-4 hover:bg-white/20 transition"
+                     p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
         >
           <Truck size={48} />
           <span className="font-bold text-lg tracking-wide">DOMICILIO</span>
@@ -92,7 +90,6 @@ export default function GuardadoMenuPage() {
             </span>
           )}
         </button>
-
       </section>
     </main>
   );
