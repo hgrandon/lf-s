@@ -149,9 +149,12 @@ export default function ClientesApp() {
     }));
 
     try {
+      // OJO: columnas reales de la tabla pedido
       const { data, error } = await supabase
         .from('pedido')
-        .select('nro, fecha, entrega, estado, total, estado_pago')
+        .select(
+          'nro, fecha_ingreso, fecha_entrega, estado, total, estado_pago',
+        )
         .eq('telefono', telefono)
         .order('nro', { ascending: false });
 
@@ -159,8 +162,8 @@ export default function ClientesApp() {
 
       const items: PedidoResumen[] = (data ?? []).map((r: any) => ({
         nro: Number(r.nro),
-        fecha: r.fecha ?? null,
-        entrega: r.entrega ?? null,
+        fecha: r.fecha_ingreso ?? null,
+        entrega: r.fecha_entrega ?? null,
         estado: r.estado ?? null,
         total: r.total ?? null,
         estado_pago: r.estado_pago ?? null,
@@ -203,62 +206,56 @@ export default function ClientesApp() {
       {/* brillo superior */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
-      {/* 🔵 CABECERA FIJA */}
-      <header
-        className="
-          sticky top-0 z-30
-          px-4 lg:px-10 py-4
-          flex items-center justify-between
-          bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
-          backdrop-blur
-          border-b border-white/15
-        "
-      >
-        <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
-        <button
-          onClick={() => router.push('/menu')}
-          className="inline-flex items-center gap-1 text-sm text-white/90 hover:text-white"
-        >
-          <ArrowLeft size={16} /> Volver
-        </button>
+      {/* 🔵 CABECERA + FILTRO FIJOS */}
+      <header className="sticky top-0 z-30 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur border-b border-white/15">
+        <div className="mx-auto max-w-5xl px-4 lg:px-10 py-3">
+          {/* fila: título + agregar + volver */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
+              <button
+                onClick={() => router.push('/clientes/nuevo')}
+                className="inline-flex items-center gap-2 rounded-xl bg-white/15 border border-white/25 px-3 py-1.5 text-xs sm:text-sm font-medium hover:bg-white/25 shadow-sm"
+              >
+                <UserPlus size={16} /> Agregar cliente
+              </button>
+            </div>
+            <button
+              onClick={() => router.push('/menu')}
+              className="inline-flex items-center gap-1 text-xs sm:text-sm text-white/90 hover:text-white"
+            >
+              <ArrowLeft size={16} /> Volver
+            </button>
+          </div>
+
+          {/* buscador dentro de la cabecera */}
+          <div className="relative mt-3 mb-1">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre, teléfono o dirección..."
+              className="w-full rounded-2xl bg-white/10 border border-white/20 pl-9 pr-3 py-2 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/35"
+            />
+          </div>
+        </div>
       </header>
 
-      {/* CONTENIDO */}
+      {/* CONTENIDO SCROLLEABLE */}
       <section className="relative z-10 mx-auto max-w-5xl px-4">
-        {/* Botón agregar */}
-        <div className="mb-3 flex items-center gap-2 pt-2">
-          <button
-            onClick={() => router.push('/clientes/nuevo')}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/15 border border-white/20 px-4 py-2 text-sm font-medium hover:bg-white/25 shadow-sm"
-          >
-            <UserPlus size={16} /> Agregar cliente
-          </button>
-        </div>
-
-        {/* Buscar */}
-        <div className="relative mb-4">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nombre, teléfono o dirección..."
-            className="w-full rounded-2xl bg-white/10 border border-white/20 pl-9 pr-3 py-2 text-sm placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/35"
-          />
-        </div>
-
-        {/* Errores */}
+        {/* Errores generales de clientes */}
         {error && (
-          <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
+          <div className="mt-3 mb-3 flex items-center gap-2 rounded-xl border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm">
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
         {/* Lista de clientes */}
         {loading ? (
-          <div className="grid gap-3">
+          <div className="mt-2 grid gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
@@ -267,9 +264,9 @@ export default function ClientesApp() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-white/80">Sin resultados.</div>
+          <div className="mt-4 text-white/80">Sin resultados.</div>
         ) : (
-          <div className="grid gap-3 pb-8">
+          <div className="mt-2 grid gap-3 pb-8">
             {filtered.map((c) => {
               const abierto = openTel === c.telefono;
               const cache = pedidosByTel[c.telefono];
