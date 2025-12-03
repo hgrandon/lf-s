@@ -15,6 +15,7 @@ import {
   Coins,
   AlertCircle,
   ArrowLeft,
+  Home,
   Truck,
 } from 'lucide-react';
 
@@ -66,6 +67,22 @@ function useDebounced<T>(value: T, delay = 350) {
     return () => clearTimeout(t);
   }, [value, delay]);
   return deb;
+}
+
+function formatFechaDDMMYYYY(value: string | null): string {
+  if (!value) return '—';
+  // intento con Date
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = d.getFullYear();
+    return `${dd}-${mm}-${yy}`;
+  }
+  // fallback rápido para formato YYYY-MM-DD
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return value;
 }
 
 /* =========================
@@ -151,7 +168,7 @@ export default function ClientesApp() {
     }));
 
     try {
-      // columnas REALES: fecha_ingreso, fecha_entrega, pagado, tipo_entrega
+      // columnas reales de la tabla pedido
       const { data, error } = await supabase
         .from('pedido')
         .select(
@@ -212,7 +229,6 @@ export default function ClientesApp() {
       {/* CABECERA + FILTRO FIJOS */}
       <header className="sticky top-0 z-30 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur border-b border-white/15">
         <div className="mx-auto max-w-5xl px-4 lg:px-10 py-3">
-          {/* fila: título + agregar + volver */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <h1 className="font-bold text-xl sm:text-2xl">Clientes</h1>
@@ -231,7 +247,6 @@ export default function ClientesApp() {
             </button>
           </div>
 
-          {/* buscador */}
           <div className="relative mt-3 mb-1">
             <Search
               size={16}
@@ -319,24 +334,55 @@ export default function ClientesApp() {
                         <div className="mt-2 grid gap-2">
                           {cache?.items?.length ? (
                             cache.items.map((p) => {
+                              const estado = (p.estado ?? '').toUpperCase();
+                              const enProceso =
+                                estado === 'LAVAR' ||
+                                estado === 'LAVANDO' ||
+                                estado === 'GUARDAR' ||
+                                estado === 'GUARDADO';
+
                               const pagado = !!p.pagado;
-                              const pagoText = pagado
-                                ? 'PAGADO'
-                                : 'PENDIENTE';
-                              const entregaText =
-                                (p.tipo_entrega ?? '').toUpperCase() ||
-                                '—';
+                              const pagoText = pagado ? 'PAGADO' : 'PENDIENTE';
+
+                              const tipo = (p.tipo_entrega ?? '').toUpperCase();
+                              const isLocal = tipo === 'LOCAL';
+                              const entregaLabel = tipo || 'SIN TIPO';
+
+                              const CardEntregaIcon = isLocal ? Home : Truck;
+
+                              const cardClasses = [
+                                'rounded-xl border p-3 transition-colors',
+                                enProceso
+                                  ? 'bg-emerald-500/20 border-emerald-300/40'
+                                  : 'bg-white/5 border-white/10',
+                              ].join(' ');
+
+                              const estadoPillClasses = [
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                enProceso
+                                  ? 'bg-emerald-500/30 border-emerald-200/60 text-emerald-50'
+                                  : 'bg-white/10 border-white/25 text-white',
+                              ].join(' ');
+
+                              const pagoPillClasses = [
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border',
+                                pagado
+                                  ? 'bg-emerald-500/25 border-emerald-300/60 text-emerald-50'
+                                  : 'bg-amber-500/25 border-amber-300/60 text-amber-50',
+                              ].join(' ');
+
+                              const entregaPillClasses =
+                                'inline-flex items-center rounded-lg px-2 py-1 text-[11px] border bg-white/10 border-white/25 text-white';
 
                               return (
-                                <div
-                                  key={p.nro}
-                                  className="rounded-xl bg-white/5 border border-white/10 p-3"
-                                >
+                                <div key={p.nro} className={cardClasses}>
+                                  {/* fila principal: N° + total */}
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <Package size={16} />
+                                      {/* solo número de pedido */}
                                       <span className="font-semibold text-sm">
-                                        Pedido #{p.nro}
+                                        {p.nro}
                                       </span>
                                     </div>
                                     <span className="text-sm font-bold">
@@ -346,38 +392,33 @@ export default function ClientesApp() {
                                     </span>
                                   </div>
 
+                                  {/* fechas */}
                                   <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-white/85">
                                     <div className="flex items-center gap-1">
                                       <Calendar size={12} /> Fec.{' '}
-                                      {p.fecha ?? '—'}
+                                      {formatFechaDDMMYYYY(p.fecha)}
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
                                       <Calendar size={12} /> Ent.{' '}
-                                      {p.entrega ?? '—'}
+                                      {formatFechaDDMMYYYY(p.entrega)}
                                     </div>
                                   </div>
 
-                                  <div className="mt-2 flex items-center justify-between text-[11px]">
-                                    <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
-                                      Estado:{' '}
-                                      <b className="ml-1">
-                                        {p.estado ?? '—'}
-                                      </b>
+                                  {/* estado / entrega / pago */}
+                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                    <span className={estadoPillClasses}>
+                                      {estado || 'SIN ESTADO'}
                                     </span>
 
                                     <div className="flex items-center gap-2">
-                                      <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-2 py-1">
-                                        <Truck size={11} className="mr-1" />
-                                        {entregaText}
+                                      <span className={entregaPillClasses}>
+                                        <CardEntregaIcon
+                                          size={11}
+                                          className="mr-1"
+                                        />
+                                        {entregaLabel}
                                       </span>
-                                      <span
-                                        className={[
-                                          'inline-flex items-center rounded-lg px-2 py-1 border text-[11px]',
-                                          pagado
-                                            ? 'bg-emerald-500/20 border-emerald-300/30'
-                                            : 'bg-amber-500/20 border-amber-300/30',
-                                        ].join(' ')}
-                                      >
+                                      <span className={pagoPillClasses}>
                                         <Coins size={12} className="mr-1" />
                                         {pagoText}
                                       </span>
