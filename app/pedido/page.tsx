@@ -1050,6 +1050,32 @@ export default function PedidoPage() {
 
       const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
 
+
+              // Si estamos en modo empresa, aseguramos que el cliente exista
+              if (ES_EMPRESA && telefono) {
+                const digits = telefono.replace(/\D/g, '');
+
+                const payloadCliente = {
+                  telefono: digits,
+                  nombre: empresaNombre?.toUpperCase() ?? 'EMPRESA',
+                  direccion: '',
+                };
+
+                const { error: eCli } = await supabase
+                  .from('clientes')
+                  .upsert(payloadCliente, { onConflict: 'telefono' });
+
+                if (eCli) throw eCli;
+
+                setCliente({
+                  telefono: digits,
+                  nombre: payloadCliente.nombre,
+                  direccion: payloadCliente.direccion,
+                });
+              }
+
+
+
       const payload = {
         nro: nextInfo.nro,
         telefono: cliente?.telefono ?? null,
