@@ -1058,12 +1058,13 @@ export default function PedidoPage(
 
       {/* Header (correlativo + teléfono) */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
-        {ES_EMPRESA && (
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-300/95 text-violet-900 px-4 py-1 shadow">
-            <Building2 size={16} />
-            <span className="text-xs font-black tracking-wide">MODO EMPRESA</span>
-          </div>
-        )}
+          {ES_EMPRESA && (
+            <div className="w-full bg-yellow-400 text-violet-900 text-center py-3 rounded-xl mb-4 shadow-lg border border-yellow-500">
+              <span className="font-extrabold text-lg uppercase tracking-wide drop-shadow">
+                🏢 Pedido para Empresa
+              </span>
+            </div>
+          )}
 
         <Correlativo
           nro={nextInfo?.nro}
