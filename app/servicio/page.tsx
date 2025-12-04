@@ -10,7 +10,13 @@ import { Archive, WashingMachine, PackageCheck, CheckCircle2 } from 'lucide-reac
    Tipos
 ========================= */
 
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type PedidoEstado =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
 
 type PedidoRow = {
   nro: number;
@@ -232,7 +238,7 @@ function buildMensajePrincipalEmpresa(
     if (tipoEntrega === 'DOMICILIO') {
       return (
         <>
-          su servicio se encuentra{' '}
+          el servicio asociado a su empresa se encuentra{' '}
           <span className="text-emerald-600">LISTO PARA DESPACHO</span> a
           domicilio.
           <br />
@@ -244,7 +250,7 @@ function buildMensajePrincipalEmpresa(
     // LOCAL
     return (
       <>
-        su servicio se encuentra{' '}
+        el servicio asociado a su empresa se encuentra{' '}
         <span className="text-emerald-600">LISTO PARA RETIRO</span> en nuestro
         local.
         <br />
@@ -257,7 +263,7 @@ function buildMensajePrincipalEmpresa(
   if (est === 'ENTREGADO') {
     return (
       <>
-        su servicio ha sido{' '}
+        el servicio ha sido{' '}
         <span className="text-emerald-600">ENTREGADO</span>.
         <br />
         Agradecemos la confianza depositada en Lavandería Fabiola.
@@ -268,7 +274,7 @@ function buildMensajePrincipalEmpresa(
   if (est === 'LAVANDO' || est === 'GUARDAR') {
     return (
       <>
-        su servicio se encuentra{' '}
+        el servicio se encuentra{' '}
         <span className="text-violet-700">EN PROCESO DE LAVADO</span>.
         <br />
         El estado de pago{' '}
@@ -416,6 +422,7 @@ export default function ServicioPage() {
   const estadoActual = pedido?.estado ?? 'LAVAR';
   const steps = getSteps(estadoActual, tipoEntrega);
   const esClienteEmpresa = detectarEmpresa(cliente);
+  const etiquetaNombre = esClienteEmpresa ? 'Empresa' : 'Cliente';
 
   /* =========================
       ESTADOS / LOADING
@@ -462,7 +469,7 @@ export default function ServicioPage() {
           </div>
           <div
             className="
-              text-5xl sm:text-6xl
+              text-4xl sm:text-5xl
               font-black 
               leading-tight 
               text-violet-800
@@ -539,6 +546,29 @@ export default function ServicioPage() {
         {/* DATOS RESUMEN */}
         <div className="px-6 py-4 text-xs text-slate-800 grid gap-2">
           <div className="flex justify-between">
+            <span className="font-semibold text-violet-800">
+              {etiquetaNombre}
+            </span>
+            <span className="text-right max-w-[60%]">{nombreCli}</span>
+          </div>
+
+          {pedido.telefono && (
+            <div className="flex justify-between">
+              <span className="font-semibold text-violet-800">Teléfono</span>
+              <span>{pedido.telefono}</span>
+            </div>
+          )}
+
+          {cliente?.direccion && (
+            <div className="flex justify-between">
+              <span className="font-semibold text-violet-800">Dirección</span>
+              <span className="text-right max-w-[60%]">
+                {cliente.direccion}
+              </span>
+            </div>
+          )}
+
+          <div className="flex justify-between">
             <span className="font-semibold text-violet-800">Fecha entrega</span>
             <span>{formatFecha(pedido.fecha_entrega)}</span>
           </div>
@@ -552,14 +582,6 @@ export default function ServicioPage() {
             <span className="font-semibold text-violet-800">Tipo entrega</span>
             <span>{tipoEntrega}</span>
           </div>
-          {cliente?.direccion && (
-            <div className="flex justify-between">
-              <span className="font-semibold text-violet-800">Dirección</span>
-              <span className="text-right max-w-[60%]">
-                {cliente.direccion}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* DETALLE */}
