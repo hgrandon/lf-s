@@ -283,10 +283,9 @@ function buildMensajePrincipalEmpresa(
   return (
     <>
       hemos{' '}
-      <span className="text-violet-700">RECEPCIONADO SU SERVICIO</span> y será
+      <span className="text-violet-700">recepcionado su ervicio</span> y será
       procesado a la brevedad.
       <br />
-      El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
     </>
   );
 }
@@ -444,217 +443,220 @@ export default function ServicioPage() {
       LAYOUT ESPECIAL EMPRESA
   ========================== */
 
-  if (esClienteEmpresa) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-8">
-        <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 relative overflow-hidden">
-          {/* Marca de agua con nombre de empresa */}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-5 text-4xl sm:text-6xl font-black tracking-[0.4em] text-slate-400 select-none text-center">
-            {nombreCli.toUpperCase()}
-          </div>
+if (esClienteEmpresa) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-8">
+      <div className="relative w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        {/* Marca de agua con nombre de empresa */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center select-none text-center text-4xl font-black tracking-[0.4em] text-slate-400 opacity-5 sm:text-6xl">
+          {nombreCli.toUpperCase()}
+        </div>
 
-          {/* Contenido real */}
-          <div className="relative z-10">
-            {/* HEADER */}
-            <header className="px-8 pt-7 pb-5 border-b border-slate-200">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <Image
-                    src="/logo.png"
-                    alt="Logo Lavandería Fabiola"
-                    width={52}
-                    height={52}
-                    className="rounded-lg border border-slate-200 object-cover"
-                  />
-                  <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-                      Resumen de Servicio
-                    </h1>
-                    <p className="mt-1 text-xs sm:text-sm text-slate-500">
-                      Para {nombreCli}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <div className="text-[11px] tracking-[0.2em] uppercase text-slate-500">
-                    Servicio N°
-                  </div>
-                  <div className="text-3xl sm:text-4xl font-black text-slate-900">
-                    {pedido.nro}
-                  </div>
-                </div>
-              </div>
-            </header>
-
-            {/* DETALLES DEL SERVICIO */}
-            <section className="px-8 py-6 border-b border-slate-200 bg-slate-50/70">
-              <h2 className="text-sm font-semibold text-slate-800 mb-4">
-                Detalles del Servicio
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-800">
-                <div className="space-y-1.5">
-                  <div className="flex">
-                    <span className="w-28 font-semibold text-slate-600">Empresa</span>
-                    <span className="font-semibold text-slate-900">
-                      {nombreCli}
-                    </span>
-                  </div>
-                  {cliente?.direccion && (
-                    <div className="flex">
-                      <span className="w-28 font-semibold text-slate-600">
-                        Dirección
-                      </span>
-                      <span>{cliente.direccion}</span>
-                    </div>
-                  )}
-                  <div className="flex">
-                    <span className="w-28 font-semibold text-slate-600">
-                      Fecha de Entrega
-                    </span>
-                    <span>{formatFecha(pedido.fecha_entrega)}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  {pedido.telefono && (
-                    <div className="flex">
-                      <span className="w-28 font-semibold text-slate-600">
-                        Teléfono
-                      </span>
-                      <span>{pedido.telefono}</span>
-                    </div>
-                  )}
-                  <div className="flex">
-                    <span className="w-28 font-semibold text-slate-600">
-                      Tipo de Entrega
-                    </span>
-                    <span>{tipoEntrega}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-28 font-semibold text-slate-600">
-                      Estado de Pago
-                    </span>
-                    <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${
-                        esPagado
-                          ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
-                          : 'border-amber-500 text-amber-700 bg-amber-50'
-                      }`}
-                    >
-                      {esPagado ? 'PAGADO' : 'PENDIENTE'}
-                    </span>
-                  </div>
+        {/* Contenido real */}
+        <div className="relative z-10">
+          {/* HEADER */}
+          <header className="border-b border-slate-200 px-8 pt-7 pb-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <Image
+                  src="/logo.png"
+                  alt="Logo Lavandería Fabiola"
+                  width={64}
+                  height={64}
+                  className="object-cover"
+                />
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+                    Resumen de Servicio
+                  </h1>
+                  <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                    Para {nombreCli}
+                  </p>
                 </div>
               </div>
 
-              {/* Mensaje formal corto */}
-              <div className="mt-4 text-xs text-slate-600">
-                {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
+              <div className="text-right">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                  Servicio N°
+                </div>
+                <div className="text-3xl font-black text-slate-900 sm:text-4xl">
+                  {pedido.nro}
+                </div>
               </div>
-            </section>
+            </div>
+          </header>
 
-            {/* DETALLE DE PRECIOS */}
-            <section className="px-8 pt-6 pb-7">
-              <h2 className="text-sm font-semibold text-slate-800 mb-3">
-                Detalle de Precios
-              </h2>
+          {/* DETALLES DEL SERVICIO */}
+          <section className="border-b border-slate-200 bg-slate-50/70 px-8 py-6">
+            <h2 className="mb-4 text-sm font-semibold text-slate-800">
+              Detalles del Servicio
+            </h2>
 
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <table className="w-full text-[11px] sm:text-xs">
-                  <thead className="bg-violet-800 text-white">
-                    <tr>
-                      <th className="text-left px-4 py-2.5 font-semibold">
-                        DESCRIPCIÓN
-                      </th>
-                      <th className="text-center px-2 py-2.5 font-semibold">
-                        CANTIDAD
-                      </th>
-                      <th className="text-right px-3 py-2.5 font-semibold">
-                        PRECIO UNITARIO
-                      </th>
-                      <th className="text-right px-4 py-2.5 font-semibold">
-                        SUBTOTAL
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.length ? (
-                      items.map((it, i) => (
-                        <tr
-                          key={i}
-                          className={
-                            i % 2 === 0
-                              ? 'bg-white border-t border-slate-200'
-                              : 'bg-slate-50 border-t border-slate-200'
-                          }
-                        >
-                          <td className="px-4 py-2.5 font-semibold text-slate-800">
-                            {it.articulo.toUpperCase()}
-                          </td>
-                          <td className="px-2 py-2.5 text-center text-slate-800">
-                            {it.cantidad ?? 0}
-                          </td>
-                          <td className="px-3 py-2.5 text-right text-slate-800">
-                            {CLP.format(it.valor ?? 0)}
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-slate-900 font-semibold">
-                            {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="text-center py-4 text-slate-500 text-xs"
-                        >
-                          Sin artículos registrados.
+            <div className="grid grid-cols-1 gap-4 text-xs text-slate-800 sm:grid-cols-2 sm:text-sm">
+              <div className="space-y-1.5">
+                <div className="flex">
+                  <span className="w-28 font-semibold text-slate-600">Empresa</span>
+                  <span className="font-semibold text-slate-900">{nombreCli}</span>
+                </div>
+
+                {cliente?.direccion && (
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Dirección
+                    </span>
+                    <span>{cliente.direccion}</span>
+                  </div>
+                )}
+
+                <div className="flex">
+                  <span className="w-28 font-semibold text-slate-600">
+                    Fecha de Ingreso
+                  </span>
+                  <span>{formatFecha(pedido.fecha_ingreso)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                {pedido.telefono && (
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Teléfono
+                    </span>
+                    <span>{pedido.telefono}</span>
+                  </div>
+                )}
+
+                <div className="flex">
+                  <span className="w-28 font-semibold text-slate-600">
+                    Tipo de Entrega
+                  </span>
+                  <span>{tipoEntrega}</span>
+                </div>
+
+                <div className="flex items-center">
+                  <span className="w-28 font-semibold text-slate-600">
+                    Estado de Pago
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${
+                      esPagado
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-500 bg-amber-50 text-amber-700'
+                    }`}
+                  >
+                    {esPagado ? 'PAGADO' : 'PENDIENTE'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Mensaje formal corto */}
+            <div className="mt-4 text-xs text-slate-600">
+              {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
+            </div>
+          </section>
+
+          {/* DETALLE DE PRECIOS */}
+          <section className="px-8 pt-6 pb-7">
+            <h2 className="mb-3 text-sm font-semibold text-slate-800">
+              Detalle de Precios
+            </h2>
+
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full text-[11px] sm:text-xs">
+                <thead className="bg-violet-800 text-white">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-semibold">
+                      DESCRIPCIÓN
+                    </th>
+                    <th className="px-2 py-2.5 text-center font-semibold">
+                      CANTIDAD
+                    </th>
+                    <th className="px-3 py-2.5 text-right font-semibold">
+                      PRECIO UNITARIO
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-semibold">
+                      SUBTOTAL
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length ? (
+                    items.map((it, i) => (
+                      <tr
+                        key={i}
+                        className={
+                          i % 2 === 0
+                            ? 'border-t border-slate-200 bg-white'
+                            : 'border-t border-slate-200 bg-slate-50'
+                        }
+                      >
+                        <td className="px-4 py-2.5 font-semibold text-slate-800">
+                          {it.articulo.toUpperCase()}
+                        </td>
+                        <td className="px-2 py-2.5 text-center text-slate-800">
+                          {it.cantidad ?? 0}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-slate-800">
+                          {CLP.format(it.valor ?? 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
+                          {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="py-4 text-center text-xs text-slate-500"
+                      >
+                        Sin artículos registrados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
 
-                {/* Totales */}
-                <div className="px-6 py-4 bg-white text-xs sm:text-sm">
-                  <div className="flex justify-end gap-10">
-                    <div className="space-y-1 text-right">
-                      <div className="flex justify-between gap-6">
-                        <span className="text-slate-600 font-semibold">
-                          Subtotal Neto
-                        </span>
-                        <span className="font-semibold text-slate-900">
-                          {CLP.format(totalNeto)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-6">
-                        <span className="text-slate-600 font-semibold">
-                          IVA (19%)
-                        </span>
-                        <span className="font-semibold text-slate-900">
-                          {CLP.format(iva)}
-                        </span>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-slate-200 flex justify-between gap-6 items-center">
-                        <span className="text-violet-800 font-bold">
-                          Total a Pagar
-                        </span>
-                        <span className="text-xl sm:text-2xl font-black text-violet-800">
-                          {CLP.format(totalConIva)}
-                        </span>
-                      </div>
+              {/* Totales */}
+              <div className="bg-white px-6 py-4 text-xs sm:text-sm">
+                <div className="flex justify-end gap-10">
+                  <div className="space-y-1 text-right">
+                    <div className="flex justify-between gap-6">
+                      <span className="font-semibold text-slate-600">
+                        Subtotal Neto
+                      </span>
+                      <span className="font-semibold text-slate-900">
+                        {CLP.format(totalNeto)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span className="font-semibold text-slate-600">
+                        IVA (19%)
+                      </span>
+                      <span className="font-semibold text-slate-900">
+                        {CLP.format(iva)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-6 border-t border-slate-200 pt-2">
+                      <span className="font-bold text-violet-800">
+                        Total a Pagar
+                      </span>
+                      <span className="text-xl font-black text-violet-800 sm:text-2xl">
+                        {CLP.format(totalConIva)}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
-      </main>
-    );
-  }
+      </div>
+    </main>
+  );
+}
+
 
   /* =========================
       LAYOUT CLIENTE PERSONA
