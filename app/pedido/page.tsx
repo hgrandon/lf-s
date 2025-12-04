@@ -473,26 +473,46 @@ function NuevoArticuloModal({
     try {
       setSaving(true);
       setError(null);
+
+      const nombreLimpio = nombre.trim().toUpperCase();
+      const precioNumero = Number(precio || 0);
+
+      if (!nombreLimpio) {
+        throw new Error('Nombre obligatorio.');
+      }
+      if (precioNumero < 0) {
+        throw new Error('El precio no puede ser negativo.');
+      }
+
       const payload = {
-        nombre: nombre.trim().toUpperCase(),
-        precio: Number(precio || 0),
+        nombre: nombreLimpio,
+        precio: precioNumero,
         activo: true,
       };
-      if (!payload.nombre) throw new Error('Nombre obligatorio.');
+
+      // ⬇️ CAMBIO CLAVE: en vez de insert → upsert con onConflict: 'nombre'
       const { data, error } = await supabase
         .from('articulo')
-        .insert(payload)
+        .upsert(payload, { onConflict: 'nombre' }) // usa la unique key articulo_nombre_key
         .select('id,nombre,precio,activo')
         .maybeSingle();
+
       if (error) throw error;
+      if (!data) throw new Error('No se recibió respuesta al guardar el artículo.');
+
+      // devolvemos el artículo (ya sea nuevo o actualizado)
       onSaved(data as Articulo);
       onClose();
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo guardar el artículo');
+      setError(
+        e?.message ??
+          'No se pudo guardar el artículo. Inténtalo nuevamente.'
+      );
     } finally {
       setSaving(false);
     }
   }
+
 
   if (!open) return null;
 
