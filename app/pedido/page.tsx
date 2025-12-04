@@ -1189,20 +1189,25 @@ export default function PedidoPage() {
           fechaEntrega={formatFechaDisplay(nextInfo?.fechaEntregaISO)}
           onClickCamara={() => fotoInputRef.current?.click()}
         />
-        <Telefono
-          telefono={telefono}
-          onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
-          checkingCli={checkingCli}
-          cliente={cliente}
-          onEditarCliente={() => {
-            const digits = (telefono || '').replace(/\D/g, '');
-            if (digits.length < 8) {
-              alert('Primero ingresa un teléfono válido.');
-              return;
-            }
-            setOpenCliModal(true);
-          }}
-        />
+              <Telefono
+                telefono={telefono}
+                onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
+                checkingCli={checkingCli}
+                cliente={cliente}
+                onEditarCliente={
+                  ES_EMPRESA
+                    ? undefined
+                    : () => {
+                        const digits = (telefono || '').replace(/\D/g, '');
+                        if (digits.length < 8) {
+                          alert('Primero ingresa un teléfono válido.');
+                          return;
+                        }
+                        setOpenCliModal(true);
+                      }
+                }
+              />
+
       </header>
 
       {/* Contenido: selector + tabla (Articulos) y foto */}
