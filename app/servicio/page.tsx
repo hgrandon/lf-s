@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
+import {
+  ShoppingBag,
+  WashingMachine,
+  Archive,
+  PackageCheck,
+} from 'lucide-react';
 
 /* =========================
    Tipos
@@ -46,6 +52,7 @@ type Step = {
   subtitle: string;
   done: boolean;
   current: boolean;
+  Icon: typeof ShoppingBag;
 };
 
 /* =========================
@@ -76,7 +83,9 @@ function ErrorServicio({ message }: { message: string }) {
 }
 
 /** Normaliza el estado para la ruta (ENTREGAR se considera como GUARDADO) */
-function normalizarEstadoRuta(estado: PedidoEstado | null): 'LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGADO' {
+function normalizarEstadoRuta(
+  estado: PedidoEstado | null
+): 'LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGADO' {
   if (!estado) return 'LAVAR';
   if (estado === 'ENTREGAR') return 'GUARDADO';
   if (estado === 'GUARDAR') return 'LAVANDO'; // por si acaso
@@ -107,6 +116,7 @@ function getSteps(
       subtitle: 'Hemos recibido tu pedido',
       done: idxActual >= 0,
       current: est === 'LAVAR',
+      Icon: ShoppingBag,
     },
     {
       id: 2,
@@ -114,6 +124,7 @@ function getSteps(
       subtitle: 'Tu ropa está en proceso',
       done: idxActual >= 1,
       current: est === 'LAVANDO',
+      Icon: WashingMachine,
     },
     {
       id: 3,
@@ -127,6 +138,7 @@ function getSteps(
           : 'Disponible en el local',
       done: idxActual >= 2,
       current: est === 'GUARDADO',
+      Icon: Archive,
     },
     {
       id: 4,
@@ -134,6 +146,7 @@ function getSteps(
       subtitle: 'Servicio finalizado',
       done: idxActual >= 3,
       current: est === 'ENTREGADO',
+      Icon: PackageCheck,
     },
   ];
 }
@@ -157,10 +170,7 @@ function buildMensajePrincipal(
           <span className="text-emerald-600">LISTO PARA QUE TE LO LLEVEMOS</span>{' '}
           a domicilio.
           <br />
-          El pago{' '}
-          <span className={pagoClase}>
-            {pagoTexto}.
-          </span>
+          El pago <span className={pagoClase}>{pagoTexto}.</span>
         </>
       );
     }
@@ -171,10 +181,7 @@ function buildMensajePrincipal(
         <span className="text-emerald-600">LISTO PARA RETIRAR</span> en nuestro
         local.
         <br />
-        El pago{' '}
-        <span className={pagoClase}>
-          {pagoTexto}.
-        </span>
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -196,10 +203,7 @@ function buildMensajePrincipal(
         estamos{' '}
         <span className="text-violet-700">PROCESANDO TU SERVICIO</span>.
         <br />
-        El pago{' '}
-        <span className={pagoClase}>
-          {pagoTexto}.
-        </span>
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -211,10 +215,7 @@ function buildMensajePrincipal(
       <span className="text-violet-700">RECEPCIONADO TU SERVICIO</span> y pronto
       comenzaremos el lavado.
       <br />
-      El pago{' '}
-      <span className={pagoClase}>
-        {pagoTexto}.
-      </span>
+      El pago <span className={pagoClase}>{pagoTexto}.</span>
     </>
   );
 }
@@ -383,13 +384,13 @@ export default function ServicioPage() {
             </h1>
           </div>
 
-          {/* Número */}
+          {/* Número (más pequeño) */}
           <div className="inline-flex items-center justify-center px-4 py-1 rounded-full bg-fuchsia-100 text-fuchsia-700 text-[11px] font-semibold tracking-[0.25em] mb-2">
             TU N° SERVICIO
           </div>
           <div
             className="
-              text-7xl 
+              text-5xl sm:text-6xl
               font-black 
               leading-tight 
               text-violet-800
@@ -414,39 +415,41 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* RUTA DE ESTADO tipo PedidosYa */}
-        <div className="px-6 pt-4 pb-3 bg-violet-50 border-b border-slate-200">
+        {/* RUTA DE ESTADO con ÍCONOS */}
+        <div className="px-4 sm:px-6 pt-4 pb-3 bg-violet-50 border-b border-slate-200">
           <div className="text-xs font-semibold text-violet-800 mb-3 text-left">
             Seguimiento de tu servicio
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
             {steps.map((s, idx) => (
               <div
                 key={s.id}
-                className="flex-1 flex items-start gap-2 sm:flex-col sm:items-center sm:text-center"
+                className="flex-1 flex items-center gap-3 sm:flex-col sm:items-center sm:text-center"
               >
-                {/* Circulo / número */}
+                {/* Conector en desktop antes del icono, excepto el primero */}
+                {idx > 0 && (
+                  <div className="hidden sm:block flex-1 h-[2px] bg-gradient-to-r from-violet-300 to-fuchsia-300" />
+                )}
+
+                {/* Círculo con ícono */}
                 <div
-                  className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold border-2
+                  className={`flex items-center justify-center w-10 h-10 rounded-full border-2
                     ${
                       s.done
                         ? 'bg-violet-700 border-violet-700 text-white'
-                        : 'bg-white border-slate-300 text-slate-500'
-                    }`}
+                        : 'bg-white border-slate-300 text-slate-400'
+                    }
+                    ${s.current && !s.done ? 'ring-2 ring-fuchsia-300' : ''}
+                  `}
                 >
-                  {s.id}
+                  <s.Icon size={20} />
                 </div>
 
-                {/* Línea horizontal en desktop */}
-                {idx < steps.length - 1 && (
-                  <div className="hidden sm:block flex-1 h-[2px] bg-gradient-to-r from-violet-400 to-fuchsia-400 mt-3 mx-1" />
-                )}
-
                 {/* Texto */}
-                <div className="sm:mt-2">
+                <div className="sm:mt-2 flex-1">
                   <div
                     className={`text-[11px] font-bold uppercase tracking-wide ${
-                      s.done ? 'text-violet-800' : 'text-slate-500'
+                      s.done || s.current ? 'text-violet-800' : 'text-slate-500'
                     }`}
                   >
                     {s.label}
