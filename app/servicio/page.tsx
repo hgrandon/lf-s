@@ -2,13 +2,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import {
-  ShoppingBag,
-  WashingMachine,
   Archive,
+  WashingMachine,
   PackageCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 /* =========================
@@ -52,7 +53,7 @@ type Step = {
   subtitle: string;
   done: boolean;
   current: boolean;
-  Icon: typeof ShoppingBag;
+  Icon: ComponentType<{ size?: number; className?: string }>;
 };
 
 /* =========================
@@ -84,7 +85,7 @@ function ErrorServicio({ message }: { message: string }) {
 
 /** Normaliza el estado para la ruta (ENTREGAR se considera como GUARDADO) */
 function normalizarEstadoRuta(
-  estado: PedidoEstado | null
+  estado: PedidoEstado | null,
 ): 'LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGADO' {
   if (!estado) return 'LAVAR';
   if (estado === 'ENTREGAR') return 'GUARDADO';
@@ -95,10 +96,10 @@ function normalizarEstadoRuta(
   return 'LAVAR';
 }
 
-/** Construye los pasos de tracking tipo "PedidosYa" */
+/** Construye los pasos de tracking con íconos */
 function getSteps(
   estado: PedidoEstado | null,
-  tipoEntrega: 'LOCAL' | 'DOMICILIO'
+  tipoEntrega: 'LOCAL' | 'DOMICILIO',
 ): Step[] {
   const est = normalizarEstadoRuta(estado);
   const orden: ('LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGADO')[] = [
@@ -112,15 +113,15 @@ function getSteps(
   return [
     {
       id: 1,
-      label: 'Recepcionado',
+      label: 'RECEPCIONADO',
       subtitle: 'Hemos recibido tu pedido',
       done: idxActual >= 0,
       current: est === 'LAVAR',
-      Icon: ShoppingBag,
+      Icon: Archive,
     },
     {
       id: 2,
-      label: 'Lavando',
+      label: 'LAVANDO',
       subtitle: 'Tu ropa está en proceso',
       done: idxActual >= 1,
       current: est === 'LAVANDO',
@@ -130,23 +131,23 @@ function getSteps(
       id: 3,
       label:
         tipoEntrega === 'DOMICILIO'
-          ? 'Listo para entregar'
-          : 'Listo para retirar',
+          ? 'LISTO PARA ENTREGAR'
+          : 'LISTO PARA RETIRAR',
       subtitle:
         tipoEntrega === 'DOMICILIO'
           ? 'Coordinando tu despacho'
           : 'Disponible en el local',
       done: idxActual >= 2,
       current: est === 'GUARDADO',
-      Icon: Archive,
+      Icon: PackageCheck,
     },
     {
       id: 4,
-      label: 'Pedido entregado',
+      label: 'PEDIDO ENTREGADO',
       subtitle: 'Servicio finalizado',
       done: idxActual >= 3,
       current: est === 'ENTREGADO',
-      Icon: PackageCheck,
+      Icon: CheckCircle2,
     },
   ];
 }
@@ -155,7 +156,7 @@ function getSteps(
 function buildMensajePrincipal(
   estado: PedidoEstado | null,
   tipoEntrega: 'LOCAL' | 'DOMICILIO',
-  pagado: boolean
+  pagado: boolean,
 ) {
   const est = estado ?? 'LAVAR';
 
@@ -170,7 +171,10 @@ function buildMensajePrincipal(
           <span className="text-emerald-600">LISTO PARA QUE TE LO LLEVEMOS</span>{' '}
           a domicilio.
           <br />
-          El pago <span className={pagoClase}>{pagoTexto}.</span>
+          El pago{' '}
+          <span className={pagoClase}>
+            {pagoTexto}.
+          </span>
         </>
       );
     }
@@ -181,7 +185,10 @@ function buildMensajePrincipal(
         <span className="text-emerald-600">LISTO PARA RETIRAR</span> en nuestro
         local.
         <br />
-        El pago <span className={pagoClase}>{pagoTexto}.</span>
+        El pago{' '}
+        <span className={pagoClase}>
+          {pagoTexto}.
+        </span>
       </>
     );
   }
@@ -203,7 +210,10 @@ function buildMensajePrincipal(
         estamos{' '}
         <span className="text-violet-700">PROCESANDO TU SERVICIO</span>.
         <br />
-        El pago <span className={pagoClase}>{pagoTexto}.</span>
+        El pago{' '}
+        <span className={pagoClase}>
+          {pagoTexto}.
+        </span>
       </>
     );
   }
@@ -215,7 +225,10 @@ function buildMensajePrincipal(
       <span className="text-violet-700">RECEPCIONADO TU SERVICIO</span> y pronto
       comenzaremos el lavado.
       <br />
-      El pago <span className={pagoClase}>{pagoTexto}.</span>
+      El pago{' '}
+      <span className={pagoClase}>
+        {pagoTexto}.
+      </span>
     </>
   );
 }
@@ -273,7 +286,7 @@ export default function ServicioPage() {
         const { data: ped, error: ePed } = await supabase
           .from('pedido')
           .select(
-            'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url'
+            'nro, telefono, total, estado, pagado, tipo_entrega, fecha_ingreso, fecha_entrega, foto_url',
           )
           .eq('token_servicio', token)
           .maybeSingle();
@@ -308,7 +321,7 @@ export default function ServicioPage() {
               articulo: l.articulo || '',
               cantidad: l.cantidad ? Number(l.cantidad) : null,
               valor: l.valor ? Number(l.valor) : null,
-            }))
+            })),
           );
         }
       } catch (e: any) {
@@ -329,7 +342,7 @@ export default function ServicioPage() {
       return items.reduce(
         (acc, it) =>
           acc + (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
-        0
+        0,
       );
 
     return Number(pedido?.total ?? 0);
@@ -375,8 +388,8 @@ export default function ServicioPage() {
             <Image
               src="/logo.png"
               alt="Logo"
-              width={85}
-              height={85}
+              width={110}
+              height={110}
               className="rounded-2xl shadow-md object-cover"
             />
             <h1 className="text-[13px] sm:text-sm text-violet-800 font-extrabold tracking-[0.25em]">
@@ -384,7 +397,7 @@ export default function ServicioPage() {
             </h1>
           </div>
 
-          {/* Número (más pequeño) */}
+          {/* Número más pequeño */}
           <div className="inline-flex items-center justify-center px-4 py-1 rounded-full bg-fuchsia-100 text-fuchsia-700 text-[11px] font-semibold tracking-[0.25em] mb-2">
             TU N° SERVICIO
           </div>
@@ -415,48 +428,39 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* RUTA DE ESTADO con ÍCONOS */}
-        <div className="px-4 sm:px-6 pt-4 pb-3 bg-violet-50 border-b border-slate-200">
+        {/* RUTA DE ESTADO con ICONOS */}
+        <div className="px-6 pt-4 pb-4 bg-violet-50 border-b border-slate-200">
           <div className="text-xs font-semibold text-violet-800 mb-3 text-left">
             Seguimiento de tu servicio
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
-            {steps.map((s, idx) => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {steps.map((s) => (
               <div
                 key={s.id}
-                className="flex-1 flex items-center gap-3 sm:flex-col sm:items-center sm:text-center"
+                className="flex flex-col items-center text-center gap-1"
               >
-                {/* Conector en desktop antes del icono, excepto el primero */}
-                {idx > 0 && (
-                  <div className="hidden sm:block flex-1 h-[2px] bg-gradient-to-r from-violet-300 to-fuchsia-300" />
-                )}
-
-                {/* Círculo con ícono */}
                 <div
-                  className={`flex items-center justify-center w-10 h-10 rounded-full border-2
+                  className={`flex items-center justify-center w-11 h-11 rounded-full shadow-sm border-2
                     ${
-                      s.done
+                      s.done || s.current
                         ? 'bg-violet-700 border-violet-700 text-white'
                         : 'bg-white border-slate-300 text-slate-400'
-                    }
-                    ${s.current && !s.done ? 'ring-2 ring-fuchsia-300' : ''}
-                  `}
-                >
-                  <s.Icon size={20} />
-                </div>
-
-                {/* Texto */}
-                <div className="sm:mt-2 flex-1">
-                  <div
-                    className={`text-[11px] font-bold uppercase tracking-wide ${
-                      s.done || s.current ? 'text-violet-800' : 'text-slate-500'
                     }`}
-                  >
-                    {s.label}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {s.subtitle}
-                  </div>
+                >
+                  <s.Icon
+                    size={22}
+                    className={s.done || s.current ? '' : 'opacity-70'}
+                  />
+                </div>
+                <div
+                  className={`text-[11px] font-bold uppercase tracking-wide leading-tight ${
+                    s.done || s.current ? 'text-violet-800' : 'text-slate-500'
+                  }`}
+                >
+                  {s.label}
+                </div>
+                <div className="text-[10px] text-slate-500 leading-snug">
+                  {s.subtitle}
                 </div>
               </div>
             ))}
