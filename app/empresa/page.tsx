@@ -8,13 +8,13 @@ import { Building2, Plus, ArrowLeft, X, Loader2, Pencil } from 'lucide-react';
 
 type Empresa = {
   id?: number;
-  nombre: string;               // Razón social
+  nombre: string;
   giro: string;
   rut: string;
   direccion: string;
   correo_facturacion: string;
   telefono_contacto: string;
-  descripcion?: string | null;  // opcional, por si ya existe en la tabla
+  descripcion?: string | null;
 };
 
 const EMPTY_EMPRESA: Empresa = {
@@ -38,7 +38,7 @@ export default function EmpresaPage() {
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Carga de empresas
+  // CARGA INICIAL DE EMPRESAS
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -64,12 +64,6 @@ export default function EmpresaPage() {
     setForm({
       ...EMPTY_EMPRESA,
       ...emp,
-      nombre: emp.nombre ?? '',
-      giro: emp.giro ?? '',
-      rut: emp.rut ?? '',
-      direccion: emp.direccion ?? '',
-      correo_facturacion: emp.correo_facturacion ?? '',
-      telefono_contacto: emp.telefono_contacto ?? '',
     });
     setOpenModal(true);
   }
@@ -79,14 +73,14 @@ export default function EmpresaPage() {
       setSaving(true);
 
       const nombre = form.nombre.trim().toUpperCase();
-      const giro = form.giro.trim();
+      const giro = form.giro.trim().toUpperCase();
       const rut = form.rut.trim().toUpperCase();
-      const direccion = form.direccion.trim();
-      const correo = form.correo_facturacion.trim();
-      const telefono = form.telefono_contacto.trim();
+      const direccion = form.direccion.trim().toUpperCase();
+      const correo = form.correo_facturacion.trim().toUpperCase();
+      const telefono = form.telefono_contacto.trim().toUpperCase();
 
       if (!nombre || !giro || !rut || !direccion || !correo || !telefono) {
-        alert('Completa todos los campos obligatorios.');
+        alert('COMPLETA TODOS LOS CAMPOS OBLIGATORIOS.');
         setSaving(false);
         return;
       }
@@ -116,7 +110,7 @@ export default function EmpresaPage() {
 
         setEmpresas((prev) =>
           prev
-            .map((e) => (e.id === editingEmpresa.id ? (dataResult as Empresa) : e))
+            .map((e) => (e.id === editingEmpresa.id ? dataResult! : e))
             .sort((a, b) => a.nombre.localeCompare(b.nombre)),
         );
       } else {
@@ -131,9 +125,7 @@ export default function EmpresaPage() {
         dataResult = data as Empresa;
 
         setEmpresas((prev) =>
-          [...prev, dataResult as Empresa].sort((a, b) =>
-            a.nombre.localeCompare(b.nombre),
-          ),
+          [...prev, dataResult!].sort((a, b) => a.nombre.localeCompare(b.nombre)),
         );
       }
 
@@ -141,20 +133,19 @@ export default function EmpresaPage() {
       setEditingEmpresa(null);
       setForm(EMPTY_EMPRESA);
     } catch (e: any) {
-      alert(e.message ?? 'No fue posible guardar la empresa');
+      alert(e.message ?? 'NO FUE POSIBLE GUARDAR LA EMPRESA');
     } finally {
       setSaving(false);
     }
   }
 
   function handleSelect(emp: Empresa) {
-    router.push(
-      `/pedido?mode=empresa&empresa=${encodeURIComponent(emp.nombre)}`,
-    );
+    router.push(`/pedido?mode=empresa&empresa=${encodeURIComponent(emp.nombre)}`);
   }
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800">
+      {/* HEADER */}
       <header className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between">
         <button
           type="button"
@@ -162,18 +153,18 @@ export default function EmpresaPage() {
           className="inline-flex items-center gap-1 rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 text-xs sm:text-sm hover:bg-white/15"
         >
           <ArrowLeft size={14} />
-          Menú
+          MENÚ
         </button>
-        <h1 className="font-bold text-lg sm:text-xl">Empresa</h1>
+        <h1 className="font-bold text-lg sm:text-xl">EMPRESA</h1>
         <div className="w-16" />
       </header>
 
+      {/* LISTADO EMPRESAS */}
       <section className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pb-10">
-        {/* Bloque Empresas */}
-        <div className="mt-6 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-md shadow-2xl px-5 py-6">
+        <div className="mt-6 rounded-3xl bg-white/10 border border-white/15 shadow-2xl px-5 py-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-base sm:text-lg">
-              Listado de empresas
+              LISTADO DE EMPRESAS
             </h2>
             <button
               type="button"
@@ -181,16 +172,14 @@ export default function EmpresaPage() {
               className="inline-flex items-center gap-1 rounded-xl bg-white text-violet-800 px-3 py-1.5 text-xs sm:text-sm font-semibold shadow hover:bg-violet-50"
             >
               <Plus size={14} />
-              Nueva
+              NUEVA
             </button>
           </div>
 
           {loading ? (
-            <p className="text-xs sm:text-sm opacity-80">Cargando…</p>
+            <p className="text-xs sm:text-sm opacity-80">CARGANDO…</p>
           ) : empresas.length === 0 ? (
-            <p className="text-xs sm:text-sm opacity-75">
-              Sin empresas registradas.
-            </p>
+            <p className="text-xs sm:text-sm opacity-75">SIN EMPRESAS REGISTRADAS.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {empresas.map((emp) => (
@@ -229,7 +218,7 @@ export default function EmpresaPage() {
                       className="inline-flex items-center gap-1 rounded-xl bg-white/90 text-violet-800 px-2.5 py-1 text-[0.7rem] font-semibold hover:bg-white"
                     >
                       <Pencil size={14} />
-                      Editar
+                      EDITAR
                     </button>
                   </div>
                 </div>
@@ -239,13 +228,14 @@ export default function EmpresaPage() {
         </div>
       </section>
 
-      {/* Modal crear / editar empresa */}
+      {/* MODAL NUEVA / EDITAR EMPRESA */}
       {openModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl">
+            {/* HEADER MODAL */}
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div className="font-bold text-sm sm:text-base">
-                {editingEmpresa ? 'Editar empresa' : 'Nueva empresa'}
+                {editingEmpresa ? 'EDITAR EMPRESA' : 'NUEVA EMPRESA'}
               </div>
               <button
                 onClick={() => {
@@ -258,28 +248,35 @@ export default function EmpresaPage() {
               </button>
             </div>
 
+            {/* CUERPO MODAL */}
             <div className="px-4 py-4 grid gap-3 max-h-[70vh] overflow-y-auto text-sm">
               <div className="grid gap-1">
-                <label className="font-medium">Nombre empresa</label>
+                <label className="font-medium">NOMBRE EMPRESA</label>
                 <input
                   value={form.nombre}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, nombre: e.target.value.toUpperCase() }))
+                    setForm((f) => ({
+                      ...f,
+                      nombre: e.target.value.toUpperCase(),
+                    }))
                   }
                   className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
-                  placeholder="Ej: HOM SERVICES SPA"
+                  placeholder="EJ: EMPRESA XYZ SPA"
                 />
               </div>
 
               <div className="grid gap-1">
-                <label className="font-medium">Giro</label>
+                <label className="font-medium">GIRO</label>
                 <input
                   value={form.giro}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, giro: e.target.value }))
+                    setForm((f) => ({
+                      ...f,
+                      giro: e.target.value.toUpperCase(),
+                    }))
                   }
-                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-                  placeholder="Ej: Limpieza y mantención de propiedades"
+                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
+                  placeholder="EJ: GIRO DE LA EMPRESA"
                 />
               </div>
 
@@ -288,51 +285,64 @@ export default function EmpresaPage() {
                 <input
                   value={form.rut}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, rut: e.target.value.toUpperCase() }))
+                    setForm((f) => ({
+                      ...f,
+                      rut: e.target.value.toUpperCase(),
+                    }))
                   }
                   className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
-                  placeholder="Ej: 77.534.752-K"
+                  placeholder="EJ: 00.000.000-K"
                 />
               </div>
 
               <div className="grid gap-1">
-                <label className="font-medium">Dirección</label>
+                <label className="font-medium">DIRECCIÓN</label>
                 <input
                   value={form.direccion}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, direccion: e.target.value }))
+                    setForm((f) => ({
+                      ...f,
+                      direccion: e.target.value.toUpperCase(),
+                    }))
                   }
-                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-                  placeholder="Ej: Av. Kennedy N°7900 Oficina 505 Santiago"
+                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
+                  placeholder="EJ: DIRECCIÓN COMERCIAL"
                 />
               </div>
 
               <div className="grid gap-1">
-                <label className="font-medium">Correo facturación</label>
+                <label className="font-medium">CORREO FACTURACIÓN</label>
                 <input
                   type="email"
                   value={form.correo_facturacion}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, correo_facturacion: e.target.value }))
+                    setForm((f) => ({
+                      ...f,
+                      correo_facturacion: e.target.value.toUpperCase(),
+                    }))
                   }
-                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-                  placeholder="Ej: CARLEN@HOM.CL"
+                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
+                  placeholder="EJ: CORREO@EMPRESA.CL"
                 />
               </div>
 
               <div className="grid gap-1">
-                <label className="font-medium">Teléfono contacto</label>
+                <label className="font-medium">TELÉFONO CONTACTO</label>
                 <input
                   value={form.telefono_contacto}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, telefono_contacto: e.target.value }))
+                    setForm((f) => ({
+                      ...f,
+                      telefono_contacto: e.target.value.toUpperCase(),
+                    }))
                   }
-                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-                  placeholder="Ej: +569 9XXXXXXX"
+                  className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
+                  placeholder="EJ: 9 99999999"
                 />
               </div>
             </div>
 
+            {/* FOOTER MODAL */}
             <div className="px-4 py-3 border-t flex justify-end gap-2">
               <button
                 onClick={() => {
@@ -341,7 +351,7 @@ export default function EmpresaPage() {
                 }}
                 className="rounded-xl px-4 py-2 text-xs sm:text-sm hover:bg-slate-50"
               >
-                Cancelar
+                CANCELAR
               </button>
               <button
                 onClick={guardarEmpresa}
@@ -353,7 +363,7 @@ export default function EmpresaPage() {
                 ) : (
                   <Plus size={16} />
                 )}
-                Guardar
+                GUARDAR
               </button>
             </div>
           </div>
