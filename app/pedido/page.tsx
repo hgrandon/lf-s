@@ -650,6 +650,9 @@ export default function PedidoPage() {
   const [empresaNombre, setEmpresaNombre] = useState<string | null>(null);
   const ES_EMPRESA = empresaMode;
 
+  // -----------------------------
+  // Leer parámetros de empresa
+  // -----------------------------
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -686,7 +689,7 @@ export default function PedidoPage() {
 
   // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-  const [nombre, setNombre] = useState(''); // actualmente no usado
+  const [nombre, setNombre] = useState(''); // reservado
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -728,6 +731,44 @@ export default function PedidoPage() {
       ),
     [items],
   );
+
+  // -------------------------------------------------
+  // AUTOCOMPLETAR DATOS DE EMPRESA AL CREAR PEDIDO
+  // -------------------------------------------------
+  useEffect(() => {
+    async function loadEmpresaData() {
+      if (!empresaMode || !empresaNombre) return;
+
+      try {
+        const nombreDecod = decodeURIComponent(empresaNombre);
+
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('nombre,direccion,telefono_contacto')
+          .eq('nombre', nombreDecod)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error cargando empresa para pedido', error);
+          return;
+        }
+        if (!data) return;
+
+        const tel = (data.telefono_contacto || '').toString().replace(/\D/g, '');
+
+        setTelefono(tel);
+        setCliente({
+          telefono: tel,
+          nombre: (data.nombre || '').toString(),
+          direccion: (data.direccion || '').toString(),
+        });
+      } catch (e) {
+        console.error('No se pudo autocompletar datos de empresa', e);
+      }
+    }
+
+    loadEmpresaData();
+  }, [empresaMode, empresaNombre]);
 
   /* === Cargar correlativo y fechas === */
   useEffect(() => {
@@ -799,6 +840,9 @@ export default function PedidoPage() {
 
   /* === Buscar cliente por teléfono con debounce === */
   useEffect(() => {
+    // En modo EMPRESA, si ya tenemos cliente cargado, no disparamos búsqueda ni modal
+    if (ES_EMPRESA && cliente) return;
+
     const digits = (telefono || '').replace(/\D/g, '');
     if (digits.length < 8) {
       setCliente(null);
@@ -837,7 +881,7 @@ export default function PedidoPage() {
     return () => {
       if (debRef.current) window.clearTimeout(debRef.current);
     };
-  }, [telefono]);
+  }, [telefono, ES_EMPRESA, cliente]);
 
   /* === Lógica selección de artículos === */
   function handleSelectArticulo(nombreSel: string) {
