@@ -641,7 +641,12 @@ function BolsasModal({
    Página principal
 ========================= */
 
-export default function PedidoPage() {
+export default function PedidoPage({
+  empresaMode = false,
+}: {
+  empresaMode?: boolean;
+}) {
+  const ES_EMPRESA = empresaMode;
   const router = useRouter();
 
   // Seguridad UUD
@@ -661,7 +666,7 @@ export default function PedidoPage() {
 
   // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-  const [nombre, setNombre] = useState(''); // actualmente no usado, pero declarado por si lo necesitas luego
+  const [nombre, setNombre] = useState(''); // actualmente no usado
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -972,6 +977,7 @@ export default function PedidoPage() {
         fecha_entrega: nextInfo.fechaEntregaISO,
         bolsas: numBolsas,
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
+        es_empresa: ES_EMPRESA,
       };
 
       const { error: eP } = await supabase.from('pedido').insert(payload);
@@ -1057,6 +1063,12 @@ export default function PedidoPage() {
 
       {/* Header (correlativo + teléfono) */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
+        {ES_EMPRESA && (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-400/90 text-violet-900 px-4 py-1 shadow">
+            <span className="text-xs font-black tracking-wide">MODO EMPRESA</span>
+          </div>
+        )}
+
         <Correlativo
           nro={nextInfo?.nro}
           fechaIngreso={formatFechaDisplay(nextInfo?.fechaIngresoISO)}
