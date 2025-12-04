@@ -822,8 +822,8 @@ export default function PedidoPage() {
     (async () => {
       try {
         const { data: dataArt, error: errArt } = await supabase
-          .from('articulo')
-          .select('id,nombre,precio,activo')
+          .from('articulo_con_popularidad')
+          .select('id,nombre,precio,activo,uso')
           .eq('activo', true);
 
         if (errArt) throw errArt;
