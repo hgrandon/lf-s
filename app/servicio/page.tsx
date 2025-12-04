@@ -239,8 +239,7 @@ function buildMensajePrincipalEmpresa(
       return (
         <>
           el servicio asociado a su empresa se encuentra{' '}
-          <span className="text-emerald-600">LISTO PARA DESPACHO</span> a
-          domicilio.
+          <span className="text-emerald-600">listo para despacho</span> 
           <br />
           El estado de pago{' '}
           <span className={pagoClase}>{pagoTexto}.</span>
