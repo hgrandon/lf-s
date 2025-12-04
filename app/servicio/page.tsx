@@ -116,7 +116,7 @@ function getSteps(
     {
       id: 1,
       label: 'RECEPCIONADO',
-      subtitle: 'Hemos recibido el servicio',
+      subtitle: 'Hemos recibido tu pedido',
       done: idxActual >= 0,
       current: est === 'LAVAR',
       Icon: Archive,
@@ -124,7 +124,7 @@ function getSteps(
     {
       id: 2,
       label: 'LAVANDO',
-      subtitle: 'Servicio en proceso',
+      subtitle: 'Tu ropa está en proceso',
       done: idxActual >= 1,
       current: est === 'LAVANDO',
       Icon: WashingMachine,
@@ -133,11 +133,11 @@ function getSteps(
       id: 3,
       label:
         tipoEntrega === 'DOMICILIO'
-          ? 'LISTO PARA DESPACHO'
-          : 'LISTO PARA RETIRO',
+          ? 'LISTO PARA ENTREGAR'
+          : 'LISTO PARA RETIRAR',
       subtitle:
         tipoEntrega === 'DOMICILIO'
-          ? 'Coordinando la entrega'
+          ? 'Coordinando tu despacho'
           : 'Disponible en el local',
       done: idxActual >= 2,
       current: est === 'GUARDADO',
@@ -145,7 +145,7 @@ function getSteps(
     },
     {
       id: 4,
-      label: 'ENTREGADO',
+      label: 'PEDIDO ENTREGADO',
       subtitle: 'Servicio finalizado',
       done: idxActual >= 3,
       current: est === 'ENTREGADO',
@@ -154,60 +154,141 @@ function getSteps(
   ];
 }
 
-/** Mensaje principal para cliente persona (texto plano) */
+/** Mensaje principal para cliente persona (más cercano) */
 function buildMensajePrincipalPersona(
   estado: PedidoEstado | null,
   tipoEntrega: 'LOCAL' | 'DOMICILIO',
   pagado: boolean,
 ) {
   const est = estado ?? 'LAVAR';
-  const pagoTexto = pagado ? 'El servicio se encuentra pagado.' : 'El servicio se mantiene pendiente de pago.';
+
+  const pagoTexto = pagado ? 'ya se encuentra pagado' : 'está pendiente de pago';
+  const pagoClase = pagado ? 'text-emerald-600' : 'text-amber-500';
 
   if (est === 'GUARDADO' || est === 'ENTREGAR') {
     if (tipoEntrega === 'DOMICILIO') {
-      return `El servicio está listo para despacho a domicilio.\n${pagoTexto}`;
+      return (
+        <>
+          tu servicio está{' '}
+          <span className="text-emerald-600">LISTO PARA QUE TE LO LLEVEMOS</span>{' '}
+          a domicilio.
+          <br />
+          El pago <span className={pagoClase}>{pagoTexto}.</span>
+        </>
+      );
     }
-    return `El servicio está listo para retiro en el local.\n${pagoTexto}`;
+    // LOCAL
+    return (
+      <>
+        tu servicio está{' '}
+        <span className="text-emerald-600">LISTO PARA RETIRAR</span> en nuestro
+        local.
+        <br />
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
   }
 
   if (est === 'ENTREGADO') {
-    return `El servicio ha sido entregado.\n${pagoTexto}`;
+    return (
+      <>
+        tu servicio está{' '}
+        <span className="text-emerald-600">ENTREGADO</span>.
+        <br />
+        ¡Muchas gracias por confiar en Lavandería Fabiola! 💜
+      </>
+    );
   }
 
   if (est === 'LAVANDO' || est === 'GUARDAR') {
-    return `El servicio se encuentra en proceso de lavado.\n${pagoTexto}`;
+    return (
+      <>
+        estamos{' '}
+        <span className="text-violet-700">PROCESANDO TU SERVICIO</span>.
+        <br />
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
   }
 
-  return `Hemos recepcionado su servicio y será procesado a la brevedad.\n${pagoTexto}`;
+  // LAVAR u otros
+  return (
+    <>
+      hemos{' '}
+      <span className="text-violet-700">RECEPCIONADO TU SERVICIO</span> y pronto
+      comenzaremos el lavado.
+      <br />
+      El pago <span className={pagoClase}>{pagoTexto}.</span>
+    </>
+  );
 }
 
-/** Mensaje principal para empresa (texto plano y formal) */
+/** Mensaje principal para empresa (más formal) */
 function buildMensajePrincipalEmpresa(
   estado: PedidoEstado | null,
-  tipoEntrega: 'LOCAL' | 'DOMICILIO',
+  tipoEntrega: 'LOCAL' | 'DOMICICLIO' | 'DOMICILIO',
   pagado: boolean,
 ) {
   const est = estado ?? 'LAVAR';
-  const pagoTexto = pagado
-    ? 'El servicio se encuentra pagado.'
-    : 'El servicio se mantiene pendiente de pago.';
+
+  const pagoTexto = pagado ? 'se encuentra pagado' : 'se mantiene pendiente de pago';
+  const pagoClase = pagado ? 'text-emerald-600' : 'text-amber-500';
 
   if (est === 'GUARDADO' || est === 'ENTREGAR') {
     if (tipoEntrega === 'DOMICILIO') {
-      return `El servicio asociado a su empresa se encuentra listo para despacho.\n${pagoTexto}`;
+      return (
+        <>
+          el servicio asociado a su empresa se encuentra{' '}
+          <span className="text-emerald-600">listo para despacho</span>.
+          <br />
+          El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
+        </>
+      );
     }
-    return `El servicio asociado a su empresa se encuentra listo para retiro en nuestro local.\n${pagoTexto}`;
+    // LOCAL
+    return (
+      <>
+        el servicio asociado a su empresa se encuentra{' '}
+        <span className="text-emerald-600">LISTO PARA RETIRO</span> en nuestro
+        local.
+        <br />
+        El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
   }
 
   if (est === 'ENTREGADO') {
-    return `El servicio ha sido entregado.\n${pagoTexto}`;
+    return (
+      <>
+        el servicio ha sido{' '}
+        <span className="text-emerald-600">ENTREGADO</span>.
+        <br />
+        Agradecemos la confianza depositada en Lavandería Fabiola.
+      </>
+    );
   }
 
   if (est === 'LAVANDO' || est === 'GUARDAR') {
-    return `El servicio se encuentra en proceso de lavado.\n${pagoTexto}`;
+    return (
+      <>
+        el servicio se encuentra{' '}
+        <span className="text-violet-700">EN PROCESO DE LAVADO</span>.
+        <br />
+        El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
   }
 
-  return `Hemos recepcionado su servicio y será procesado a la brevedad.\n${pagoTexto}`;
+  // LAVAR u otros
+  return (
+    <>
+      hemos{' '}
+      <span className="text-violet-700">RECEPCIONADO SU SERVICIO</span> y será
+      procesado a la brevedad.
+      <br />
+      El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
+    </>
+  );
 }
 
 /* =========================
@@ -343,10 +424,6 @@ export default function ServicioPage() {
   const iva = esClienteEmpresa ? Math.round(totalNeto * 0.19) : 0;
   const totalConIva = esClienteEmpresa ? totalNeto + iva : totalNeto;
 
-  const mensajePrincipal = esClienteEmpresa
-    ? buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)
-    : buildMensajePrincipalPersona(estadoActual, tipoEntrega, esPagado);
-
   /* =========================
       ESTADOS / LOADING
   ========================== */
@@ -364,73 +441,292 @@ export default function ServicioPage() {
   if (!pedido) return null;
 
   /* =========================
-      COMPROBANTE FINAL
+      LAYOUT ESPECIAL EMPRESA
+  ========================== */
+
+  if (esClienteEmpresa) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-8">
+        <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 relative overflow-hidden">
+          {/* Marca de agua con nombre de empresa */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-5 text-4xl sm:text-6xl font-black tracking-[0.4em] text-slate-400 select-none text-center">
+            {nombreCli.toUpperCase()}
+          </div>
+
+          {/* Contenido real */}
+          <div className="relative z-10">
+            {/* HEADER */}
+            <header className="px-8 pt-7 pb-5 border-b border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <Image
+                    src="/logo.png"
+                    alt="Logo Lavandería Fabiola"
+                    width={52}
+                    height={52}
+                    className="rounded-lg border border-slate-200 object-cover"
+                  />
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+                      Resumen de Servicio
+                    </h1>
+                    <p className="mt-1 text-xs sm:text-sm text-slate-500">
+                      Para {nombreCli}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[11px] tracking-[0.2em] uppercase text-slate-500">
+                    Servicio N°
+                  </div>
+                  <div className="text-3xl sm:text-4xl font-black text-slate-900">
+                    {pedido.nro}
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            {/* DETALLES DEL SERVICIO */}
+            <section className="px-8 py-6 border-b border-slate-200 bg-slate-50/70">
+              <h2 className="text-sm font-semibold text-slate-800 mb-4">
+                Detalles del Servicio
+              </h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-800">
+                <div className="space-y-1.5">
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">Empresa</span>
+                    <span className="font-semibold text-slate-900">
+                      {nombreCli}
+                    </span>
+                  </div>
+                  {cliente?.direccion && (
+                    <div className="flex">
+                      <span className="w-28 font-semibold text-slate-600">
+                        Dirección
+                      </span>
+                      <span>{cliente.direccion}</span>
+                    </div>
+                  )}
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Fecha de Entrega
+                    </span>
+                    <span>{formatFecha(pedido.fecha_entrega)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {pedido.telefono && (
+                    <div className="flex">
+                      <span className="w-28 font-semibold text-slate-600">
+                        Teléfono
+                      </span>
+                      <span>{pedido.telefono}</span>
+                    </div>
+                  )}
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Tipo de Entrega
+                    </span>
+                    <span>{tipoEntrega}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Estado de Pago
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${
+                        esPagado
+                          ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
+                          : 'border-amber-500 text-amber-700 bg-amber-50'
+                      }`}
+                    >
+                      {esPagado ? 'PAGADO' : 'PENDIENTE'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mensaje formal corto */}
+              <div className="mt-4 text-xs text-slate-600">
+                {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
+              </div>
+            </section>
+
+            {/* DETALLE DE PRECIOS */}
+            <section className="px-8 pt-6 pb-7">
+              <h2 className="text-sm font-semibold text-slate-800 mb-3">
+                Detalle de Precios
+              </h2>
+
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-[11px] sm:text-xs">
+                  <thead className="bg-violet-800 text-white">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 font-semibold">
+                        DESCRIPCIÓN
+                      </th>
+                      <th className="text-center px-2 py-2.5 font-semibold">
+                        CANTIDAD
+                      </th>
+                      <th className="text-right px-3 py-2.5 font-semibold">
+                        PRECIO UNITARIO
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold">
+                        SUBTOTAL
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length ? (
+                      items.map((it, i) => (
+                        <tr
+                          key={i}
+                          className={
+                            i % 2 === 0
+                              ? 'bg-white border-t border-slate-200'
+                              : 'bg-slate-50 border-t border-slate-200'
+                          }
+                        >
+                          <td className="px-4 py-2.5 font-semibold text-slate-800">
+                            {it.articulo.toUpperCase()}
+                          </td>
+                          <td className="px-2 py-2.5 text-center text-slate-800">
+                            {it.cantidad ?? 0}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-slate-800">
+                            {CLP.format(it.valor ?? 0)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-slate-900 font-semibold">
+                            {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="text-center py-4 text-slate-500 text-xs"
+                        >
+                          Sin artículos registrados.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Totales */}
+                <div className="px-6 py-4 bg-white text-xs sm:text-sm">
+                  <div className="flex justify-end gap-10">
+                    <div className="space-y-1 text-right">
+                      <div className="flex justify-between gap-6">
+                        <span className="text-slate-600 font-semibold">
+                          Subtotal Neto
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          {CLP.format(totalNeto)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-6">
+                        <span className="text-slate-600 font-semibold">
+                          IVA (19%)
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          {CLP.format(iva)}
+                        </span>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-slate-200 flex justify-between gap-6 items-center">
+                        <span className="text-violet-800 font-bold">
+                          Total a Pagar
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-violet-800">
+                          {CLP.format(totalConIva)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* =========================
+      LAYOUT CLIENTE PERSONA
   ========================== */
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-violet-800 via-violet-900 to-slate-950 px-3 py-8">
-      <div className="w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-violet-100">
-        {/* HEADER TIPO EMPRESA */}
-        <div className="px-8 pt-6 pb-5 border-b border-slate-200 bg-slate-50">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            {/* Logo + textos izquierda */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center">
-                <Image
-                  src="/logo.png"
-                  alt="Logo Lavandería Fabiola"
-                  width={80}
-                  height={80}
-                  className="object-contain w-20 h-20 sm:w-24 sm:h-24"
-                  priority
-                />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-                  Resumen de Servicio
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Para {esClienteEmpresa ? nombreCli : primerNombre}
-                </p>
-              </div>
-            </div>
-
-            {/* Número de servicio derecha */}
-            <div className="text-right">
-              <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-                Servicio N°
-              </div>
-              <div className="text-3xl sm:text-4xl font-black text-slate-900">
-                {pedido.nro}
-              </div>
-            </div>
+      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-violet-100">
+        {/* HEADER */}
+        <div className="px-6 pt-6 pb-5 border-b border-slate-200 text-center">
+          {/* Logo + título */}
+          <div className="flex flex-col items-center gap-2 mb-3">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={110}
+              height={110}
+              className="rounded-2xl shadow-md object-cover"
+            />
+            <h1 className="text-[13px] sm:text-sm text-violet-800 font-extrabold tracking-[0.25em]">
+              LAVANDERÍA FABIOLA
+            </h1>
           </div>
 
-          {/* Mensaje principal formal sin colores especiales */}
-          <div className="mt-4 text-xs sm:text-sm text-slate-800 whitespace-pre-line">
-            {esClienteEmpresa
-              ? `Estimados,\n${mensajePrincipal}`
-              : `Hola ${primerNombre},\n${mensajePrincipal}`}
+          {/* Número más pequeño */}
+          <div className="inline-flex items-center justify-center px-4 py-1 rounded-full bg-fuchsia-100 text-fuchsia-700 text-[11px] font-semibold tracking-[0.25em] mb-2">
+            TU N° SERVICIO
+          </div>
+          <div
+            className="
+              text-4xl sm:text-5xl
+              font-black 
+              leading-tight 
+              text-violet-800
+              drop-shadow-[0_3px_3px_rgba(0,0,0,0.35)]
+              tracking-widest
+              mb-2
+            "
+          >
+            {pedido.nro}
+          </div>
+
+          {/* Mensaje principal */}
+          <div className="mt-2 text-sm font-semibold text-slate-800">
+            <>
+              Hola {primerNombre},
+              <br />
+              {buildMensajePrincipalPersona(estadoActual, tipoEntrega, esPagado)}
+            </>
+          </div>
+
+          {/* Horario */}
+          <div className="mt-2 text-xs text-slate-600">
+            Atención Lunes a Viernes de 10:00 a 20:00 hrs.
           </div>
         </div>
 
         {/* RUTA DE ESTADO con ICONOS */}
-        <div className="px-8 pt-4 pb-4 bg-violet-50 border-b border-slate-200">
-          <div className="text-xs font-semibold text-violet-900 mb-3 text-left">
-            Seguimiento del servicio
+        <div className="px-6 pt-4 pb-4 bg-violet-50 border-b border-slate-200">
+          <div className="text-xs font-semibold text-violet-800 mb-3 text-left">
+            Seguimiento de tu servicio
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {steps.map((s) => (
-              <div
-                key={s.id}
-                className="flex flex-col items-center text-center gap-1"
-              >
+              <div key={s.id} className="flex flex-col items-center text-center gap-1">
                 <div
-                  className={`flex items-center justify-center w-11 h-11 rounded-full shadow-sm border-2 ${
-                    s.done || s.current
-                      ? 'bg-violet-700 border-violet-700 text-white'
-                      : 'bg-white border-slate-300 text-slate-400'
-                  }`}
+                  className={`flex items-center justify-center w-11 h-11 rounded-full shadow-sm border-2
+                    ${
+                      s.done || s.current
+                        ? 'bg-violet-700 border-violet-700 text-white'
+                        : 'bg-white border-slate-300 text-slate-400'
+                    }`}
                 >
                   <s.Icon
                     size={22}
@@ -439,7 +735,7 @@ export default function ServicioPage() {
                 </div>
                 <div
                   className={`text-[11px] font-bold uppercase tracking-wide leading-tight ${
-                    s.done || s.current ? 'text-violet-900' : 'text-slate-500'
+                    s.done || s.current ? 'text-violet-800' : 'text-slate-500'
                   }`}
                 >
                   {s.label}
@@ -453,9 +749,9 @@ export default function ServicioPage() {
         </div>
 
         {/* DATOS RESUMEN */}
-        <div className="px-8 py-4 text-xs text-slate-800 grid gap-2">
+        <div className="px-6 py-4 text-xs text-slate-800 grid gap-2">
           <div className="flex justify-between">
-            <span className="font-semibold text-violet-900">
+            <span className="font-semibold text-violet-800">
               {etiquetaNombre}
             </span>
             <span className="text-right max-w-[60%]">{nombreCli}</span>
@@ -463,14 +759,14 @@ export default function ServicioPage() {
 
           {pedido.telefono && (
             <div className="flex justify-between">
-              <span className="font-semibold text-violet-900">Teléfono</span>
+              <span className="font-semibold text-violet-800">Teléfono</span>
               <span>{pedido.telefono}</span>
             </div>
           )}
 
           {cliente?.direccion && (
             <div className="flex justify-between">
-              <span className="font-semibold text-violet-900">Dirección</span>
+              <span className="font-semibold text-violet-800">Dirección</span>
               <span className="text-right max-w-[60%]">
                 {cliente.direccion}
               </span>
@@ -478,24 +774,23 @@ export default function ServicioPage() {
           )}
 
           <div className="flex justify-between">
-            <span className="font-semibold text-violet-900">
-              Fecha de ingreso
+            <span className="font-semibold text-violet-800">Fecha entrega</span>
+            <span>{formatFecha(pedido.fecha_entrega)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold text-violet-800">Estado pago</span>
+            <span className={esPagado ? 'text-emerald-600' : 'text-amber-600'}>
+              {esPagado ? 'PAGADO' : 'PENDIENTE'}
             </span>
-            <span>{formatFecha(pedido.fecha_ingreso)}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="font-semibold text-violet-900">Estado de pago</span>
-            <span>{esPagado ? 'PAGADO' : 'PENDIENTE'}</span>
           </div>
           <div className="flex justify-between">
-            <span className="font-semibold text-violet-900">Tipo de entrega</span>
+            <span className="font-semibold text-violet-800">Tipo entrega</span>
             <span>{tipoEntrega}</span>
           </div>
         </div>
 
         {/* DETALLE */}
-        <div className="px-8 pb-6">
+        <div className="px-6 pb-5">
           <div className="text-xs font-semibold mb-2 text-slate-700">
             Detalle del servicio
           </div>
@@ -507,10 +802,8 @@ export default function ServicioPage() {
                   <th className="text-left px-3 py-2 font-semibold">
                     Descripción
                   </th>
-                  <th className="text-right px-2 py-2 font-semibold">Cantidad</th>
-                  <th className="text-right px-2 py-2 font-semibold">
-                    Precio unitario
-                  </th>
+                  <th className="text-right px-2 py-2 font-semibold">Cant</th>
+                  <th className="text-right px-2 py-2 font-semibold">Valor</th>
                   <th className="text-right px-3 py-2 font-semibold">
                     Subtotal
                   </th>
@@ -553,21 +846,13 @@ export default function ServicioPage() {
             </table>
 
             {/* RESUMEN TOTAL / IVA / TOTAL FINAL */}
-            <div className="px-4 py-3 bg-slate-100 text-right text-xs sm:text-sm font-semibold text-slate-700 flex justify-between">
-              <span>Subtotal neto</span>
+            <div className="px-4 py-3 bg-slate-100 text-right text-xs sm:text-sm font-bold text-slate-700 flex justify-between">
+              <span>VALOR NETO</span>
               <span>{CLP.format(totalNeto)}</span>
             </div>
 
-            {esClienteEmpresa && (
-              <div className="px-4 py-2 bg-slate-100 text-right text-xs sm:text-sm font-semibold text-slate-700 flex justify-between border-t border-slate-200">
-                <span>IVA (19%)</span>
-                <span>{CLP.format(iva)}</span>
-              </div>
-            )}
-
-            <div className="px-4 py-4 bg-gradient-to-r from-violet-700 to-fuchsia-600 text-right text-xl sm:text-2xl font-black text-white tracking-wide flex justify-between">
-              <span>Total a pagar</span>
-              <span>{CLP.format(totalConIva)}</span>
+            <div className="px-4 py-4 bg-gradient-to-r from-violet-700 to-fuchsia-600 text-right text-xl sm:text-2xl font-black text-white tracking-wide">
+              TOTAL:&nbsp; {CLP.format(totalConIva)}
             </div>
           </div>
         </div>
