@@ -239,7 +239,7 @@ function buildMensajePrincipalEmpresa(
       return (
         <>
           el servicio asociado a su empresa se encuentra{' '}
-          <span className="text-emerald-600">listo para despacho</span> 
+          <span className="text-emerald-600">listo para despacho</span>.
           <br />
           El estado de pago{' '}
           <span className={pagoClase}>{pagoTexto}.</span>
@@ -399,7 +399,8 @@ export default function ServicioPage() {
     };
   }, [token]);
 
-  const totalCalc = useMemo(() => {
+  // TOTAL NETO (suma de líneas o pedido.total)
+  const totalNeto = useMemo(() => {
     if (items.length)
       return items.reduce(
         (acc, it) =>
@@ -422,6 +423,10 @@ export default function ServicioPage() {
   const steps = getSteps(estadoActual, tipoEntrega);
   const esClienteEmpresa = detectarEmpresa(cliente);
   const etiquetaNombre = esClienteEmpresa ? 'Empresa' : 'Cliente';
+
+  // IVA solo para EMPRESA
+  const iva = esClienteEmpresa ? Math.round(totalNeto * 0.19) : 0;
+  const totalConIva = esClienteEmpresa ? totalNeto + iva : totalNeto;
 
   /* =========================
       ESTADOS / LOADING
@@ -639,9 +644,21 @@ export default function ServicioPage() {
               </tbody>
             </table>
 
-            {/* TOTAL GRANDE, COLORES DEL LOGO */}
+            {/* RESUMEN TOTAL / IVA / TOTAL FINAL */}
+            <div className="px-4 py-3 bg-slate-100 text-right text-xs sm:text-sm font-bold text-slate-700 flex justify-between">
+              <span>VALOR NETO</span>
+              <span>{CLP.format(totalNeto)}</span>
+            </div>
+
+            {esClienteEmpresa && (
+              <div className="px-4 py-2 bg-slate-100 text-right text-xs sm:text-sm font-semibold text-slate-700 flex justify-between border-t border-slate-200">
+                <span>IVA (19%)</span>
+                <span>{CLP.format(iva)}</span>
+              </div>
+            )}
+
             <div className="px-4 py-4 bg-gradient-to-r from-violet-700 to-fuchsia-600 text-right text-xl sm:text-2xl font-black text-white tracking-wide">
-              TOTAL:&nbsp; {CLP.format(totalCalc)}
+              TOTAL:&nbsp; {CLP.format(totalConIva)}
             </div>
           </div>
         </div>
