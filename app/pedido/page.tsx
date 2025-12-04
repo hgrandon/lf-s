@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Loader2,
@@ -446,7 +446,7 @@ function DeleteItemModal({
   );
 }
 
-/** Modal para nuevo artículo (versión más pequeña y tipo “bottom sheet” en celular) */
+/** Modal para nuevo artículo */
 function NuevoArticuloModal({
   open,
   onClose,
@@ -498,9 +498,7 @@ function NuevoArticuloModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
-      {/* modal centrado en todas las pantallas */}
       <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        {/* header más compacto */}
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
           <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
           <button
@@ -511,7 +509,6 @@ function NuevoArticuloModal({
           </button>
         </div>
 
-        {/* cuerpo con altura limitada y scroll interno */}
         <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Nombre</label>
@@ -539,7 +536,6 @@ function NuevoArticuloModal({
           )}
         </div>
 
-        {/* footer compacto */}
         <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
           <button
             onClick={onClose}
@@ -642,13 +638,11 @@ function BolsasModal({
    Página principal
 ========================= */
 
-export default function PedidoPage() {
+export default function PedidoPage(
+  { empresaMode = false }: { empresaMode?: boolean } = {},
+) {
+  const ES_EMPRESA = empresaMode;
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // MODO EMPRESA desde la URL
-  const ES_EMPRESA = searchParams?.get('mode') === 'empresa';
-  const nombreEmpresa = searchParams?.get('empresa') || '';
 
   // Seguridad UUD
   const [authOk, setAuthOk] = useState(false);
@@ -665,8 +659,9 @@ export default function PedidoPage() {
     setAuthChecked(true);
   }, [router]);
 
-  // Estados de la página (todos los hooks juntos)
+  // Estados de la página
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
+  const [nombre, setNombre] = useState(''); // reservado
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -1064,16 +1059,9 @@ export default function PedidoPage() {
       {/* Header (correlativo + teléfono) */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
         {ES_EMPRESA && (
-          <div className="mb-3 flex items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/90 text-violet-900 px-4 py-1 shadow">
-              <Building2 size={16} />
-              <span className="text-xs font-black tracking-wide">MODO EMPRESA</span>
-            </div>
-            {nombreEmpresa && (
-              <span className="text-xs sm:text-sm font-semibold bg-white/10 px-3 py-1 rounded-full border border-amber-200/60">
-                {nombreEmpresa.toUpperCase()}
-              </span>
-            )}
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-300/95 text-violet-900 px-4 py-1 shadow">
+            <Building2 size={16} />
+            <span className="text-xs font-black tracking-wide">MODO EMPRESA</span>
           </div>
         )}
 
@@ -1138,14 +1126,10 @@ export default function PedidoPage() {
             <button
               onClick={handleClickGuardar}
               disabled={saving || !nextInfo}
-              className={`flex-1 inline-flex items-center justify-center gap-2 rounded-2xl text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)] ${
-                ES_EMPRESA
-                  ? 'bg-amber-500 hover:bg-amber-600'
-                  : 'bg-fuchsia-600 hover:bg-fuchsia-700'
-              }`}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-semibold px-5 py-3 disabled:opacity-60 shadow-[0_6px_18px_rgba(0,0,0,0.35)]"
             >
               {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-              {ES_EMPRESA ? 'Guardar empresa' : 'Guardar'}
+              Guardar
             </button>
           </div>
 
