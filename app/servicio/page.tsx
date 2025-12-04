@@ -277,7 +277,7 @@ export default function ServicioPage() {
               </>
             ) : (
               <>
-                tu servicio está{' '}
+                tu pago está{' '}
                 <span className="text-amber-600">PENDIENTE</span>.
               </>
             )}
