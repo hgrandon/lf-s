@@ -238,8 +238,7 @@ function buildMensajePrincipalEmpresa(
     if (tipoEntrega === 'DOMICILIO') {
       return (
         <>
-          el servicio asociado a su empresa se encuentra{' '}
-          <span className="text-emerald-600">listo para despacho</span>.
+          El servicio asociado a su empresa se encuentra debidamente registrado. Se entrega el detalle correspondiente.
           <br />
           
         </>
