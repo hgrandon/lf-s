@@ -13,7 +13,7 @@ import {
   Settings,
   Tag,
   Database,
-  History,
+  Building2,
   LogOut,
 } from 'lucide-react';
 
@@ -68,7 +68,7 @@ const tiles: TileConfig[] = [
   { href: '/pedido',    title: 'Pedido',        icon: <ClipboardList size={22} /> },
   { href: '/clientes',  title: 'Cliente',       icon: <User size={22} /> },
   { href: '/base',      title: 'Base',          icon: <Database size={22} /> },
-  { href: '/empresa',   title: 'Empresa',    icon: <History size={22} /> },
+  { href: '/empresa',   title: 'Empresa',       icon: <Building2  size={22} /> },
   { href: '/finanzas',  title: 'Finanzas',      icon: <PiggyBank size={22} /> },         // <- solo admin
   { href: '/guardar',   title: 'Guardar',       icon: <Save size={22} />,       disabled: true },
   { href: '/entregar',  title: 'Entregar',      icon: <PackageCheck size={22} />, disabled: true },
