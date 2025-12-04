@@ -1,28 +1,16 @@
 // app/servicio/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  Archive,
-  WashingMachine,
-  PackageCheck,
-  CheckCircle2,
-} from 'lucide-react';
+import { Archive, WashingMachine, PackageCheck, CheckCircle2 } from 'lucide-react';
 
 /* =========================
    Tipos
 ========================= */
 
-type PedidoEstado =
-  | 'LAVAR'
-  | 'LAVANDO'
-  | 'GUARDAR'
-  | 'GUARDADO'
-  | 'ENTREGADO'
-  | 'ENTREGAR';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type PedidoRow = {
   nro: number;
@@ -81,6 +69,14 @@ function ErrorServicio({ message }: { message: string }) {
       </div>
     </main>
   );
+}
+
+/** Detecta si el cliente es una empresa usando palabras clave en el nombre */
+function detectarEmpresa(cliente: ClienteRow | null): boolean {
+  const nombre = (cliente?.nombre || '').toUpperCase();
+  if (!nombre) return false;
+  const keywords = [' SPA', 'S.A.', ' SA ', 'LTDA', ' EIRL', 'EMPRESA', 'SPA ', ' SPA.'];
+  return keywords.some((k) => nombre.includes(k));
 }
 
 /** Normaliza el estado para la ruta (ENTREGAR se considera como GUARDADO) */
@@ -152,8 +148,8 @@ function getSteps(
   ];
 }
 
-/** Mensaje principal dinámico, profesional */
-function buildMensajePrincipal(
+/** Mensaje principal para cliente persona (más cercano) */
+function buildMensajePrincipalPersona(
   estado: PedidoEstado | null,
   tipoEntrega: 'LOCAL' | 'DOMICILIO',
   pagado: boolean,
@@ -171,10 +167,7 @@ function buildMensajePrincipal(
           <span className="text-emerald-600">LISTO PARA QUE TE LO LLEVEMOS</span>{' '}
           a domicilio.
           <br />
-          El pago{' '}
-          <span className={pagoClase}>
-            {pagoTexto}.
-          </span>
+          El pago <span className={pagoClase}>{pagoTexto}.</span>
         </>
       );
     }
@@ -185,10 +178,7 @@ function buildMensajePrincipal(
         <span className="text-emerald-600">LISTO PARA RETIRAR</span> en nuestro
         local.
         <br />
-        El pago{' '}
-        <span className={pagoClase}>
-          {pagoTexto}.
-        </span>
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -210,10 +200,7 @@ function buildMensajePrincipal(
         estamos{' '}
         <span className="text-violet-700">PROCESANDO TU SERVICIO</span>.
         <br />
-        El pago{' '}
-        <span className={pagoClase}>
-          {pagoTexto}.
-        </span>
+        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -225,10 +212,80 @@ function buildMensajePrincipal(
       <span className="text-violet-700">RECEPCIONADO TU SERVICIO</span> y pronto
       comenzaremos el lavado.
       <br />
-      El pago{' '}
-      <span className={pagoClase}>
-        {pagoTexto}.
-      </span>
+      El pago <span className={pagoClase}>{pagoTexto}.</span>
+    </>
+  );
+}
+
+/** Mensaje principal para empresa (más formal) */
+function buildMensajePrincipalEmpresa(
+  estado: PedidoEstado | null,
+  tipoEntrega: 'LOCAL' | 'DOMICILIO',
+  pagado: boolean,
+) {
+  const est = estado ?? 'LAVAR';
+
+  const pagoTexto = pagado ? 'se encuentra pagado' : 'se mantiene pendiente de pago';
+  const pagoClase = pagado ? 'text-emerald-600' : 'text-amber-500';
+
+  if (est === 'GUARDADO' || est === 'ENTREGAR') {
+    if (tipoEntrega === 'DOMICILIO') {
+      return (
+        <>
+          su servicio se encuentra{' '}
+          <span className="text-emerald-600">LISTO PARA DESPACHO</span> a
+          domicilio.
+          <br />
+          El estado de pago{' '}
+          <span className={pagoClase}>{pagoTexto}.</span>
+        </>
+      );
+    }
+    // LOCAL
+    return (
+      <>
+        su servicio se encuentra{' '}
+        <span className="text-emerald-600">LISTO PARA RETIRO</span> en nuestro
+        local.
+        <br />
+        El estado de pago{' '}
+        <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
+  }
+
+  if (est === 'ENTREGADO') {
+    return (
+      <>
+        su servicio ha sido{' '}
+        <span className="text-emerald-600">ENTREGADO</span>.
+        <br />
+        Agradecemos la confianza depositada en Lavandería Fabiola.
+      </>
+    );
+  }
+
+  if (est === 'LAVANDO' || est === 'GUARDAR') {
+    return (
+      <>
+        su servicio se encuentra{' '}
+        <span className="text-violet-700">EN PROCESO DE LAVADO</span>.
+        <br />
+        El estado de pago{' '}
+        <span className={pagoClase}>{pagoTexto}.</span>
+      </>
+    );
+  }
+
+  // LAVAR u otros
+  return (
+    <>
+      hemos{' '}
+      <span className="text-violet-700">RECEPCIONADO SU SERVICIO</span> y será
+      procesado a la brevedad.
+      <br />
+      El estado de pago{' '}
+      <span className={pagoClase}>{pagoTexto}.</span>
     </>
   );
 }
@@ -355,8 +412,10 @@ export default function ServicioPage() {
       : 'LOCAL';
 
   const nombreCli = (cliente?.nombre || '').trim() || 'CLIENTE';
+  const primerNombre = nombreCli.split(' ')[0];
   const estadoActual = pedido?.estado ?? 'LAVAR';
   const steps = getSteps(estadoActual, tipoEntrega);
+  const esClienteEmpresa = detectarEmpresa(cliente);
 
   /* =========================
       ESTADOS / LOADING
@@ -417,9 +476,19 @@ export default function ServicioPage() {
 
           {/* Mensaje principal */}
           <div className="mt-2 text-sm font-semibold text-slate-800">
-            Hola {nombreCli.split(' ')[0]},
-            <br />
-            {buildMensajePrincipal(estadoActual, tipoEntrega, esPagado)}
+            {esClienteEmpresa ? (
+              <>
+                Estimado equipo de {nombreCli},
+                <br />
+                {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
+              </>
+            ) : (
+              <>
+                Hola {primerNombre},
+                <br />
+                {buildMensajePrincipalPersona(estadoActual, tipoEntrega, esPagado)}
+              </>
+            )}
           </div>
 
           {/* Horario */}
