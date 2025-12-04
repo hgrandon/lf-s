@@ -213,8 +213,9 @@ export default function ServicioPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-violet-800 via-violet-900 to-slate-950 px-3 py-8">
       <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
+        {/* HEADER */}
         <div className="px-6 pt-6 pb-4 border-b border-slate-200 text-center">
-          {/* Logo */}
+          {/* Logo + título */}
           <div className="flex flex-col items-center gap-2 mb-3">
             <Image
               src="/logo.png"
@@ -223,16 +224,13 @@ export default function ServicioPage() {
               height={85}
               className="rounded-xl shadow-md object-cover"
             />
-            <h1 className="text-violet-800 font-extrabold text-sm tracking-[0.25em]">
+            <h1 className="text-[13px] sm:text-sm text-violet-800 font-extrabold tracking-[0.25em]">
               LAVANDERÍA FABIOLA
             </h1>
-            <p className="text-[11px] text-violet-600 font-semibold tracking-wide uppercase">
-              Comprobante de servicio
-            </p>
           </div>
 
           {/* Número */}
-          <div className="text-[11px] tracking-[0.25em] text-violet-500 mb-1">
+          <div className="text-[11px] tracking-[0.25em] text-fuchsia-600 mb-1 font-semibold">
             TU N° SERVICIO
           </div>
           <div
@@ -240,12 +238,7 @@ export default function ServicioPage() {
               text-7xl 
               font-black 
               leading-tight 
-              bg-gradient-to-b 
-              from-violet-400 
-              via-violet-600 
-              to-violet-900 
-              text-transparent 
-              bg-clip-text 
+              text-violet-800
               drop-shadow-[0_3px_3px_rgba(0,0,0,0.35)]
               tracking-widest
             "
@@ -261,20 +254,20 @@ export default function ServicioPage() {
               tipoEntrega === 'DOMICILIO' ? (
                 <>
                   tu servicio está{' '}
-                  <span className="text-emerald-600">LISTO</span>.  
+                  <span className="text-emerald-600">LISTO</span>.
                   <br /> ¿Nos confirmas si podemos llevar tu pedido a domicilio? 🚚
                 </>
               ) : (
                 <>
                   tu servicio está{' '}
-                  <span className="text-emerald-600">LISTO</span>.  
+                  <span className="text-emerald-600">LISTO</span>.
                   <br /> Te esperamos para su retiro en nuestro local 🕘
                 </>
               )
             ) : pedido.estado === 'ENTREGADO' ? (
               <>
                 tu servicio está{' '}
-                <span className="text-emerald-600">ENTREGADO</span>.  
+                <span className="text-emerald-600">ENTREGADO</span>.
                 <br /> ¡Gracias por preferirnos! 💜
               </>
             ) : esPagado ? (
@@ -295,25 +288,25 @@ export default function ServicioPage() {
           </div>
         </div>
 
-        {/* Datos: solo fecha entrega + estados */}
+        {/* DATOS RESUMEN */}
         <div className="px-6 py-3 text-xs text-slate-800 grid gap-2">
           <div className="flex justify-between">
-            <span className="font-semibold">Fecha entrega</span>
+            <span className="font-semibold text-violet-800">Fecha entrega</span>
             <span>{formatFecha(pedido.fecha_entrega)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="font-semibold">Estado pago</span>
+            <span className="font-semibold text-violet-800">Estado pago</span>
             <span className={esPagado ? 'text-emerald-600' : 'text-amber-600'}>
               {esPagado ? 'PAGADO' : 'PENDIENTE'}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="font-semibold">Tipo entrega</span>
+            <span className="font-semibold text-violet-800">Tipo entrega</span>
             <span>{tipoEntrega}</span>
           </div>
         </div>
 
-        {/* Detalle */}
+        {/* DETALLE */}
         <div className="px-6 py-3">
           <div className="text-xs font-semibold mb-2 text-slate-700">
             Detalle del servicio
@@ -358,7 +351,8 @@ export default function ServicioPage() {
               </tbody>
             </table>
 
-            <div className="px-3 py-3 bg-violet-50 text-right text-[12px] font-extrabold text-violet-800">
+            {/* TOTAL GRANDE, COLORES DEL LOGO */}
+            <div className="px-4 py-4 bg-violet-700 text-right text-lg sm:text-xl font-black text-white tracking-wide">
               TOTAL:&nbsp; {CLP.format(totalCalc)}
             </div>
           </div>
