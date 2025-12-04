@@ -1,6 +1,7 @@
+// app/pedido/articulos/Articulos.tsx
 'use client';
 
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useMemo, useState } from 'react';
 
 export type Articulo = {
   id: number;
@@ -37,44 +38,50 @@ export default function Articulos({
   onSelectArticulo,
   onRowClick,
 }: Props) {
-  // usamos sel solo para poder resetear el select al placeholder
-  const [sel, setSel] = useState('');
+  // Modal de selección
+  const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
-  // 1) QUEDARSE SOLO CON NOMBRES ÚNICOS (SIN DUPLICAR LISTADO)
-  // 2) LIMITAR A LAS 20 PRIMERAS OPCIONES (LAS MÁS USADAS)
-  const topArticulos = useMemo(() => {
+  // Dejamos nombres únicos, respetando el orden que ya viene de Supabase
+  const articulosUnicos = useMemo(() => {
     const vistos = new Set<string>();
+    const unicos: Articulo[] = [];
 
-    const unicos = catalogo.filter((a) => {
+    for (const a of catalogo) {
       const key = a.nombre.trim().toUpperCase();
-      if (!key) return false;
-      if (vistos.has(key)) return false;
+      if (!key) continue;
+      if (vistos.has(key)) continue;
       vistos.add(key);
-      return true;
-    });
-
-    return unicos.slice(0, 20); // solo las 20 más usadas
+      unicos.push(a);
+    }
+    return unicos;
   }, [catalogo]);
 
-  function handleChangeSelect(e: ChangeEvent<HTMLSelectElement>) {
-    const value = e.target.value;
-    if (!value) {
-      setSel('');
-      return;
-    }
-    // reset al placeholder para poder volver a elegir el mismo artículo
-    setSel('');
-    onSelectArticulo(value);
+  // Filtro por texto (prefijo, pero si quieres también contiene)
+  const filtrados = useMemo(() => {
+    const q = search.trim().toUpperCase();
+    if (!q) return articulosUnicos;
+
+    return articulosUnicos.filter((a) => {
+      const n = a.nombre.trim().toUpperCase();
+      // primero comienza con, si no, dejamos contiene como apoyo
+      return n.startsWith(q) || n.includes(q);
+    });
+  }, [articulosUnicos, search]);
+
+  function handleSelect(nombre: string) {
+    onSelectArticulo(nombre);
+    setModalOpen(false);
+    setSearch('');
   }
 
   return (
     <div className="space-y-4">
-      {/* === SELECTOR DE ARTÍCULOS === */}
+      {/* === BOTÓN QUE ABRE MODAL DE BÚSQUEDA === */}
       <div className="space-y-1">
-        <select
-          aria-label="Seleccionar un artículo"
-          value={sel}
-          onChange={handleChangeSelect}
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
           className="
             w-full
             rounded-2xl
@@ -85,36 +92,21 @@ export default function Articulos({
             text-sm
             shadow-md
             outline-none
-            focus:ring-2 focus:ring-white/70 focus:border-white
+            hover:brightness-105
+            active:scale-[0.99]
+            transition
           "
         >
-          {/* Placeholder */}
-          <option
-            value=""
-            className="bg-fuchsia-200 text-slate-900 font-semibold"
-          >
-            SELECCIONAR UN ARTÍCULO
-          </option>
-
-          {/* 1) OTRO (+) SIEMPRE AL INICIO DEL LISTADO REAL */}
-          <option
-            value="__OTRO__"
-            className="bg-fuchsia-100 text-slate-900 font-semibold"
-          >
-            OTRO (+)
-          </option>
-
-          {/* 2 + 3 + 4: SOLO TOP 20, SIN DUPLICADOS */}
-          {topArticulos.map((a) => (
-            <option
-              key={a.id}
-              value={a.nombre}
-              className="bg-fuchsia-100 text-slate-900 font-semibold"
-            >
-              {a.nombre}
-            </option>
-          ))}
-        </select>
+          <div className="flex items-center justify-between">
+            <span>SELECCIONAR UN ARTÍCULO</span>
+            <span className="text-[0.65rem] opacity-90">
+              Buscar / OTRO (+)
+            </span>
+          </div>
+        </button>
+        <p className="text-[0.7rem] text-white/80 mt-1">
+          Artículos disponibles: <span className="font-semibold">{articulosUnicos.length}</span>
+        </p>
       </div>
 
       {/* === TABLA A TODO EL ANCHO === */}
@@ -182,6 +174,80 @@ export default function Articulos({
           </table>
         </div>
       </div>
+
+      {/* === MODAL DE BÚSQUEDA FILTRADA === */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
+          <div className="w-full max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h2 className="text-sm sm:text-base font-bold">
+                Buscar artículo
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalOpen(false);
+                  setSearch('');
+                }}
+                className="text-slate-500 hover:bg-slate-100 rounded-full px-2 py-1 text-xs font-semibold"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {/* Filtro */}
+            <div className="px-4 pt-3 pb-2">
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+                placeholder="ESCRIBE PARA FILTRAR (EJ: COBER)"
+              />
+              <p className="text-[0.7rem] text-slate-500 mt-1">
+                Se mostrarán los artículos que comiencen o contengan ese texto.
+              </p>
+            </div>
+
+            {/* Lista scrollable */}
+            <div className="flex-1 overflow-y-auto px-4 pb-3 space-y-2">
+              {/* OTRO (+) SIEMPRE ARRIBA */}
+              <button
+                type="button"
+                onClick={() => handleSelect('__OTRO__')}
+                className="w-full rounded-xl border border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-left text-xs sm:text-sm font-semibold text-violet-800 hover:bg-violet-100"
+              >
+                OTRO (+) NUEVO ARTÍCULO
+              </button>
+
+              {filtrados.length === 0 && (
+                <div className="mt-3 text-xs text-slate-500">
+                  No hay artículos que coincidan con &quot;{search}&quot;.
+                </div>
+              )}
+
+              {filtrados.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => handleSelect(a.nombre)}
+                  className="w-full rounded-xl bg-slate-50 hover:bg-slate-100 px-3 py-2 text-left text-xs sm:text-sm flex justify-between items-center"
+                >
+                  <span className="font-semibold">
+                    {a.nombre.toUpperCase()}
+                  </span>
+                  {a.precio != null && (
+                    <span className="text-[0.7rem] text-slate-500">
+                      {CLP.format(a.precio)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
