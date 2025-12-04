@@ -446,7 +446,7 @@ function DeleteItemModal({
   );
 }
 
-/** Modal para nuevo artículo */
+/** Modal para nuevo artículo (versión más pequeña y tipo “bottom sheet” en celular) */
 function NuevoArticuloModal({
   open,
   onClose,
@@ -498,7 +498,9 @@ function NuevoArticuloModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+      {/* modal centrado en todas las pantallas */}
       <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        {/* header más compacto */}
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
           <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
           <button
@@ -509,6 +511,7 @@ function NuevoArticuloModal({
           </button>
         </div>
 
+        {/* cuerpo con altura limitada y scroll interno */}
         <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Nombre</label>
@@ -536,6 +539,7 @@ function NuevoArticuloModal({
           )}
         </div>
 
+        {/* footer compacto */}
         <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
           <button
             onClick={onClose}
@@ -638,11 +642,32 @@ function BolsasModal({
    Página principal
 ========================= */
 
-export default function PedidoPage(
-  { empresaMode = false }: { empresaMode?: boolean } = {},
-) {
-  const ES_EMPRESA = empresaMode;
+export default function PedidoPage() {
   const router = useRouter();
+
+  // MODO EMPRESA (por query string ?mode=empresa&empresa=...)
+  const [empresaMode, setEmpresaMode] = useState(false);
+  const [empresaNombre, setEmpresaNombre] = useState<string | null>(null);
+  const ES_EMPRESA = empresaMode;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const emp = params.get('empresa');
+
+      if (mode === 'empresa') {
+        setEmpresaMode(true);
+        setEmpresaNombre(emp);
+      } else {
+        setEmpresaMode(false);
+        setEmpresaNombre(null);
+      }
+    } catch (e) {
+      console.error('No se pudieron leer los parámetros de empresa', e);
+    }
+  }, []);
 
   // Seguridad UUD
   const [authOk, setAuthOk] = useState(false);
@@ -659,9 +684,9 @@ export default function PedidoPage(
     setAuthChecked(true);
   }, [router]);
 
-  // Estados de la página
+  // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-  const [nombre, setNombre] = useState(''); // reservado
+  const [nombre, setNombre] = useState(''); // actualmente no usado
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -973,6 +998,7 @@ export default function PedidoPage(
         bolsas: numBolsas,
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
         es_empresa: ES_EMPRESA,
+        empresa_nombre: empresaNombre ?? null,
       };
 
       const { error: eP } = await supabase.from('pedido').insert(payload);
@@ -1058,13 +1084,14 @@ export default function PedidoPage(
 
       {/* Header (correlativo + teléfono) */}
       <header className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
-          {ES_EMPRESA && (
-            <div className="w-full bg-yellow-400 text-violet-900 text-center py-3 rounded-xl mb-4 shadow-lg border border-yellow-500">
-              <span className="font-extrabold text-lg uppercase tracking-wide drop-shadow">
-                🏢 Pedido para Empresa
-              </span>
-            </div>
-          )}
+        {ES_EMPRESA && (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-300/95 text-violet-900 px-4 py-1 shadow">
+            <Building2 size={16} />
+            <span className="text-xs sm:text-sm font-black tracking-wide">
+              {empresaNombre ? `EMPRESA: ${empresaNombre}` : 'MODO EMPRESA'}
+            </span>
+          </div>
+        )}
 
         <Correlativo
           nro={nextInfo?.nro}
