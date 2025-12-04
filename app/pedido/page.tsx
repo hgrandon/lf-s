@@ -490,29 +490,26 @@ function NuevoArticuloModal({
         activo: true,
       };
 
-      // ⬇️ CAMBIO CLAVE: en vez de insert → upsert con onConflict: 'nombre'
       const { data, error } = await supabase
         .from('articulo')
-        .upsert(payload, { onConflict: 'nombre' }) // usa la unique key articulo_nombre_key
+        .upsert(payload, { onConflict: 'nombre' })
         .select('id,nombre,precio,activo')
         .maybeSingle();
 
       if (error) throw error;
       if (!data) throw new Error('No se recibió respuesta al guardar el artículo.');
 
-      // devolvemos el artículo (ya sea nuevo o actualizado)
       onSaved(data as Articulo);
       onClose();
     } catch (e: any) {
       setError(
         e?.message ??
-          'No se pudo guardar el artículo. Inténtalo nuevamente.'
+          'No se pudo guardar el artículo. Inténtalo nuevamente.',
       );
     } finally {
       setSaving(false);
     }
   }
-
 
   if (!open) return null;
 
@@ -709,7 +706,7 @@ export default function PedidoPage() {
 
   // Estados de la página (todos los hooks juntos)
   const [nextInfo, setNextInfo] = useState<NextInfo | null>(null);
-  const [nombre, setNombre] = useState(''); // reservado
+  const [nombre, setNombre] = useState(''); // reservado por si luego se usa
   const [telefono, setTelefono] = useState('');
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [checkingCli, setCheckingCli] = useState(false);
@@ -858,16 +855,26 @@ export default function PedidoPage() {
     })();
   }, []);
 
-  /* === Buscar cliente por teléfono con debounce === */
+  /* === Buscar cliente por teléfono con debounce (SIN loop ni parpadeo) === */
   useEffect(() => {
-    // En modo EMPRESA, si ya tenemos cliente cargado, no disparamos búsqueda ni modal
-    if (ES_EMPRESA && cliente) return;
-
-    const digits = (telefono || '').replace(/\D/g, '');
-    if (digits.length < 8) {
-      setCliente(null);
+    // En modo EMPRESA nunca buscamos por teléfono aquí
+    if (ES_EMPRESA) {
+      setCheckingCli(false);
+      if (debRef.current) window.clearTimeout(debRef.current);
       return;
     }
+
+    const digits = (telefono || '').replace(/\D/g, '');
+
+    // Teléfono corto → limpiamos cliente, apagamos spinner y salimos
+    if (digits.length < 8) {
+      setCliente(null);
+      setCheckingCli(false);
+      if (debRef.current) window.clearTimeout(debRef.current);
+      return;
+    }
+
+    // limpiamos timeout anterior
     if (debRef.current) window.clearTimeout(debRef.current);
 
     debRef.current = window.setTimeout(async () => {
@@ -901,7 +908,7 @@ export default function PedidoPage() {
     return () => {
       if (debRef.current) window.clearTimeout(debRef.current);
     };
-  }, [telefono, ES_EMPRESA, cliente]);
+  }, [telefono, ES_EMPRESA]);
 
   /* === Lógica selección de artículos === */
   function handleSelectArticulo(nombreSel: string) {
@@ -1050,35 +1057,38 @@ export default function PedidoPage() {
 
       const fotosArray = fotos.length ? fotos : fotoUrl ? [fotoUrl] : [];
 
+      // Determinar teléfono a guardar y asegurar cliente en modo empresa
+      let telefonoPedido: string | null = cliente?.telefono ?? null;
 
-              // Si estamos en modo empresa, aseguramos que el cliente exista
-              if (ES_EMPRESA && telefono) {
-                const digits = telefono.replace(/\D/g, '');
+      if (ES_EMPRESA && telefono) {
+        const digits = telefono.replace(/\D/g, '');
 
-                const payloadCliente = {
-                  telefono: digits,
-                  nombre: empresaNombre?.toUpperCase() ?? 'EMPRESA',
-                  direccion: '',
-                };
+        if (digits) {
+          const payloadCliente = {
+            telefono: digits,
+            nombre: empresaNombre?.toUpperCase() ?? 'EMPRESA',
+            direccion: '',
+          };
 
-                const { error: eCli } = await supabase
-                  .from('clientes')
-                  .upsert(payloadCliente, { onConflict: 'telefono' });
+          const { error: eCli } = await supabase
+            .from('clientes')
+            .upsert(payloadCliente, { onConflict: 'telefono' });
 
-                if (eCli) throw eCli;
+          if (eCli) throw eCli;
 
-                setCliente({
-                  telefono: digits,
-                  nombre: payloadCliente.nombre,
-                  direccion: payloadCliente.direccion,
-                });
-              }
+          setCliente({
+            telefono: digits,
+            nombre: payloadCliente.nombre,
+            direccion: payloadCliente.direccion,
+          });
 
-
+          telefonoPedido = digits;
+        }
+      }
 
       const payload = {
         nro: nextInfo.nro,
-        telefono: cliente?.telefono ?? null,
+        telefono: telefonoPedido,
         total,
         estado,
         pagado,
@@ -1189,25 +1199,25 @@ export default function PedidoPage() {
           fechaEntrega={formatFechaDisplay(nextInfo?.fechaEntregaISO)}
           onClickCamara={() => fotoInputRef.current?.click()}
         />
-              <Telefono
-                telefono={telefono}
-                onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
-                checkingCli={checkingCli}
-                cliente={cliente}
-                onEditarCliente={
-                  ES_EMPRESA
-                    ? undefined
-                    : () => {
-                        const digits = (telefono || '').replace(/\D/g, '');
-                        if (digits.length < 8) {
-                          alert('Primero ingresa un teléfono válido.');
-                          return;
-                        }
-                        setOpenCliModal(true);
-                      }
-                }
-              />
 
+        <Telefono
+          telefono={telefono}
+          onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
+          checkingCli={checkingCli}
+          cliente={cliente}
+          onEditarCliente={
+            ES_EMPRESA
+              ? undefined
+              : () => {
+                  const digits = (telefono || '').replace(/\D/g, '');
+                  if (digits.length < 8) {
+                    alert('Primero ingresa un teléfono válido.');
+                    return;
+                  }
+                  setOpenCliModal(true);
+                }
+          }
+        />
       </header>
 
       {/* Contenido: selector + tabla (Articulos) y foto */}
