@@ -37,7 +37,7 @@ type Pedido = {
   pagado?: boolean | null;
   items?: Item[];
   telefono?: string | null;
-  direccion?: string | null;
+  direccion?: string | null; // dirección completa desde clientes
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -45,6 +45,20 @@ const CLP = new Intl.NumberFormat('es-CL', {
   currency: 'CLP',
   maximumFractionDigits: 0,
 });
+
+// 🔹 Toma "Periodista Mario Peña Carreño 5605 villa la florida"
+// y devuelve "Periodista Mario Peña Carreño 5605"
+function normalizarDireccion(raw?: string | null): string | null {
+  if (!raw) return null;
+  const txt = String(raw).trim();
+  if (!txt) return null;
+
+  const match = txt.match(/^(.+?\d+)/); // hasta el primer bloque de números
+  if (match && match[1]) return match[1].trim();
+
+  // Si no encuentra número, usamos la dirección completa
+  return txt;
+}
 
 function firstFotoFromMixed(input: unknown): string | null {
   if (!input) return null;
@@ -163,10 +177,7 @@ export default function EntregarPage() {
           .in('telefono', tels);
         if (e4) throw e4;
 
-        const clienteByTel = new Map<
-          string,
-          { nombre: string; direccion: string | null }
-        >();
+        const clienteByTel = new Map<string, { nombre: string; direccion: string | null }>();
         (cli ?? []).forEach((c: any) => {
           const tel = String(c.telefono);
           clienteByTel.set(tel, {
@@ -216,18 +227,19 @@ export default function EntregarPage() {
           const telStr = r.telefono ? String(r.telefono) : '';
           const cliInfo = telStr ? clienteByTel.get(telStr) : undefined;
 
-                return {
-                  id: r.id,
-                  cliente: (cliInfo?.nombre ?? telStr) || 'SIN NOMBRE',
-                  total: r.total ?? null,
-                  estado: r.estado,
-                  detalle: r.detalle ?? null,
-                  foto_url: fotoByPedido.get(r.id) ?? null,
-                  pagado: r.pagado ?? false,
-                  items: itemsByPedido.get(r.id) ?? [],
-                  telefono: telStr || null,
-                  direccion: cliInfo?.direccion ?? null,
-                };
+          return {
+            id: r.id,
+            cliente: (cliInfo?.nombre ?? telStr) || 'SIN NOMBRE',
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: fotoByPedido.get(r.id) ?? null,
+            pagado: r.pagado ?? false,
+            items: itemsByPedido.get(r.id) ?? [],
+            telefono: telStr || null,
+            direccion: cliInfo?.direccion ?? null,
+          };
+        });
 
         // Pendiente pago primero, luego pagado; dentro de cada grupo, más antiguos primero
         mapped.sort((a, b) => {
@@ -261,13 +273,14 @@ export default function EntregarPage() {
   }
 
   function openRuta(p: Pedido) {
-    if (!p.direccion) {
+    const base = normalizarDireccion(p.direccion);
+    if (!base) {
       snack('Este cliente no tiene dirección registrada.');
       return;
     }
 
     const ciudadBase = 'La Serena, Chile';
-    const query = encodeURIComponent(`${p.direccion}, ${ciudadBase}`);
+    const query = encodeURIComponent(`${base}, ${ciudadBase}`);
     const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
 
     try {
@@ -428,6 +441,8 @@ export default function EntregarPage() {
                   ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
                   : p.total ?? 0;
 
+              const dirCorta = normalizarDireccion(p.direccion);
+
               return (
                 <div
                   key={p.id}
@@ -458,11 +473,16 @@ export default function EntregarPage() {
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
                           {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
+                        {dirCorta && (
+                          <div className="text-[9px] lg:text-[11px] text-white/75 normal-case">
+                            {dirCorta}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3 lg:gap-4">
-                      {p.direccion && (
+                      {dirCorta && (
                         <button
                           type="button"
                           onClick={(ev) => {
@@ -795,7 +815,7 @@ function IconBtn({
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
         active
-          ? 'bg-white/20 border-white/30 text-white'
+          ? 'bg-white/20 border-white/30 text.white'
           : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
