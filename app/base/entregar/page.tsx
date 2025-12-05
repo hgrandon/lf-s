@@ -1,3 +1,4 @@
+// app/base/entregar/page.tsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ import {
   CreditCard,
   CheckCircle2,
   Archive,
+  MapPin,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -34,6 +36,8 @@ type Pedido = {
   foto_url?: string | null;
   pagado?: boolean | null;
   items?: Item[];
+  telefono?: string | null;
+  direccion?: string | null;
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -106,7 +110,10 @@ export default function EntregarPage() {
   // Modal “¿Desea editar?”
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
 
-  const pedidoAbierto = useMemo(() => pedidos.find((p) => p.id === openId) ?? null, [pedidos, openId]);
+  const pedidoAbierto = useMemo(
+    () => pedidos.find((p) => p.id === openId) ?? null,
+    [pedidos, openId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -149,17 +156,24 @@ export default function EntregarPage() {
           .in('pedido_id', ids);
         if (e3) throw e3;
 
-        // Clientes
+        // Clientes (incluye dirección)
         const { data: cli, error: e4 } = await supabase
           .from('clientes')
-          .select('telefono, nombre')
+          .select('telefono, nombre, direccion')
           .in('telefono', tels);
         if (e4) throw e4;
 
-        const nombreByTel = new Map<string, string>();
-        (cli ?? []).forEach((c) =>
-          nombreByTel.set(String((c as any).telefono), (c as any).nombre ?? 'SIN NOMBRE'),
-        );
+        const clienteByTel = new Map<
+          string,
+          { nombre: string; direccion: string | null }
+        >();
+        (cli ?? []).forEach((c: any) => {
+          const tel = String(c.telefono);
+          clienteByTel.set(tel, {
+            nombre: c.nombre ?? 'SIN NOMBRE',
+            direccion: c.direccion ?? null,
+          });
+        });
 
         const itemsByPedido = new Map<number, Item[]>();
         (lineas ?? []).forEach((l: any) => {
@@ -198,16 +212,23 @@ export default function EntregarPage() {
           }
         });
 
-        const mapped: Pedido[] = (rows ?? []).map((r: any) => ({
-          id: r.id,
-          cliente: nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
-          total: r.total ?? null,
-          estado: r.estado,
-          detalle: r.detalle ?? null,
-          foto_url: fotoByPedido.get(r.id) ?? null,
-          pagado: r.pagado ?? false,
-          items: itemsByPedido.get(r.id) ?? [],
-        }));
+        const mapped: Pedido[] = (rows ?? []).map((r: any) => {
+          const telStr = r.telefono ? String(r.telefono) : '';
+          const cliInfo = telStr ? clienteByTel.get(telStr) : undefined;
+
+          return {
+            id: r.id,
+            cliente: cliInfo?.nombre ?? telStr || 'SIN NOMBRE',
+            total: r.total ?? null,
+            estado: r.estado,
+            detalle: r.detalle ?? null,
+            foto_url: fotoByPedido.get(r.id) ?? null,
+            pagado: r.pagado ?? false,
+            items: itemsByPedido.get(r.id) ?? [],
+            telefono: telStr || null,
+            direccion: cliInfo?.direccion ?? null,
+          };
+        });
 
         // Pendiente pago primero, luego pagado; dentro de cada grupo, más antiguos primero
         mapped.sort((a, b) => {
@@ -238,6 +259,23 @@ export default function EntregarPage() {
   function snack(msg: string) {
     setNotice(msg);
     setTimeout(() => setNotice(null), 1800);
+  }
+
+  function openRuta(p: Pedido) {
+    if (!p.direccion) {
+      snack('Este cliente no tiene dirección registrada.');
+      return;
+    }
+
+    const ciudadBase = 'La Serena, Chile';
+    const query = encodeURIComponent(`${p.direccion}, ${ciudadBase}`);
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+    try {
+      window.open(url, '_blank');
+    } catch {
+      window.location.href = url;
+    }
   }
 
   async function changeEstado(id: number, next: PedidoEstado) {
@@ -343,7 +381,6 @@ export default function EntregarPage() {
     const targetId = idFromButton ?? askEditForId;
     if (!targetId) return;
     if (!idFromButton) setAskEditForId(null);
-    // ✅ misma ruta que en Lavar / Guardado / Entregado
     router.push(`/editar?nro=${targetId}`);
   }
 
@@ -353,7 +390,10 @@ export default function EntregarPage() {
 
       <header className="relative z-10 flex items-center justify-between px-4 lg:px-10 py-3 lg:py-5">
         <h1 className="font-bold text-base lg:text-xl">Entregar</h1>
-        <button onClick={() => router.push('/base')} className="text-xs lg:text-sm text-white/90 hover:text-white">
+        <button
+          onClick={() => router.push('/base')}
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
+        >
           ← Volver
         </button>
       </header>
@@ -421,8 +461,25 @@ export default function EntregarPage() {
                         </div>
                       </div>
                     </div>
+
                     <div className="flex items-center gap-3 lg:gap-4">
-                      <div className="font-extrabold text-white/95 text-sm lg:text-base">{CLP.format(totalCalc)}</div>
+                      {p.direccion && (
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            openRuta(p);
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-white/80 bg-white/10 text-xs lg:text-sm font-semibold shadow hover:bg-white/20"
+                        >
+                          <MapPin size={18} />
+                          <span>Ruta</span>
+                        </button>
+                      )}
+
+                      <div className="font-extrabold text-white/95 text-sm lg:text-base">
+                        {CLP.format(totalCalc)}
+                      </div>
                       {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
                   </button>
@@ -431,7 +488,9 @@ export default function EntregarPage() {
                     <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                       <div className="rounded-xl bg-white/8 border border-white/15 p-2 lg:p-3">
                         <button
-                          onClick={() => setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          onClick={() =>
+                            setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                          }
                           className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                         >
                           <div className="flex items-center gap-2">
@@ -439,7 +498,6 @@ export default function EntregarPage() {
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* 👉 Botón Editar + chevron, igual que en Guardado/Entregado */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -474,16 +532,25 @@ export default function EntregarPage() {
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
-                                          {it.articulo.length > 15 ? it.articulo.slice(0, 15) + '.' : it.articulo}
+                                          {it.articulo.length > 15
+                                            ? it.articulo.slice(0, 15) + '.'
+                                            : it.articulo}
                                         </td>
                                         <td className="px-3 py-2 text-right">{it.qty}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(it.valor)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(it.qty * it.valor)}
+                                        </td>
                                       </tr>
                                     ))
                                   ) : (
                                     <tr>
-                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                      <td
+                                        className="px-3 py-4 text-center text-white/70"
+                                        colSpan={4}
+                                      >
                                         Sin artículos registrados.
                                       </td>
                                     </tr>
@@ -515,8 +582,15 @@ export default function EntregarPage() {
                                 width={0}
                                 height={0}
                                 sizes="100vw"
-                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                style={{
+                                  width: '100%',
+                                  height: 'auto',
+                                  objectFit: 'contain',
+                                  maxHeight: '70vh',
+                                }}
+                                onError={() =>
+                                  setImageError((prev) => ({ ...prev, [p.id]: true }))
+                                }
                                 priority={false}
                               />
                             </div>
@@ -651,7 +725,9 @@ export default function EntregarPage() {
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
-            <h3 className="text-lg font-semibold mb-3">Agregar imagen al pedido #{pickerForPedido}</h3>
+            <h3 className="text-lg font-semibold mb-3">
+              Agregar imagen al pedido #{pickerForPedido}
+            </h3>
             <div className="grid gap-2">
               <button
                 onClick={() => handlePick('camera')}
@@ -687,7 +763,13 @@ export default function EntregarPage() {
         className="hidden"
         onChange={onFileSelected}
       />
-      <input ref={inputFileRef} type="file" accept="image/*" className="hidden" onChange={onFileSelected} />
+      <input
+        ref={inputFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelected}
+      />
     </main>
   );
 }
@@ -713,7 +795,9 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+        active
+          ? 'bg-white/20 border-white/30 text-white'
+          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
