@@ -272,23 +272,26 @@ export default function EntregarPage() {
     setTimeout(() => setNotice(null), 1800);
   }
 
-  function openRuta(p: Pedido) {
-    const base = normalizarDireccion(p.direccion || p.detalle);
-    if (!base) {
-      snack('Este cliente no tiene dirección registrada.');
-      return;
-    }
+function openRuta(p: Pedido) {
+  const base =
+    normalizarDireccion(p.direccion || p.detalle) ||
+    (p.cliente && p.cliente !== 'SIN NOMBRE' ? p.cliente : null);
 
-    const ciudadBase = 'La Serena, Chile';
-    const query = encodeURIComponent(`${base}, ${ciudadBase}`);
-    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-
-    try {
-      window.open(url, '_blank');
-    } catch {
-      window.location.href = url;
-    }
+  if (!base) {
+    snack('Este cliente no tiene dirección registrada.');
+    return;
   }
+
+  const ciudadBase = 'La Serena, Chile';
+  const query = encodeURIComponent(`${base}, ${ciudadBase}`);
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+  try {
+    window.open(url, '_blank');
+  } catch {
+    window.location.href = url;
+  }
+}
 
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
@@ -441,7 +444,9 @@ export default function EntregarPage() {
                   ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
                   : p.total ?? 0;
 
-              const dirCorta = normalizarDireccion(p.direccion || p.detalle);
+              const dirCorta =
+                    normalizarDireccion(p.direccion || p.detalle) ||
+                    (p.cliente && p.cliente !== 'SIN NOMBRE' ? p.cliente : null);
 
               return (
                 <div
@@ -814,9 +819,9 @@ function IconBtn({
       title={title}
       className={[
         'rounded-xl p-3 text-sm font-medium border transition inline-flex items-center justify-center',
-        active
-          ? 'bg-white/20 border-white/30 text-white'
-          : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
+          active
+            ? 'bg-white/20 border-white/30 text-white'
+            : 'bg-white/5 border-white/10 text-white/90 hover:bg-white/10',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ].join(' ')}
     >
