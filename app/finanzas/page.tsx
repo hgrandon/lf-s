@@ -481,7 +481,7 @@ export default function FinanzasPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/base')}
-            className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30"
+            className="rounded-full bg-white/10 hover:bg.white/20 p-2 border border-white/30"
           >
             <ChevronLeft size={18} />
           </button>
@@ -496,6 +496,28 @@ export default function FinanzasPage() {
           </div>
         </div>
       </header>
+
+      {/* TARJETA FINANZAS EMPRESA */}
+      <button
+        onClick={() => router.push('/finanzas/empresa')}
+        className="w-full mb-4 rounded-2xl bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500
+                   border border-white/25 px-4 py-3 text-left hover:opacity-90 transition-all shadow-lg"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-white/85">
+              Finanzas empresa
+            </div>
+            <div className="text-lg font-extrabold text-white">
+              Reportes por periodos y PDF
+            </div>
+          </div>
+          <ChevronDown size={20} className="text-white -rotate-90" />
+        </div>
+        <p className="mt-1 text-[11px] text-white/85">
+          Ver histórico quincenal, mensual y anual solo de pedidos empresa.
+        </p>
+      </button>
 
       <section className="grid gap-4">
         {/* FILTROS */}
@@ -603,7 +625,7 @@ export default function FinanzasPage() {
 
         {/* GRÁFICO LÍNEA: HOY vs AYER vs MISMO DÍA MES ANTERIOR */}
         <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
-          <div className="mb-2 text-xs text-white/80">
+          <div className="mb-2 text-xs text.white/80">
             Comparación diaria (monto total del día, pagado + pendiente):
           </div>
           {histLoaded && hist.length > 0 ? (
