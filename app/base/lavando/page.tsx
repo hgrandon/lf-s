@@ -14,7 +14,6 @@ import {
   Truck,
   PackageCheck,
   Droplet,
-  WashingMachine,
   CreditCard,
   Archive,
   CheckCircle2,
@@ -35,6 +34,7 @@ type Pedido = {
   fotos?: string[]; // lista de fotos para el slider
   pagado?: boolean | null;
   items?: Item[];
+  tipo_entrega?: string | null; // 👈 LOCAL / DOMICILIO
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -62,7 +62,9 @@ function allFotosFromMixed(input: unknown): string[] {
       try {
         const arr = JSON.parse(s);
         if (Array.isArray(arr)) {
-          return arr.filter((x: unknown): x is string => typeof x === 'string' && x.trim() !== '');
+          return arr.filter(
+            (x: unknown): x is string => typeof x === 'string' && x.trim() !== '',
+          );
         }
       } catch {
         // si falla el JSON, lo tomamos como string simple
@@ -71,6 +73,14 @@ function allFotosFromMixed(input: unknown): string[] {
     return [s];
   }
   return [];
+}
+
+// 👇 Helper para saber si el pedido es DOMICILIO según los ítems
+function esPedidoDomicilio(p?: Pedido | null): boolean {
+  if (!p || !Array.isArray(p.items)) return false;
+  return p.items.some((it) =>
+    (it.articulo || '').toUpperCase().includes('RETIRO Y ENTREGA'),
+  );
 }
 
 /* Pequeño contenedor para evitar que un error de render deje la pantalla en blanco */
@@ -136,7 +146,9 @@ export default function LavandoPage() {
         // Pedidos en LAVANDO
         const { data: rows, error: e1 } = await supabase
           .from('pedido')
-          .select('id:nro, telefono, total, estado, detalle, pagado, foto_url')
+          .select(
+            'id:nro, telefono, total, estado, detalle, pagado, foto_url, tipo_entrega',
+          )
           .eq('estado', 'LAVANDO')
           .order('nro', { ascending: true });
 
@@ -241,6 +253,7 @@ export default function LavandoPage() {
             fotos: fotosArr,
             pagado: r.pagado ?? false,
             items: itemsByPedido.get(r.id) ?? [],
+            tipo_entrega: r.tipo_entrega ?? null,
           };
         });
 
@@ -272,15 +285,31 @@ export default function LavandoPage() {
   // Cambios de estado en Lavando
   async function changeEstado(id: number, next: PedidoEstado) {
     if (!id) return;
+
+    const pedido = pedidos.find((p) => p.id === id);
+    if (!pedido) return;
+
     setSaving(true);
     const prev = pedidos;
+
+    // Actualizamos estado visualmente
     setPedidos(prev.map((p) => (p.id === id ? { ...p, estado: next } : p)));
 
-    const { error } = await supabase.from('pedido').update({ estado: next }).eq('nro', id);
+    // Payload para la actualización
+    const update: Record<string, any> = { estado: next };
+
+    // 👇 REGLA: cuando pasa a GUARDADO, definir LOCAL o DOMICILIO según el artículo
+    if (next === 'GUARDADO') {
+      const esDom = esPedidoDomicilio(pedido);
+      update.tipo_entrega = esDom ? 'DOMICILIO' : 'LOCAL';
+    }
+
+    const { error } = await supabase.from('pedido').update(update).eq('nro', id);
     if (error) {
       console.error('No se pudo actualizar estado:', error);
-      setPedidos(prev);
+      setPedidos(prev); // rollback
       setSaving(false);
+      snack('No se pudo actualizar el pedido.');
       return;
     }
 
@@ -288,8 +317,17 @@ export default function LavandoPage() {
     if (next !== 'LAVANDO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
-      snack(`Pedido #${id} movido a ${next}`);
+
+      if (next === 'GUARDADO') {
+        const esDom = esPedidoDomicilio(pedido);
+        snack(
+          `Pedido #${id} movido a GUARDADO ${esDom ? 'DOMICILIO' : 'LOCAL'}`,
+        );
+      } else {
+        snack(`Pedido #${id} movido a ${next}`);
+      }
     }
+
     setSaving(false);
   }
 
@@ -340,23 +378,26 @@ export default function LavandoPage() {
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `pedido-${pid}/${Date.now()}.${ext}`;
 
-      const { data: up, error: upErr } = await supabase.storage.from('fotos').upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+      const { data: up, error: upErr } = await supabase.storage
+        .from('fotos')
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
       if (upErr) throw upErr;
 
       const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
-      const { error: insErr } = await supabase.from('pedido_foto').insert({ pedido_id: pid, url: publicUrl });
+      const { error: insErr } = await supabase
+        .from('pedido_foto')
+        .insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
       // Obtener fotos actuales del pedido para actualizar JSON en foto_url
       const pedidoActual = pedidos.find((p) => p.id === pid);
       const fotosActuales =
-        pedidoActual?.fotos ??
-        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+        pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
       const nuevasFotos = [...fotosActuales, publicUrl];
 
       // Guardamos la lista completa en foto_url como JSON
@@ -397,8 +438,7 @@ export default function LavandoPage() {
     try {
       const pedidoActual = pedidos.find((p) => p.id === pedidoId);
       const fotosActuales =
-        pedidoActual?.fotos ??
-        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+        pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
 
       const targetUrl = fotoUrl || fotosActuales[0] || null;
       if (!targetUrl) {
@@ -503,7 +543,7 @@ export default function LavandoPage() {
     setAskEditForId(null);
   }
 
-  // ✅ Igual que en Lavar: acepta id directo o usa el del modal
+  // Igual que en Lavar: acepta id directo o usa el del modal
   function goEdit(idFromButton?: number) {
     const targetId = idFromButton ?? askEditForId;
     if (!targetId) return;
@@ -516,9 +556,8 @@ export default function LavandoPage() {
     router.push(`/editar?nro=${targetId}`);
   }
 
- return (
-  <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
-
+  return (
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       <header
@@ -552,9 +591,11 @@ export default function LavandoPage() {
             </div>
           )}
 
-          {!loading && !errMsg && (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
-            <div className="text-white/80">No hay pedidos en estado LAVANDO.</div>
-          )}
+          {!loading &&
+            !errMsg &&
+            (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
+              <div className="text-white/80">No hay pedidos en estado LAVANDO.</div>
+            )}
 
           {!loading &&
             !errMsg &&
@@ -607,7 +648,9 @@ export default function LavandoPage() {
                       </span>
 
                       <div className="text-left">
-                        <div className="font-extrabold tracking-wide text-sm lg:text-base">N° {p.id}</div>
+                        <div className="font-extrabold tracking-wide text-sm lg:text-base">
+                          N° {p.id}
+                        </div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
                           {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
@@ -638,13 +681,13 @@ export default function LavandoPage() {
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* Botón Editar + flecha, igual que en Lavar */}
+                          {/* Botón Editar + flecha */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={(e) => {
-                                e.stopPropagation(); // que no abra/cierre el acordeón
-                                goEdit(p.id);        // va directo a /editar?nro=ID
+                                e.stopPropagation();
+                                goEdit(p.id);
                               }}
                               className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
                                 bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
@@ -678,7 +721,9 @@ export default function LavandoPage() {
                                             : it.articulo}
                                         </td>
                                         <td className="px-3 py-2 text-right">{it.qty}</td>
-                                        <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
+                                        <td className="px-3 py-2 text-right">
+                                          {CLP.format(it.valor)}
+                                        </td>
                                         <td className="px-3 py-2 text-right">
                                           {CLP.format(it.qty * it.valor)}
                                         </td>
@@ -686,7 +731,10 @@ export default function LavandoPage() {
                                     ))
                                   ) : (
                                     <tr>
-                                      <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
+                                      <td
+                                        className="px-3 py-4 text-center text-white/70"
+                                        colSpan={4}
+                                      >
                                         Sin artículos registrados.
                                       </td>
                                     </tr>
@@ -719,8 +767,15 @@ export default function LavandoPage() {
                                 width={0}
                                 height={0}
                                 sizes="100vw"
-                                style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '70vh' }}
-                                onError={() => setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                                style={{
+                                  width: '100%',
+                                  height: 'auto',
+                                  objectFit: 'contain',
+                                  maxHeight: '70vh',
+                                }}
+                                onError={() =>
+                                  setImageError((prev) => ({ ...prev, [p.id]: true }))
+                                }
                                 priority={false}
                               />
 
@@ -784,27 +839,25 @@ export default function LavandoPage() {
               title="Guardado"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'GUARDADO')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')
               }
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
             />
-              <IconBtn
-                title="Lavar"
-                disabled={!pedidoAbierto || saving}
-                onClick={() =>
-                  pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')
-                }
-                active={pedidoAbierto?.estado === 'LAVAR'}
-                Icon={Droplet}
-  />
+            <IconBtn
+              title="Lavar"
+              disabled={!pedidoAbierto || saving}
+              onClick={() =>
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVAR')
+              }
+              active={pedidoAbierto?.estado === 'LAVAR'}
+              Icon={Droplet}
+            />
             <IconBtn
               title="Entregar"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'ENTREGAR')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')
               }
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
@@ -813,8 +866,7 @@ export default function LavandoPage() {
               title="Entregado"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'ENTREGADO')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')
               }
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
@@ -822,9 +874,7 @@ export default function LavandoPage() {
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && togglePago(pedidoAbierto.id)
-              }
+              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
             />
@@ -840,7 +890,7 @@ export default function LavandoPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text-white/70">
+            <div className="mt-2 text-center text-xs text白/70">
               Abre un pedido para habilitar las acciones.
             </div>
           )}
