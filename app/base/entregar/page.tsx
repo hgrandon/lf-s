@@ -216,19 +216,18 @@ export default function EntregarPage() {
           const telStr = r.telefono ? String(r.telefono) : '';
           const cliInfo = telStr ? clienteByTel.get(telStr) : undefined;
 
-          return {
-            id: r.id,
-            cliente: cliInfo?.nombre ?? telStr || 'SIN NOMBRE',
-            total: r.total ?? null,
-            estado: r.estado,
-            detalle: r.detalle ?? null,
-            foto_url: fotoByPedido.get(r.id) ?? null,
-            pagado: r.pagado ?? false,
-            items: itemsByPedido.get(r.id) ?? [],
-            telefono: telStr || null,
-            direccion: cliInfo?.direccion ?? null,
-          };
-        });
+                return {
+                  id: r.id,
+                  cliente: (cliInfo?.nombre ?? telStr) || 'SIN NOMBRE',
+                  total: r.total ?? null,
+                  estado: r.estado,
+                  detalle: r.detalle ?? null,
+                  foto_url: fotoByPedido.get(r.id) ?? null,
+                  pagado: r.pagado ?? false,
+                  items: itemsByPedido.get(r.id) ?? [],
+                  telefono: telStr || null,
+                  direccion: cliInfo?.direccion ?? null,
+                };
 
         // Pendiente pago primero, luego pagado; dentro de cada grupo, más antiguos primero
         mapped.sort((a, b) => {
