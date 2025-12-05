@@ -37,7 +37,8 @@ type PedidoEmpresa = {
   total: number | null;
   pagado: boolean | null;
   fecha_ingreso: string | null;
-  tipo_entrega: string | null;
+  es_empresa: boolean | null;
+  empresa_nombre: string | null;
 };
 
 type AuthMode = 'clave' | 'usuario';
@@ -49,6 +50,8 @@ type LfSession = {
   ts: number;
   ttl: number;
 };
+
+type Vista = 'SOLO_EMPRESA' | 'TODOS' | 'POR_EMPRESA';
 
 /* =========================
    Utilidades
@@ -168,6 +171,10 @@ export default function FinanzasEmpresaPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Vista de filtro
+  const [vista, setVista] = useState<Vista>('SOLO_EMPRESA');
+  const [empresaSel, setEmpresaSel] = useState<string>('TODAS');
+
   useEffect(() => {
     if (!roleOk) return;
     (async () => {
@@ -175,11 +182,10 @@ export default function FinanzasEmpresaPage() {
         setLoading(true);
         setLoadError(null);
 
-        // Solo pedidos DOMICILIO (tu definición de EMPRESA)
+        // Cargamos TODOS los pedidos, con info de empresa
         const { data, error } = await supabase
           .from('pedido')
-          .select('nro, total, pagado, fecha_ingreso, tipo_entrega')
-          .eq('tipo_entrega', 'DOMICILIO');
+          .select('nro, total, pagado, fecha_ingreso, es_empresa, empresa_nombre');
 
         if (error) {
           console.error('Error cargando pedidos empresa', error);
@@ -199,7 +205,21 @@ export default function FinanzasEmpresaPage() {
   }, [roleOk]);
 
   /* =========================
-     Cálculos generales
+     Empresas disponibles
+  ========================== */
+
+  const empresasDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    pedidos.forEach((p) => {
+      if (p.es_empresa && p.empresa_nombre) {
+        set.add(p.empresa_nombre.toString());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [pedidos]);
+
+  /* =========================
+     Cálculos generales (con filtros)
   ========================== */
 
   const {
@@ -216,6 +236,24 @@ export default function FinanzasEmpresaPage() {
     anioLabels,
     anioValores,
   } = useMemo(() => {
+    // 1) Base según vista
+    let base: PedidoEmpresa[] = [];
+    if (vista === 'TODOS') {
+      base = pedidos;
+    } else {
+      base = pedidos.filter((p) => !!p.es_empresa);
+    }
+
+    // 2) Filtro por empresa específica
+    let filtrados = base;
+    if (vista === 'POR_EMPRESA' && empresaSel !== 'TODAS') {
+      const target = empresaSel.trim().toUpperCase();
+      filtrados = base.filter(
+        (p) =>
+          (p.empresa_nombre || '').toString().trim().toUpperCase() === target,
+      );
+    }
+
     let totalPagado = 0;
     let totalPendiente = 0;
     let totalGeneral = 0;
@@ -232,7 +270,7 @@ export default function FinanzasEmpresaPage() {
     const mesMap = new Map<string, number>();
     const anioMap = new Map<string, number>();
 
-    pedidos.forEach((p) => {
+    filtrados.forEach((p) => {
       const monto = p.total ?? 0;
       const pag = !!p.pagado;
       const d = parseFecha(p.fecha_ingreso);
@@ -252,7 +290,7 @@ export default function FinanzasEmpresaPage() {
         diarioMap.set(iso, (diarioMap.get(iso) ?? 0) + monto);
       }
 
-      // Quincenal para gráfico (sólo total general)
+      // Quincenal para gráfico
       quinMap.set(qKey, (quinMap.get(qKey) ?? 0) + monto);
 
       // Mensual
@@ -322,7 +360,7 @@ export default function FinanzasEmpresaPage() {
       anioLabels,
       anioValores,
     };
-  }, [pedidos]);
+  }, [pedidos, vista, empresaSel]);
 
   const lineOptions = {
     responsive: true,
@@ -349,7 +387,7 @@ export default function FinanzasEmpresaPage() {
     labels: diarioLabels,
     datasets: [
       {
-        label: 'Total diario (DOMICILIO)',
+        label: 'Total diario (según filtro)',
         data: diarioValores,
         borderColor: '#ffffff',
         backgroundColor: 'rgba(255,255,255,0.25)',
@@ -364,7 +402,7 @@ export default function FinanzasEmpresaPage() {
     labels: quinLabels,
     datasets: [
       {
-        label: 'Total por quincena (DOMICILIO)',
+        label: 'Total por quincena',
         data: quinValores,
         backgroundColor: 'rgba(245, 158, 11, 0.7)',
         borderColor: '#fbbf24',
@@ -377,7 +415,7 @@ export default function FinanzasEmpresaPage() {
     labels: mesLabels,
     datasets: [
       {
-        label: 'Total mensual (DOMICILIO)',
+        label: 'Total mensual',
         data: mesValores,
         borderColor: '#ffffff',
         backgroundColor: 'rgba(96, 165, 250, 0.5)',
@@ -392,7 +430,7 @@ export default function FinanzasEmpresaPage() {
     labels: anioLabels,
     datasets: [
       {
-        label: 'Total anual (DOMICILIO)',
+        label: 'Total anual',
         data: anioValores,
         backgroundColor: 'rgba(74, 222, 128, 0.7)',
         borderColor: '#22c55e',
@@ -437,6 +475,14 @@ export default function FinanzasEmpresaPage() {
     year: 'numeric',
   });
 
+  // Texto bajo el título según vista
+  let subTexto = 'Reportes de pedidos de empresas.';
+  if (vista === 'TODOS') {
+    subTexto = 'Reportes de TODOS los pedidos (empresas y particulares).';
+  } else if (vista === 'POR_EMPRESA' && empresaSel !== 'TODAS') {
+    subTexto = `Reportes solo de la empresa: ${empresaSel}.`;
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-4 py-4">
       {/* HEADER */}
@@ -450,9 +496,7 @@ export default function FinanzasEmpresaPage() {
           </button>
           <div>
             <h1 className="font-bold text-lg">Finanzas Empresa</h1>
-            <p className="text-xs text-white/80">
-              Reportes de pedidos de empresas (DOMICILIO).
-            </p>
+            <p className="text-xs text-white/80">{subTexto}</p>
             <p className="text-[11px] text-white/70">Hoy: {hoyTexto}</p>
           </div>
         </div>
@@ -466,17 +510,61 @@ export default function FinanzasEmpresaPage() {
         </button>
       </header>
 
+      {/* Controles de vista */}
+      <section className="mb-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-[11px] uppercase tracking-wide text-white/80">
+            Ver:
+          </span>
+          {(
+            [
+              { id: 'SOLO_EMPRESA', label: 'Solo empresas' },
+              { id: 'TODOS', label: 'Todas (empresas + particulares)' },
+              { id: 'POR_EMPRESA', label: 'Por empresa' },
+            ] as { id: Vista; label: string }[]
+          ).map((v) => (
+            <button
+              key={v.id}
+              onClick={() => setVista(v.id)}
+              className={[
+                'px-3 py-2 rounded-2xl border whitespace-nowrap',
+                vista === v.id
+                  ? 'bg-white text-violet-700 border-white'
+                  : 'bg-white/10 border-white/30 text-white/90',
+              ].join(' ')}
+            >
+              {v.label}
+            </button>
+          ))}
+
+          {vista === 'POR_EMPRESA' && (
+            <select
+              value={empresaSel}
+              onChange={(e) => setEmpresaSel(e.target.value)}
+              className="ml-1 rounded-2xl bg-white text-violet-800 px-3 py-2 text-xs border border-white/80 shadow-sm"
+            >
+              <option value="TODAS">Todas las empresas</option>
+              {empresasDisponibles.map((emp) => (
+                <option key={emp} value={emp}>
+                  {emp}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </section>
+
       <section className="grid gap-4">
         {/* Resumen rápido */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="rounded-2xl bg-emerald-500/90 text-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide">Pagado (DOMICILIO)</div>
+            <div className="text-[11px] uppercase tracking-wide">Pagado</div>
             <div className="text-lg font-extrabold">
               ${totalPagado.toLocaleString('es-CL')}
             </div>
           </div>
           <div className="rounded-2xl bg-amber-500/90 text-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide">Pendiente (DOMICILIO)</div>
+            <div className="text-[11px] uppercase tracking-wide">Pendiente</div>
             <div className="text-lg font-extrabold">
               ${totalPendiente.toLocaleString('es-CL')}
             </div>
@@ -527,7 +615,7 @@ export default function FinanzasEmpresaPage() {
                       colSpan={5}
                       className="py-3 text-center text-white/70"
                     >
-                      Aún no hay pedidos DOMICILIO para mostrar.
+                      Sin datos para este filtro.
                     </td>
                   </tr>
                 )}
@@ -539,7 +627,7 @@ export default function FinanzasEmpresaPage() {
         {/* Gráfico diario */}
         <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
           <div className="mb-2 text-xs text-white/80">
-            Gráfico diario (últimos 30 días, pedidos DOMICILIO):
+            Gráfico diario (últimos 30 días, según filtro):
           </div>
           {diarioLabels.length > 0 ? (
             <Line data={diarioData} options={lineOptions} />
@@ -567,7 +655,7 @@ export default function FinanzasEmpresaPage() {
         {/* Gráfico mensual */}
         <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
           <div className="mb-2 text-xs text-white/80">
-            Gráfico mensual (DOMICILIO – últimos meses):
+            Gráfico mensual:
           </div>
           {mesLabels.length > 0 ? (
             <Line data={mesData} options={lineOptions} />
@@ -581,7 +669,7 @@ export default function FinanzasEmpresaPage() {
         {/* Gráfico anual */}
         <div className="rounded-2xl bg-black/25 border border-white/20 p-4 mb-4">
           <div className="mb-2 text-xs text-white/80">
-            Gráfico anual (DOMICILIO):
+            Gráfico anual:
           </div>
           {anioLabels.length > 0 ? (
             <Bar data={anioData} options={barOptions} />
