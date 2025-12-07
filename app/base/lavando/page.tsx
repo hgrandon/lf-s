@@ -1,5 +1,7 @@
+// app/base/lavando/page.tsx
 'use client';
 
+import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,12 +19,19 @@ import {
   CreditCard,
   Archive,
   CheckCircle2,
+  Printer,
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type PedidoEstado =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
 
 type Pedido = {
   id: number; // nro
@@ -34,7 +43,7 @@ type Pedido = {
   fotos?: string[]; // lista de fotos para el slider
   pagado?: boolean | null;
   items?: Item[];
-  tipo_entrega?: string | null; // 👈 LOCAL / DOMICILIO
+  tipo_entrega?: string | null; // LOCAL / DOMICILIO
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -75,7 +84,7 @@ function allFotosFromMixed(input: unknown): string[] {
   return [];
 }
 
-// 👇 Helper para saber si el pedido es DOMICILIO según los ítems
+// Helper para saber si el pedido es DOMICILIO según los ítems
 function esPedidoDomicilio(p?: Pedido | null): boolean {
   if (!p || !Array.isArray(p.items)) return false;
   return p.items.some((it) =>
@@ -130,6 +139,11 @@ export default function LavandoPage() {
 
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
+
+  // Modal de impresión de rótulo
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [pedidoParaImprimir, setPedidoParaImprimir] = useState<number | null>(null);
+  const [copiasRotulo, setCopiasRotulo] = useState(1);
 
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
@@ -298,7 +312,7 @@ export default function LavandoPage() {
     // Payload para la actualización
     const update: Record<string, any> = { estado: next };
 
-    // 👇 REGLA: cuando pasa a GUARDADO, definir LOCAL o DOMICILIO según el artículo
+    // Cuando pasa a GUARDADO, definir LOCAL o DOMICILIO según el artículo
     if (next === 'GUARDADO') {
       const esDom = esPedidoDomicilio(pedido);
       update.tipo_entrega = esDom ? 'DOMICILIO' : 'LOCAL';
@@ -543,7 +557,7 @@ export default function LavandoPage() {
     setAskEditForId(null);
   }
 
-  // Igual que en Lavar: acepta id directo o usa el del modal
+  // Ir a editar
   function goEdit(idFromButton?: number) {
     const targetId = idFromButton ?? askEditForId;
     if (!targetId) return;
@@ -552,7 +566,6 @@ export default function LavandoPage() {
       setAskEditForId(null);
     }
 
-    // Navegamos a /editar?nro=ID
     router.push(`/editar?nro=${targetId}`);
   }
 
@@ -681,7 +694,7 @@ export default function LavandoPage() {
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* Botón Editar + flecha */}
+                          {/* Botón Editar + botón Rótulo + flecha */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -695,7 +708,27 @@ export default function LavandoPage() {
                               <Archive size={14} className="text-violet-50" />
                               <span>Editar</span>
                             </button>
-                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPedidoParaImprimir(p.id);
+                                setCopiasRotulo(1);
+                                setShowPrintModal(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
+                                bg-white/10 hover:bg-white/20 text-white border border-violet-300/70"
+                            >
+                              <Printer size={14} className="text-white" />
+                              <span>Rótulo</span>
+                            </button>
+
+                            {detOpen ? (
+                              <ChevronDown size={16} />
+                            ) : (
+                              <ChevronRight size={16} />
+                            )}
                           </div>
                         </button>
 
@@ -890,7 +923,7 @@ export default function LavandoPage() {
               )}
             </div>
           ) : (
-            <div className="mt-2 text-center text-xs text白/70">
+            <div className="mt-2 text-center text-xs text-white/70">
               Abre un pedido para habilitar las acciones.
             </div>
           )}
@@ -933,6 +966,65 @@ export default function LavandoPage() {
                 className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal imprimir rótulo */}
+      {showPrintModal && pedidoParaImprimir !== null && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-black/50"
+          onClick={() => setShowPrintModal(false)}
+        >
+          <div
+            className="w-[380px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">
+              Imprimir rótulo
+            </h3>
+            <p className="text-sm text-black/70 mb-4">
+              Pedido N° <b>{pedidoParaImprimir}</b>
+            </p>
+
+            <label className="text-xs font-semibold mb-1 block">
+              Cantidad de copias
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={copiasRotulo}
+              onChange={(e) =>
+                setCopiasRotulo(
+                  Math.max(1, Number(e.target.value || '1') || 1),
+                )
+              }
+              className="w-full rounded-xl border px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-violet-300"
+            />
+
+            <div className="flex justify-end gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                className="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const copies = Math.max(1, copiasRotulo || 1);
+                  setShowPrintModal(false);
+                  router.push(
+                    `/rotulos?nro=${pedidoParaImprimir}&copies=${copies}`,
+                  );
+                }}
+                className="px-4 py-2 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 inline-flex items-center gap-2"
+              >
+                <Printer size={16} />
+                Imprimir rótulo
               </button>
             </div>
           </div>

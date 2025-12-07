@@ -71,13 +71,37 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
-export default function RotulosPage() {
+// 👇 Para leer ?nro=XXXX&copies=Y
+type PageProps = {
+  searchParams?: { [key: string]: string | string[] | undefined };
+};
+
+export default function RotulosPage({ searchParams }: PageProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // rótulos ya “explotados” por bolsas
   const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
+
+  // --- parámetros opcionales ---
+  const nroParam = searchParams?.nro;
+  const copiesParam = searchParams?.copies;
+
+  const nroFiltro =
+    typeof nroParam === 'string'
+      ? Number(nroParam)
+      : Array.isArray(nroParam)
+      ? Number(nroParam[0])
+      : null;
+
+  const copias =
+    typeof copiesParam === 'string'
+      ? Math.max(1, Number(copiesParam) || 1)
+      : Array.isArray(copiesParam)
+      ? Math.max(1, Number(copiesParam[0]) || 1)
+      : 1;
+
+  const esModoUnSoloPedido = nroFiltro != null && !Number.isNaN(nroFiltro);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -93,14 +117,24 @@ export default function RotulosPage() {
     setErr(null);
 
     try {
-      // 1) Pedidos en LAVAR / LAVANDO
-      const { data: pedData, error: pedErr } = await supabase
+      // 1) Pedidos:
+      //    - Modo normal: todos en LAVAR / LAVANDO
+      //    - Modo 1 pedido: solo nroFiltro (cualquier estado)
+      let query = supabase
         .from('pedido')
         .select(
           'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas'
-        )
-        .in('estado', ['LAVAR', 'LAVANDO'])
-        .order('nro', { ascending: true });
+        );
+
+      if (esModoUnSoloPedido) {
+        query = query.eq('nro', nroFiltro as number);
+      } else {
+        query = query.in('estado', ['LAVAR', 'LAVANDO']);
+      }
+
+      const { data: pedData, error: pedErr } = await query.order('nro', {
+        ascending: true,
+      });
 
       if (pedErr) throw pedErr;
 
@@ -165,14 +199,20 @@ export default function RotulosPage() {
 
       // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
       const rotulosLista: RotuloConBolsa[] = [];
-      for (const ped of pedidosBase) {
-        const totalBolsas = ped.bolsas || 1;
-        for (let i = 1; i <= totalBolsas; i++) {
-          rotulosLista.push({
-            pedido: ped,
-            bolsaIndex: i,
-            bolsasTotal: totalBolsas,
-          });
+
+      //   Además, si nos pidieron copias (copies>1), repetimos
+      const repeticiones = Math.max(1, copias);
+
+      for (let copia = 0; copia < repeticiones; copia++) {
+        for (const ped of pedidosBase) {
+          const totalBolsas = ped.bolsas || 1;
+          for (let i = 1; i <= totalBolsas; i++) {
+            rotulosLista.push({
+              pedido: ped,
+              bolsaIndex: i,
+              bolsasTotal: totalBolsas,
+            });
+          }
         }
       }
 
@@ -189,13 +229,18 @@ export default function RotulosPage() {
 
   useEffect(() => {
     fetchRotulos();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nroFiltro, copias]);
 
   const cantidad = useMemo(() => rotulos.length, [rotulos]);
 
   function handlePrint() {
     if (!rotulos.length) {
-      alert('No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.');
+      alert(
+        esModoUnSoloPedido
+          ? 'No se encontró el pedido para imprimir su rótulo.'
+          : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'
+      );
       return;
     }
 
@@ -207,7 +252,6 @@ export default function RotulosPage() {
       return;
     }
 
-    console.log('Enviando comando window.print()…');
     setTimeout(() => {
       try {
         window.print();
@@ -233,9 +277,19 @@ export default function RotulosPage() {
             Base
           </button>
           <div>
-            <h1 className="font-bold text-xl sm:text-2xl">Rótulos</h1>
+            <h1 className="font-bold text-xl sm:text-2xl">
+              {esModoUnSoloPedido ? `Rótulo pedido N° ${nroFiltro}` : 'Rótulos'}
+            </h1>
             <p className="text-xs sm:text-sm text-white/80">
-              Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
+              {esModoUnSoloPedido ? (
+                <>
+                  Solo este pedido • Copias: <span className="font-semibold">{copias}</span>
+                </>
+              ) : (
+                <>
+                  Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -293,22 +347,24 @@ export default function RotulosPage() {
 
         {!loading && !rotulos.length && (
           <div className="mt-10 text-center text-sm print:hidden">
-            No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.
+            {esModoUnSoloPedido
+              ? 'No se encontró el pedido indicado para imprimir su rótulo.'
+              : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'}
           </div>
         )}
 
-          <div
-            className="
-              grid gap-3 sm:gap-3
-              grid-cols-1 sm:grid-cols-2
-              print:grid-cols-2
-              print:gap-y-2
-              print:gap-x-0
-            "
-          >
+        <div
+          className="
+            grid gap-3 sm:gap-3
+            grid-cols-1 sm:grid-cols-2
+            print:grid-cols-2
+            print:gap-y-2
+            print:gap-x-0
+          "
+        >
           {rotulos.map((r) => (
             <RotuloCard
-              key={`${r.pedido.nro}-${r.bolsaIndex}`}
+              key={`${r.pedido.nro}-${r.bolsaIndex}-${Math.random()}`}
               pedido={r.pedido}
               bolsaIndex={r.bolsaIndex}
               bolsasTotal={r.bolsasTotal}
@@ -322,7 +378,6 @@ export default function RotulosPage() {
 
 /* =========================
    Tarjeta de Rótulo TIPO ETIQUETA
-   Tamaño: 8.5 x 2.5 cm
 ========================= */
 
 function RotuloCard({
@@ -339,7 +394,6 @@ function RotuloCard({
       ? 'LAVANDERÍA FABIOLA'
       : pedido.direccion.toUpperCase();
 
-  // Mostrar fracción SOLO si hay más de 1 bolsa (no mostrar 1/1)
   const fraccionTexto = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
 
   return (
@@ -350,16 +404,15 @@ function RotuloCard({
         break-inside-avoid
         print:border-violet-700
       "
-        style={{
-          width: '8.3cm',
-          height: '2.5cm',
-          padding: '0.2cm',
-        }}
+      style={{
+        width: '8.3cm',
+        height: '2.5cm',
+        padding: '0.2cm',
+      }}
     >
       {/* LOGO + NOMBRE + NRO + FRACCIÓN */}
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
-          {/* LOGO grande */}
           <img
             src="/logo.png"
             alt="LF"
@@ -367,19 +420,16 @@ function RotuloCard({
           />
 
           <div className="flex flex-col leading-tight">
-            {/* Nombre */}
             <span className="text-[0.75rem] font-bold text-violet-700 uppercase tracking-tight">
               {pedido.clienteNombre || 'SIN NOMBRE'}
             </span>
 
-            {/* NÚMERO DE PEDIDO MÁS GRANDE */}
             <span className="text-[3.3rem] leading-none text-violet-700 font-black">
               {pedido.nro}
             </span>
           </div>
         </div>
 
-        {/* FRACCIÓN DE BOLSAS MÁS GRANDE */}
         {fraccionTexto && (
           <div className="pl-3 pr-1 text-violet-700 font-black text-[1.9rem] whitespace-nowrap">
             {fraccionTexto}
@@ -387,7 +437,6 @@ function RotuloCard({
         )}
       </div>
 
-      {/* Monto + Dirección */}
       <div
         className="flex w-full items-baseline justify-between gap-3 font-medium"
         style={{ marginTop: '-2px' }}
