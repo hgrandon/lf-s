@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Lock, User2, Eye, EyeOff } from 'lucide-react';
 
@@ -288,16 +289,28 @@ export default function LoginPage() {
 
   /* =========================
      Render
-  ========================= */
+  ========================== */
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 grid place-items-center px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white/95 shadow-2xl p-6">
-        {/* Logo */}
-        <div className="flex flex-col items-center gap-1 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 grid place-items-center text-white font-black">
-            LF
+        {/* Logo y título */}
+        <div className="flex flex-col items-center gap-2 mb-5">
+          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg ring-2 ring-violet-100">
+            <Image
+              src="/logo.png"
+              alt="Logo Lavandería Fabiola"
+              width={56}
+              height={56}
+              priority
+              className="object-contain"
+            />
           </div>
-          <div className="text-sm text-slate-500 font-semibold">Acceso a la aplicación</div>
+          <div className="text-[11px] font-semibold tracking-[0.28em] text-violet-700 uppercase">
+            Lavandería Fabiola
+          </div>
+          <div className="text-sm text-slate-500 font-semibold">
+            Acceso a la aplicación
+          </div>
         </div>
 
         {/* Tabs */}
@@ -328,7 +341,7 @@ export default function LoginPage() {
         <form
           onSubmit={handleSubmit}
           className="grid gap-3"
-          autoComplete="off" // desactiva autocompletado del formulario
+          autoComplete="off"
         >
           {mode === 'clave' ? (
             <>
