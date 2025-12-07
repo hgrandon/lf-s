@@ -14,34 +14,21 @@ export default function HomePage() {
 
   return (
     <main className="flex items-center justify-center min-h-screen bg-white">
-      <div className="relative flex flex-col items-center">
-        {/* LOGO */}
-        <Image
-          src="/logo.png"
-          alt="Logo Lavandería Fabiola"
-          width={140}
-          height={140}
-          priority
-          className="z-10"
-        />
+        <div className="relative flex items-center justify-center h-[260px] w-[260px]">
+          {/* LOGO perfectamente centrado */}
+          <Image
+            src="/logo.png"
+            alt="Logo Lavandería Fabiola"
+            width={150}
+            height={150}
+            priority
+            className="object-contain z-10"
+          />
 
-        {/* LOADER TIPO SPINNER ALREDEDOR DEL LOGO */}
-        {loading && (
-          <div className="absolute flex items-center justify-center inset-0">
-            <div className="loader-spinner"></div>
-          </div>
-        )}
+          {/* LOADER totalmente centrado detrás */}
+          {loading && <div className="loader-spinner absolute"></div>}
+        </div>
 
-        {/* BOTÓN DESPUÉS DE CARGAR */}
-        {!loading && (
-          <Link
-            href="/login"
-            className="mt-10 bg-violet-600 text-white px-7 py-3 rounded-xl text-lg font-semibold shadow-lg hover:bg-violet-700 animate-fade-in"
-          >
-            Iniciar sesión
-          </Link>
-        )}
-      </div>
 
       {/* ANIMACIONES */}
         <style jsx global>{`
