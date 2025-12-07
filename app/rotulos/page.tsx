@@ -358,7 +358,7 @@ export default function RotulosPage({ searchParams }: PageProps) {
             grid gap-3 sm:gap-3
             grid-cols-1 sm:grid-cols-2
             print:grid-cols-2
-            print:gap-y-0
+            print:gap-y-2
             print:gap-x-0
           "
         >
