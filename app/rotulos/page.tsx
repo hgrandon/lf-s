@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Printer, RefreshCw, ArrowLeft, AlertTriangle } from 'lucide-react';
 
@@ -71,37 +71,28 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
-// 👇 Para leer ?nro=XXXX&copies=Y
-type PageProps = {
-  searchParams?: { [key: string]: string | string[] | undefined };
-};
-
-export default function RotulosPage({ searchParams }: PageProps) {
+export default function RotulosPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // 👉 parámetros desde la URL, por ejemplo /rotulos?nro=6351&copies=2
+  const nroFiltro = useMemo(() => {
+    const raw = searchParams.get('nro');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+
+  const copies = useMemo(() => {
+    const raw = searchParams.get('copies');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }, [searchParams]);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  // rótulos ya “explotados” por bolsas (y por copias si corresponde)
   const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
-
-  // --- parámetros opcionales ---
-  const nroParam = searchParams?.nro;
-  const copiesParam = searchParams?.copies;
-
-  const nroFiltro =
-    typeof nroParam === 'string'
-      ? Number(nroParam)
-      : Array.isArray(nroParam)
-      ? Number(nroParam[0])
-      : null;
-
-  const copias =
-    typeof copiesParam === 'string'
-      ? Math.max(1, Number(copiesParam) || 1)
-      : Array.isArray(copiesParam)
-      ? Math.max(1, Number(copiesParam[0]) || 1)
-      : 1;
-
-  const esModoUnSoloPedido = nroFiltro != null && !Number.isNaN(nroFiltro);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -117,22 +108,22 @@ export default function RotulosPage({ searchParams }: PageProps) {
     setErr(null);
 
     try {
-      // 1) Pedidos:
-      //    - Modo normal: todos en LAVAR / LAVANDO
-      //    - Modo 1 pedido: solo nroFiltro (cualquier estado)
-      let query = supabase
+      // 1) Pedidos base
+      let pedQuery = supabase
         .from('pedido')
         .select(
-          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas'
+          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
         );
 
-      if (esModoUnSoloPedido) {
-        query = query.eq('nro', nroFiltro as number);
+      if (nroFiltro) {
+        // 👉 si viene nro, solo ese pedido (independiente del estado)
+        pedQuery = pedQuery.eq('nro', nroFiltro);
       } else {
-        query = query.in('estado', ['LAVAR', 'LAVANDO']);
+        // 👉 si no hay filtro, los de LAVAR / LAVANDO como antes
+        pedQuery = pedQuery.in('estado', ['LAVAR', 'LAVANDO']);
       }
 
-      const { data: pedData, error: pedErr } = await query.order('nro', {
+      const { data: pedData, error: pedErr } = await pedQuery.order('nro', {
         ascending: true,
       });
 
@@ -149,8 +140,8 @@ export default function RotulosPage({ searchParams }: PageProps) {
         new Set(
           pedidosRaw
             .map((p) => (p.telefono || '').toString().trim())
-            .filter((t) => t.length > 0)
-        )
+            .filter((t) => t.length > 0),
+        ),
       );
 
       const clientesMap = new Map<string, ClienteDb>();
@@ -198,25 +189,29 @@ export default function RotulosPage({ searchParams }: PageProps) {
         .sort((a, b) => a.nro - b.nro);
 
       // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
-      const rotulosLista: RotuloConBolsa[] = [];
-
-      //   Además, si nos pidieron copias (copies>1), repetimos
-      const repeticiones = Math.max(1, copias);
-
-      for (let copia = 0; copia < repeticiones; copia++) {
-        for (const ped of pedidosBase) {
-          const totalBolsas = ped.bolsas || 1;
-          for (let i = 1; i <= totalBolsas; i++) {
-            rotulosLista.push({
-              pedido: ped,
-              bolsaIndex: i,
-              bolsasTotal: totalBolsas,
-            });
-          }
+      const rotulosPorBolsa: RotuloConBolsa[] = [];
+      for (const ped of pedidosBase) {
+        const totalBolsas = ped.bolsas || 1;
+        for (let i = 1; i <= totalBolsas; i++) {
+          rotulosPorBolsa.push({
+            pedido: ped,
+            bolsaIndex: i,
+            bolsasTotal: totalBolsas,
+          });
         }
       }
 
-      if (mountedRef.current) setRotulos(rotulosLista);
+      // 5) Si viene copies y hay filtro de nro, replicar ese set de rótulos
+      let rotulosFinal: RotuloConBolsa[] = rotulosPorBolsa;
+      if (nroFiltro && copies > 1) {
+        rotulosFinal = [];
+        for (let i = 0; i < copies; i++) {
+          // push una copia completa de la lista
+          rotulosFinal.push(...rotulosPorBolsa);
+        }
+      }
+
+      if (mountedRef.current) setRotulos(rotulosFinal);
     } catch (e: any) {
       console.error('Error cargando rótulos', e);
       if (mountedRef.current) {
@@ -230,24 +225,20 @@ export default function RotulosPage({ searchParams }: PageProps) {
   useEffect(() => {
     fetchRotulos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nroFiltro, copias]);
+  }, [nroFiltro, copies]);
 
   const cantidad = useMemo(() => rotulos.length, [rotulos]);
 
   function handlePrint() {
     if (!rotulos.length) {
-      alert(
-        esModoUnSoloPedido
-          ? 'No se encontró el pedido para imprimir su rótulo.'
-          : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'
-      );
+      alert('No hay rótulos para imprimir.');
       return;
     }
 
     if (typeof window === 'undefined' || typeof window.print !== 'function') {
       alert(
         'La opción de impresión solo funciona en un navegador de escritorio. ' +
-          'Abre la app en el PC para generar el PDF.'
+          'Abre la app en el PC para generar el PDF.',
       );
       return;
     }
@@ -277,19 +268,11 @@ export default function RotulosPage({ searchParams }: PageProps) {
             Base
           </button>
           <div>
-            <h1 className="font-bold text-xl sm:text-2xl">
-              {esModoUnSoloPedido ? `Rótulo pedido N° ${nroFiltro}` : 'Rótulos'}
-            </h1>
+            <h1 className="font-bold text-xl sm:text-2xl">Rótulos</h1>
             <p className="text-xs sm:text-sm text-white/80">
-              {esModoUnSoloPedido ? (
-                <>
-                  Solo este pedido • Copias: <span className="font-semibold">{copias}</span>
-                </>
-              ) : (
-                <>
-                  Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
-                </>
-              )}
+              {nroFiltro
+                ? `Pedido Nº ${nroFiltro}`
+                : 'Pedidos en estado LAVAR / LAVANDO'}
             </p>
           </div>
         </div>
@@ -347,9 +330,7 @@ export default function RotulosPage({ searchParams }: PageProps) {
 
         {!loading && !rotulos.length && (
           <div className="mt-10 text-center text-sm print:hidden">
-            {esModoUnSoloPedido
-              ? 'No se encontró el pedido indicado para imprimir su rótulo.'
-              : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'}
+            No hay rótulos para imprimir.
           </div>
         )}
 
@@ -358,13 +339,13 @@ export default function RotulosPage({ searchParams }: PageProps) {
             grid gap-3 sm:gap-3
             grid-cols-1 sm:grid-cols-2
             print:grid-cols-2
-            print:gap-y-2
+            print:gap-y-0
             print:gap-x-0
           "
         >
-          {rotulos.map((r) => (
+          {rotulos.map((r, idx) => (
             <RotuloCard
-              key={`${r.pedido.nro}-${r.bolsaIndex}-${Math.random()}`}
+              key={`${r.pedido.nro}-${r.bolsaIndex}-${idx}`}
               pedido={r.pedido}
               bolsaIndex={r.bolsaIndex}
               bolsasTotal={r.bolsasTotal}
@@ -378,6 +359,7 @@ export default function RotulosPage({ searchParams }: PageProps) {
 
 /* =========================
    Tarjeta de Rótulo TIPO ETIQUETA
+   Tamaño: 8.5 x 2.5 cm (ajustable)
 ========================= */
 
 function RotuloCard({
@@ -394,6 +376,7 @@ function RotuloCard({
       ? 'LAVANDERÍA FABIOLA'
       : pedido.direccion.toUpperCase();
 
+  // Mostrar fracción SOLO si hay más de 1 bolsa (no mostrar 1/1)
   const fraccionTexto = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
 
   return (
@@ -406,13 +389,14 @@ function RotuloCard({
       "
       style={{
         width: '8.3cm',
-        height: '2.5cm',
+        height: '2.4cm',
         padding: '0.2cm',
       }}
     >
       {/* LOGO + NOMBRE + NRO + FRACCIÓN */}
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
+          {/* LOGO grande */}
           <img
             src="/logo.png"
             alt="LF"
@@ -420,16 +404,19 @@ function RotuloCard({
           />
 
           <div className="flex flex-col leading-tight">
+            {/* Nombre */}
             <span className="text-[0.75rem] font-bold text-violet-700 uppercase tracking-tight">
               {pedido.clienteNombre || 'SIN NOMBRE'}
             </span>
 
+            {/* NÚMERO DE PEDIDO MÁS GRANDE */}
             <span className="text-[3.3rem] leading-none text-violet-700 font-black">
               {pedido.nro}
             </span>
           </div>
         </div>
 
+        {/* FRACCIÓN DE BOLSAS MÁS GRANDE */}
         {fraccionTexto && (
           <div className="pl-3 pr-1 text-violet-700 font-black text-[1.9rem] whitespace-nowrap">
             {fraccionTexto}
@@ -437,6 +424,7 @@ function RotuloCard({
         )}
       </div>
 
+      {/* Monto + Dirección */}
       <div
         className="flex w-full items-baseline justify-between gap-3 font-medium"
         style={{ marginTop: '-2px' }}
