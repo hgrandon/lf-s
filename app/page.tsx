@@ -47,8 +47,8 @@ export default function HomePage() {
         <style jsx global>{`
           /* Spinner mayor tamaño y más visible */
           .loader-spinner {
-            width: 200px;
-            height: 200px;
+            width: 230px;
+            height: 230px;
             position: absolute;
             inset: 0;
             margin: auto;
