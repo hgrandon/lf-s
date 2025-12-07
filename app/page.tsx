@@ -1,9 +1,8 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-
-export const metadata = { title: "Inicio" };
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
@@ -51,15 +50,25 @@ export default function HomePage() {
       {/* Animaciones personalizadas */}
       <style jsx global>{`
         @keyframes spin-slow {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(-360deg); }
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(-360deg);
+          }
         }
         .animate-spin-slow {
           animation: spin-slow 3s linear infinite;
         }
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         .animate-fade-in {
           animation: fade-in 1s ease forwards;
