@@ -14,64 +14,84 @@ export default function HomePage() {
 
   return (
     <main className="flex items-center justify-center min-h-screen bg-white">
-      {/* Contenedor principal */}
       <div className="relative flex flex-col items-center">
         {/* LOGO */}
         <Image
           src="/logo.png"
           alt="Logo Lavandería Fabiola"
-          width={120}
-          height={120}
+          width={140}
+          height={140}
           priority
-          className="object-contain z-10"
+          className="z-10"
         />
 
-        {/* Círculos de carga animados */}
+        {/* LOADER TIPO SPINNER ALREDEDOR DEL LOGO */}
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative w-40 h-40">
-              <span className="absolute inset-0 rounded-full border-4 border-violet-500 border-t-transparent animate-spin"></span>
-              <span className="absolute inset-2 rounded-full border-4 border-fuchsia-500 border-t-transparent animate-spin-slow"></span>
-            </div>
+          <div className="absolute flex items-center justify-center inset-0">
+            <div className="loader-spinner"></div>
           </div>
         )}
 
-        {/* Botón que aparece después de la carga */}
+        {/* BOTÓN DESPUÉS DE CARGAR */}
         {!loading && (
           <Link
             href="/login"
-            className="mt-10 bg-violet-600 text-white px-6 py-3 rounded-xl font-semibold text-lg transition-opacity duration-700 animate-fade-in shadow-lg hover:bg-violet-700"
+            className="mt-10 bg-violet-600 text-white px-7 py-3 rounded-xl text-lg font-semibold shadow-lg hover:bg-violet-700 animate-fade-in"
           >
             Iniciar sesión
           </Link>
         )}
       </div>
 
-      {/* Animaciones personalizadas */}
+      {/* ANIMACIONES */}
       <style jsx global>{`
-        @keyframes spin-slow {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(-360deg);
+        .loader-spinner {
+          width: 120px;
+          height: 120px;
+          border-radius: 50%;
+          position: relative;
+        }
+
+        .loader-spinner::before,
+        .loader-spinner::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+        }
+
+        /* 12 rayas del loader */
+        .loader-spinner::before {
+          background:
+            conic-gradient(
+              from 0deg,
+              #4c1d95 0deg 30deg,
+              transparent 30deg 60deg
+            );
+          mask:
+            radial-gradient(farthest-side, transparent calc(100% - 12px), #000);
+          animation: spin 1.2s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
           }
         }
-        .animate-spin-slow {
-          animation: spin-slow 3s linear infinite;
-        }
+
+        /* Fade del botón */
         @keyframes fade-in {
-          from {
+          0% {
             opacity: 0;
             transform: translateY(10px);
           }
-          to {
+          100% {
             opacity: 1;
             transform: translateY(0);
           }
         }
         .animate-fade-in {
-          animation: fade-in 1s ease forwards;
+          animation: fade-in 0.8s ease forwards;
         }
       `}</style>
     </main>
