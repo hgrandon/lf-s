@@ -44,56 +44,60 @@ export default function HomePage() {
       </div>
 
       {/* ANIMACIONES */}
-      <style jsx global>{`
-        .loader-spinner {
-          width: 120px;
-          height: 120px;
-          border-radius: 50%;
-          position: relative;
-        }
-
-        .loader-spinner::before,
-        .loader-spinner::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-        }
-
-        /* 12 rayas del loader */
-        .loader-spinner::before {
-          background:
-            conic-gradient(
-              from 0deg,
-              #4c1d95 0deg 30deg,
-              transparent 30deg 60deg
-            );
-          mask:
-            radial-gradient(farthest-side, transparent calc(100% - 12px), #000);
-          animation: spin 1.2s linear infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
+        <style jsx global>{`
+          /* Spinner mayor tamaño y más visible */
+          .loader-spinner {
+            width: 200px;
+            height: 200px;
+            position: absolute;
+            inset: 0;
+            margin: auto;
           }
-        }
 
-        /* Fade del botón */
-        @keyframes fade-in {
-          0% {
-            opacity: 0;
-            transform: translateY(10px);
+          .loader-spinner::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background:
+              conic-gradient(
+                from 0deg,
+                #7c3aed 0deg 20deg,
+                #a855f7 20deg 40deg,
+                #c084fc 40deg 60deg,
+                transparent 60deg 360deg
+              );
+            mask:
+              radial-gradient(
+                farthest-side,
+                transparent calc(100% - 20px),
+                #000 calc(100% - 15px)
+              );
+            animation: spin 1s linear infinite;
           }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
+
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
           }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.8s ease forwards;
-        }
-      `}</style>
+
+          /* Fade del botón */
+          @keyframes fade-in {
+            0% {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .animate-fade-in {
+            animation: fade-in 0.8s ease forwards;
+          }
+        `}</style>
+
     </main>
   );
 }
