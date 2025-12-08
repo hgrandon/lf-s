@@ -1,7 +1,5 @@
-// app/base/lavando/page.tsx
 'use client';
 
-import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,7 +17,7 @@ import {
   CreditCard,
   Archive,
   CheckCircle2,
-  Printer,
+  Printer, // 👈 NUEVO
 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
@@ -43,7 +41,7 @@ type Pedido = {
   fotos?: string[]; // lista de fotos para el slider
   pagado?: boolean | null;
   items?: Item[];
-  tipo_entrega?: string | null; // LOCAL / DOMICILIO
+  tipo_entrega?: string | null; // 👈 LOCAL / DOMICILIO
 };
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -84,7 +82,7 @@ function allFotosFromMixed(input: unknown): string[] {
   return [];
 }
 
-// Helper para saber si el pedido es DOMICILIO según los ítems
+// 👇 Helper para saber si el pedido es DOMICILIO según los ítems
 function esPedidoDomicilio(p?: Pedido | null): boolean {
   if (!p || !Array.isArray(p.items)) return false;
   return p.items.some((it) =>
@@ -140,10 +138,9 @@ export default function LavandoPage() {
   // Índice de la foto actual por pedido (para el slider)
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
 
-  // Modal de impresión de rótulo
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [pedidoParaImprimir, setPedidoParaImprimir] = useState<number | null>(null);
-  const [copiasRotulo, setCopiasRotulo] = useState(1);
+  // 👉 Modal para imprimir rótulo individual
+  const [printPedidoId, setPrintPedidoId] = useState<number | null>(null);
+  const [printCopies, setPrintCopies] = useState<string>('1');
 
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
@@ -312,7 +309,7 @@ export default function LavandoPage() {
     // Payload para la actualización
     const update: Record<string, any> = { estado: next };
 
-    // Cuando pasa a GUARDADO, definir LOCAL o DOMICILIO según el artículo
+    // 👇 REGLA: cuando pasa a GUARDADO, definir LOCAL o DOMICILIO según el artículo
     if (next === 'GUARDADO') {
       const esDom = esPedidoDomicilio(pedido);
       update.tipo_entrega = esDom ? 'DOMICILIO' : 'LOCAL';
@@ -334,9 +331,7 @@ export default function LavandoPage() {
 
       if (next === 'GUARDADO') {
         const esDom = esPedidoDomicilio(pedido);
-        snack(
-          `Pedido #${id} movido a GUARDADO ${esDom ? 'DOMICILIO' : 'LOCAL'}`,
-        );
+        snack(`Pedido #${id} movido a GUARDADO ${esDom ? 'DOMICILIO' : 'LOCAL'}`);
       } else {
         snack(`Pedido #${id} movido a ${next}`);
       }
@@ -557,7 +552,7 @@ export default function LavandoPage() {
     setAskEditForId(null);
   }
 
-  // Ir a editar
+  // Igual que en Lavar: acepta id directo o usa el del modal
   function goEdit(idFromButton?: number) {
     const targetId = idFromButton ?? askEditForId;
     if (!targetId) return;
@@ -567,6 +562,19 @@ export default function LavandoPage() {
     }
 
     router.push(`/editar?nro=${targetId}`);
+  }
+
+  // 👉 Abrir modal de rótulo desde el pedido
+  function openPrintModal(id: number) {
+    setPrintPedidoId(id);
+    setPrintCopies('1');
+  }
+
+  // 👉 Confirmar e ir a /rotulos?nro=ID&copies=N
+  function confirmPrint() {
+    if (!printPedidoId) return;
+    const n = Math.max(1, Number(printCopies) || 1);
+    router.push(`/rotulos?nro=${printPedidoId}&copies=${n}`);
   }
 
   return (
@@ -694,7 +702,7 @@ export default function LavandoPage() {
                             <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
-                          {/* Botón Editar + botón Rótulo + flecha */}
+                          {/* Botones Editar + Rótulo + flecha */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -709,26 +717,22 @@ export default function LavandoPage() {
                               <span>Editar</span>
                             </button>
 
+                            {/* NUEVO BOTÓN RÓTULO */}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPedidoParaImprimir(p.id);
-                                setCopiasRotulo(1);
-                                setShowPrintModal(true);
+                                openPrintModal(p.id);
                               }}
                               className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg 
-                                bg-white/10 hover:bg-white/20 text-white border border-violet-300/70"
+                                bg-white text-violet-700 hover:bg-violet-50 shadow border border-violet-300"
+                              title="Imprimir rótulo de este pedido"
                             >
-                              <Printer size={14} className="text-white" />
+                              <Printer size={14} />
                               <span>Rótulo</span>
                             </button>
 
-                            {detOpen ? (
-                              <ChevronDown size={16} />
-                            ) : (
-                              <ChevronRight size={16} />
-                            )}
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </div>
                         </button>
 
@@ -972,65 +976,6 @@ export default function LavandoPage() {
         </div>
       )}
 
-      {/* Modal imprimir rótulo */}
-      {showPrintModal && pedidoParaImprimir !== null && (
-        <div
-          className="fixed inset-0 z-40 grid place-items-center bg-black/50"
-          onClick={() => setShowPrintModal(false)}
-        >
-          <div
-            className="w-[380px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold mb-1">
-              Imprimir rótulo
-            </h3>
-            <p className="text-sm text-black/70 mb-4">
-              Pedido N° <b>{pedidoParaImprimir}</b>
-            </p>
-
-            <label className="text-xs font-semibold mb-1 block">
-              Cantidad de copias
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={copiasRotulo}
-              onChange={(e) =>
-                setCopiasRotulo(
-                  Math.max(1, Number(e.target.value || '1') || 1),
-                )
-              }
-              className="w-full rounded-xl border px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-violet-300"
-            />
-
-            <div className="flex justify-end gap-2 text-sm">
-              <button
-                type="button"
-                onClick={() => setShowPrintModal(false)}
-                className="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const copies = Math.max(1, copiasRotulo || 1);
-                  setShowPrintModal(false);
-                  router.push(
-                    `/rotulos?nro=${pedidoParaImprimir}&copies=${copies}`,
-                  );
-                }}
-                className="px-4 py-2 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 inline-flex items-center gap-2"
-              >
-                <Printer size={16} />
-                Imprimir rótulo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal para opciones de imagen: sacar / cargar / eliminar */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
@@ -1073,6 +1018,52 @@ export default function LavandoPage() {
                   setPickerFotoUrl(null);
                 }}
                 className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal RÓTULO individual */}
+      {printPedidoId && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
+          <div className="w-[360px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
+            <h3 className="text-lg font-semibold mb-2">
+              Imprimir rótulo #{printPedidoId}
+            </h3>
+            <p className="text-sm text-black/70 mb-3">
+              Indica cuántos juegos de rótulos deseas imprimir para este pedido.
+            </p>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-violet-700 mb-1">
+                Cantidad de juegos
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={printCopies}
+                onChange={(e) => setPrintCopies(e.target.value)}
+                className="w-full rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-300"
+              />
+              <p className="mt-1 text-[11px] text-black/60">
+                Si el pedido tiene 2 bolsas, y pones <b>2</b>, se imprimirán 4 rótulos
+                (1/2, 2/2, 1/2, 2/2).
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={confirmPrint}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-2 text-sm font-semibold hover:bg-violet-700"
+              >
+                <Printer size={16} />
+                Imprimir
+              </button>
+              <button
+                onClick={() => setPrintPedidoId(null)}
+                className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-2 text-sm hover:bg-violet-200"
               >
                 Cancelar
               </button>
