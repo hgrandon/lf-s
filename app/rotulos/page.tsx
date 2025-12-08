@@ -1,7 +1,7 @@
 // app/rotulos/page.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Printer, RefreshCw, ArrowLeft, AlertTriangle } from 'lucide-react';
@@ -71,11 +71,33 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
+/* ===========
+   WRAPPER con Suspense
+   ========== */
+
 export default function RotulosPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+          Cargando rótulos…
+        </main>
+      }
+    >
+      <RotulosPageInner />
+    </Suspense>
+  );
+}
+
+/* ===========
+   COMPONENTE REAL (usa useSearchParams)
+   ========== */
+
+function RotulosPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // 👇 parámetros desde la URL
+  // parámetros desde la URL
   const nroParam = searchParams.get('nro');
   const copiesParam = searchParams.get('copies');
 
@@ -104,7 +126,7 @@ export default function RotulosPage() {
     try {
       let pedData: PedidoDb[] | null = null;
 
-      // 👇 MODO NORMAL: todos los LAVAR/LAVANDO
+      // MODO NORMAL: todos los LAVAR/LAVANDO
       if (!pedidoFiltrado) {
         const { data, error } = await supabase
           .from('pedido')
@@ -117,7 +139,7 @@ export default function RotulosPage() {
         if (error) throw error;
         pedData = (data as PedidoDb[]) || [];
       } else {
-        // 👇 MODO INDIVIDUAL: solo el nro indicado (sin filtrar por estado)
+        // MODO INDIVIDUAL: solo el nro indicado (sin filtrar por estado)
         const { data, error } = await supabase
           .from('pedido')
           .select(
@@ -137,7 +159,7 @@ export default function RotulosPage() {
         return;
       }
 
-      // 2) Teléfonos únicos -> clientes
+      // Teléfonos únicos -> clientes
       const telefonos = Array.from(
         new Set(
           pedidosRaw
@@ -161,7 +183,7 @@ export default function RotulosPage() {
         });
       }
 
-      // 3) Combinar pedidos + clientes
+      // Combinar pedidos + clientes
       const pedidosBase: PedidoRotulo[] = pedidosRaw
         .map((p) => {
           const estadoNorm = normalizeEstado(p.estado);
@@ -190,7 +212,7 @@ export default function RotulosPage() {
         .filter((x): x is PedidoRotulo => x !== null)
         .sort((a, b) => a.nro - b.nro);
 
-      // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
+      // “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
       const baseRotulos: RotuloConBolsa[] = [];
       for (const ped of pedidosBase) {
         const totalBolsas = ped.bolsas || 1;
@@ -203,7 +225,7 @@ export default function RotulosPage() {
         }
       }
 
-      // 5) Si viene copies, replicar esa lista
+      // Si viene copies, replicar esa lista
       const finalRotulos: RotuloConBolsa[] = [];
       for (let c = 0; c < copies; c++) {
         for (const r of baseRotulos) {
@@ -225,7 +247,7 @@ export default function RotulosPage() {
   useEffect(() => {
     fetchRotulos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pedidoFiltrado, copies]); // si cambia nro o copies, se recarga
+  }, [pedidoFiltrado, copies]);
 
   const cantidad = useMemo(() => rotulos.length, [rotulos]);
 
@@ -375,8 +397,7 @@ export default function RotulosPage() {
 }
 
 /* =========================
-   Tarjeta de Rótulo TIPO ETIQUETA
-   Tamaño: 8.3 x 2.5 cm
+   Tarjeta de Rótulo
 ========================= */
 
 function RotuloCard({
