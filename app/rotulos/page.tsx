@@ -75,23 +75,17 @@ export default function RotulosPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // 👉 parámetros desde la URL, por ejemplo /rotulos?nro=6351&copies=2
-  const nroFiltro = useMemo(() => {
-    const raw = searchParams.get('nro');
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }, [searchParams]);
+  // 👇 parámetros desde la URL
+  const nroParam = searchParams.get('nro');
+  const copiesParam = searchParams.get('copies');
 
-  const copies = useMemo(() => {
-    const raw = searchParams.get('copies');
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : 1;
-  }, [searchParams]);
+  const pedidoFiltrado = nroParam ? Number(nroParam) || null : null;
+  const copies = Math.max(1, Math.min(50, Number(copiesParam) || 1));
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // rótulos ya “explotados” por bolsas (y por copias si corresponde)
+  // rótulos ya “explotados” por bolsas (y por copies)
   const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
 
   const mountedRef = useRef(true);
@@ -108,30 +102,38 @@ export default function RotulosPage() {
     setErr(null);
 
     try {
-      // 1) Pedidos base
-      let pedQuery = supabase
-        .from('pedido')
-        .select(
-          'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
-        );
+      let pedData: PedidoDb[] | null = null;
 
-      if (nroFiltro) {
-        // 👉 si viene nro, solo ese pedido (independiente del estado)
-        pedQuery = pedQuery.eq('nro', nroFiltro);
+      // 👇 MODO NORMAL: todos los LAVAR/LAVANDO
+      if (!pedidoFiltrado) {
+        const { data, error } = await supabase
+          .from('pedido')
+          .select(
+            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
+          )
+          .in('estado', ['LAVAR', 'LAVANDO'])
+          .order('nro', { ascending: true });
+
+        if (error) throw error;
+        pedData = (data as PedidoDb[]) || [];
       } else {
-        // 👉 si no hay filtro, los de LAVAR / LAVANDO como antes
-        pedQuery = pedQuery.in('estado', ['LAVAR', 'LAVANDO']);
+        // 👇 MODO INDIVIDUAL: solo el nro indicado (sin filtrar por estado)
+        const { data, error } = await supabase
+          .from('pedido')
+          .select(
+            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
+          )
+          .eq('nro', pedidoFiltrado)
+          .limit(1);
+
+        if (error) throw error;
+        pedData = (data as PedidoDb[]) || [];
       }
 
-      const { data: pedData, error: pedErr } = await pedQuery.order('nro', {
-        ascending: true,
-      });
-
-      if (pedErr) throw pedErr;
-
-      const pedidosRaw = (pedData as PedidoDb[]) || [];
+      const pedidosRaw = pedData || [];
       if (!pedidosRaw.length) {
         if (mountedRef.current) setRotulos([]);
+        setLoading(false);
         return;
       }
 
@@ -189,11 +191,11 @@ export default function RotulosPage() {
         .sort((a, b) => a.nro - b.nro);
 
       // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
-      const rotulosPorBolsa: RotuloConBolsa[] = [];
+      const baseRotulos: RotuloConBolsa[] = [];
       for (const ped of pedidosBase) {
         const totalBolsas = ped.bolsas || 1;
         for (let i = 1; i <= totalBolsas; i++) {
-          rotulosPorBolsa.push({
+          baseRotulos.push({
             pedido: ped,
             bolsaIndex: i,
             bolsasTotal: totalBolsas,
@@ -201,17 +203,15 @@ export default function RotulosPage() {
         }
       }
 
-      // 5) Si viene copies y hay filtro de nro, replicar ese set de rótulos
-      let rotulosFinal: RotuloConBolsa[] = rotulosPorBolsa;
-      if (nroFiltro && copies > 1) {
-        rotulosFinal = [];
-        for (let i = 0; i < copies; i++) {
-          // push una copia completa de la lista
-          rotulosFinal.push(...rotulosPorBolsa);
+      // 5) Si viene copies, replicar esa lista
+      const finalRotulos: RotuloConBolsa[] = [];
+      for (let c = 0; c < copies; c++) {
+        for (const r of baseRotulos) {
+          finalRotulos.push({ ...r });
         }
       }
 
-      if (mountedRef.current) setRotulos(rotulosFinal);
+      if (mountedRef.current) setRotulos(finalRotulos);
     } catch (e: any) {
       console.error('Error cargando rótulos', e);
       if (mountedRef.current) {
@@ -225,7 +225,7 @@ export default function RotulosPage() {
   useEffect(() => {
     fetchRotulos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nroFiltro, copies]);
+  }, [pedidoFiltrado, copies]); // si cambia nro o copies, se recarga
 
   const cantidad = useMemo(() => rotulos.length, [rotulos]);
 
@@ -253,6 +253,8 @@ export default function RotulosPage() {
     }, 50);
   }
 
+  const esModoIndividual = !!pedidoFiltrado;
+
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
@@ -269,11 +271,16 @@ export default function RotulosPage() {
           </button>
           <div>
             <h1 className="font-bold text-xl sm:text-2xl">Rótulos</h1>
-            <p className="text-xs sm:text-sm text-white/80">
-              {nroFiltro
-                ? `Pedido Nº ${nroFiltro}`
-                : 'Pedidos en estado LAVAR / LAVANDO'}
-            </p>
+            {esModoIndividual ? (
+              <p className="text-xs sm:text-sm text-white/80">
+                Pedido <span className="font-semibold">N° {pedidoFiltrado}</span> ·
+                modo rótulo individual
+              </p>
+            ) : (
+              <p className="text-xs sm:text-sm text-white/80">
+                Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -318,6 +325,12 @@ export default function RotulosPage() {
           En el cuadro de impresión puedes elegir &quot;Guardar como PDF&quot; para
           generar el archivo.
         </p>
+        {esModoIndividual && copies > 1 && (
+          <p className="text-[0.7rem] sm:text-xs text-white/70 mt-1">
+            Copias solicitadas: <b>{copies}</b> juegos de rótulos para el pedido N°
+            {pedidoFiltrado}.
+          </p>
+        )}
       </section>
 
       {/* CONTENIDO IMPRIMIBLE */}
@@ -330,28 +343,32 @@ export default function RotulosPage() {
 
         {!loading && !rotulos.length && (
           <div className="mt-10 text-center text-sm print:hidden">
-            No hay rótulos para imprimir.
+            {esModoIndividual
+              ? 'No se encontró el pedido indicado para generar rótulos.'
+              : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'}
           </div>
         )}
 
-        <div
-          className="
-            grid gap-3 sm:gap-3
-            grid-cols-1 sm:grid-cols-2
-            print:grid-cols-2
-            print:gap-y-0
-            print:gap-x-0
-          "
-        >
-          {rotulos.map((r, idx) => (
-            <RotuloCard
-              key={`${r.pedido.nro}-${r.bolsaIndex}-${idx}`}
-              pedido={r.pedido}
-              bolsaIndex={r.bolsaIndex}
-              bolsasTotal={r.bolsasTotal}
-            />
-          ))}
-        </div>
+        {!loading && rotulos.length > 0 && (
+          <div
+            className="
+              grid gap-1.5 sm:gap-2
+              grid-cols-1 sm:grid-cols-2
+              print:grid-cols-2
+              print:gap-y-0.4
+              print:gap-x-0.2
+            "
+          >
+            {rotulos.map((r, idx) => (
+              <RotuloCard
+                key={idx} // se replica por copies; usamos índice
+                pedido={r.pedido}
+                bolsaIndex={r.bolsaIndex}
+                bolsasTotal={r.bolsasTotal}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
@@ -359,7 +376,7 @@ export default function RotulosPage() {
 
 /* =========================
    Tarjeta de Rótulo TIPO ETIQUETA
-   Tamaño: 8.5 x 2.5 cm (ajustable)
+   Tamaño: 8.3 x 2.5 cm
 ========================= */
 
 function RotuloCard({
@@ -389,7 +406,7 @@ function RotuloCard({
       "
       style={{
         width: '8.3cm',
-        height: '2.4cm',
+        height: '2.5cm',
         padding: '0.2cm',
       }}
     >
