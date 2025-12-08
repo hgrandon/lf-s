@@ -73,7 +73,7 @@ const CLP = new Intl.NumberFormat('es-CL', {
 
 /* ===========
    WRAPPER con Suspense
-   ========== */
+========== */
 
 export default function RotulosPage() {
   return (
@@ -91,7 +91,7 @@ export default function RotulosPage() {
 
 /* ===========
    COMPONENTE REAL (usa useSearchParams)
-   ========== */
+========== */
 
 function RotulosPageInner() {
   const router = useRouter();
@@ -103,6 +103,7 @@ function RotulosPageInner() {
 
   const pedidoFiltrado = nroParam ? Number(nroParam) || null : null;
   const copies = Math.max(1, Math.min(50, Number(copiesParam) || 1));
+  const esModoIndividual = !!pedidoFiltrado;
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -192,6 +193,8 @@ function RotulosPageInner() {
           const tel = (p.telefono || '').toString().trim();
           const cli = tel ? clientesMap.get(tel) : undefined;
 
+          const bolsasDb = Math.max(1, Number(p.bolsas || 1));
+
           return {
             nro: Number(p.nro),
             telefono: tel || '',
@@ -206,16 +209,37 @@ function RotulosPageInner() {
               : null,
             fechaIngreso: p.fecha_ingreso,
             fechaEntrega: p.fecha_entrega,
-            bolsas: Math.max(1, Number(p.bolsas || 1)), // mínimo 1
+            bolsas: bolsasDb,
           } as PedidoRotulo;
         })
         .filter((x): x is PedidoRotulo => x !== null)
         .sort((a, b) => a.nro - b.nro);
 
-      // “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
+      // ---------- LÓGICA COPIES vs BOLSAS ----------
+      // Caso especial:
+      //   - Modo individual
+      //   - Sólo 1 pedido
+      //   - DB dice bolsas <= 1
+      //   - copies > 1
+      // => interpretamos copies como "número de bolsas"
+      let useCopiesAsBolsas = false;
+      let originalBolsas = 1;
+
+      if (esModoIndividual && pedidosBase.length === 1) {
+        originalBolsas = pedidosBase[0].bolsas || 1;
+        if (copies > 1 && originalBolsas <= 1) {
+          useCopiesAsBolsas = true;
+        }
+      }
+
+      // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
       const baseRotulos: RotuloConBolsa[] = [];
       for (const ped of pedidosBase) {
-        const totalBolsas = ped.bolsas || 1;
+        const totalBolsas =
+          useCopiesAsBolsas && ped.nro === pedidosBase[0].nro
+            ? copies
+            : ped.bolsas || 1;
+
         for (let i = 1; i <= totalBolsas; i++) {
           baseRotulos.push({
             pedido: ped,
@@ -225,9 +249,12 @@ function RotulosPageInner() {
         }
       }
 
-      // Si viene copies, replicar esa lista
+      // Si NO estamos usando copies como bolsas,
+      // entonces copies = "juegos completos" de esos rótulos
       const finalRotulos: RotuloConBolsa[] = [];
-      for (let c = 0; c < copies; c++) {
+      const copiesForReplication = useCopiesAsBolsas ? 1 : copies;
+
+      for (let c = 0; c < copiesForReplication; c++) {
         for (const r of baseRotulos) {
           finalRotulos.push({ ...r });
         }
@@ -275,7 +302,7 @@ function RotulosPageInner() {
     }, 50);
   }
 
-  const esModoIndividual = !!pedidoFiltrado;
+  const esModoIndividual2 = !!pedidoFiltrado;
 
   return (
     <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-28">
@@ -293,7 +320,7 @@ function RotulosPageInner() {
           </button>
           <div>
             <h1 className="font-bold text-xl sm:text-2xl">Rótulos</h1>
-            {esModoIndividual ? (
+            {esModoIndividual2 ? (
               <p className="text-xs sm:text-sm text-white/80">
                 Pedido <span className="font-semibold">N° {pedidoFiltrado}</span> ·
                 modo rótulo individual
@@ -347,10 +374,10 @@ function RotulosPageInner() {
           En el cuadro de impresión puedes elegir &quot;Guardar como PDF&quot; para
           generar el archivo.
         </p>
-        {esModoIndividual && copies > 1 && (
+        {esModoIndividual2 && copies > 1 && (
           <p className="text-[0.7rem] sm:text-xs text-white/70 mt-1">
-            Copias solicitadas: <b>{copies}</b> juegos de rótulos para el pedido N°
-            {pedidoFiltrado}.
+            Copias solicitadas: <b>{copies}</b>{' '}
+            {`(usadas como número de bolsas si el pedido no tenía bolsas configuradas).`}
           </p>
         )}
       </section>
@@ -365,7 +392,7 @@ function RotulosPageInner() {
 
         {!loading && !rotulos.length && (
           <div className="mt-10 text-center text-sm print:hidden">
-            {esModoIndividual
+            {esModoIndividual2
               ? 'No se encontró el pedido indicado para generar rótulos.'
               : 'No hay pedidos en LAVAR / LAVANDO para imprimir rótulos.'}
           </div>
