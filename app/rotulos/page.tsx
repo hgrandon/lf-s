@@ -398,26 +398,29 @@ function RotulosPageInner() {
           </div>
         )}
 
-        {!loading && rotulos.length > 0 && (
-          <div
-            className="
-              grid gap-1.5 sm:gap-2
-              grid-cols-1 sm:grid-cols-2
-              print:grid-cols-2
-              print:gap-y-0.4
-              print:gap-x-0.2
-            "
-          >
-            {rotulos.map((r, idx) => (
-              <RotuloCard
-                key={idx} // se replica por copies; usamos índice
-                pedido={r.pedido}
-                bolsaIndex={r.bolsaIndex}
-                bolsasTotal={r.bolsasTotal}
-              />
-            ))}
-          </div>
-        )}
+                {!loading && rotulos.length > 0 && (
+                  <div
+                    className="
+                      grid
+                      grid-cols-2
+                      gap-1
+                      sm:gap-1.5
+                      print:grid-cols-2
+                      print:gap-[0.25cm]
+                      justify-items-center
+                    "
+                  >
+                    {rotulos.map((r, idx) => (
+                      <RotuloCard
+                        key={idx} // se replica por copies; usamos índice
+                        pedido={r.pedido}
+                        bolsaIndex={r.bolsaIndex}
+                        bolsasTotal={r.bolsasTotal}
+                      />
+                    ))}
+                  </div>
+                )}
+
       </section>
     </main>
   );
