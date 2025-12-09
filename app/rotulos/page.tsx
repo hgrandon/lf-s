@@ -38,7 +38,7 @@ type PedidoRotulo = {
   direccion: string;
   total: number | null;
   estado: EstadoKey;
-  tipoEntrega: 'LOCAL' | 'DOMICILIO' | null;
+  tipoEntrega: 'LOCAL' | 'DOMICICLIO' | 'DOMICILIO' | null;
   fechaIngreso: string | null;
   fechaEntrega: string | null;
   bolsas: number;
@@ -70,6 +70,41 @@ const CLP = new Intl.NumberFormat('es-CL', {
   currency: 'CLP',
   maximumFractionDigits: 0,
 });
+
+/* ==========
+   Helper para acortar dirección:
+   Deja solo "CALLE ... NÚMERO" y corta el resto
+   Ej: "PERIODISTA MARIO 5987 BARRIO X" -> "PERIODISTA MARIO 5987"
+========== */
+function formatDireccionForRotulo(raw: string | null | undefined): string {
+  if (!raw) return 'LAVANDERÍA FABIOLA';
+
+  const upper = raw.toString().trim().toUpperCase();
+  if (!upper || upper === 'LOCAL') return 'LAVANDERÍA FABIOLA';
+
+  const parts = upper.split(/\s+/);
+  const resultParts: string[] = [];
+  let sawNumber = false;
+
+  for (const word of parts) {
+    resultParts.push(word);
+    if (/\d/.test(word)) {
+      sawNumber = true;
+      break; // paramos justo después del primer token con número
+    }
+  }
+
+  if (sawNumber) {
+    return resultParts.join(' ');
+  }
+
+  // Si nunca hubo número, devolvemos la dirección completa,
+  // pero por seguridad la podemos acortar un poco si es muy larga
+  if (upper.length > 40) {
+    return upper.slice(0, 40);
+  }
+  return upper;
+}
 
 /* ==========
    WRAPPER con Suspense
@@ -320,7 +355,8 @@ function RotulosPageInner() {
               </p>
             ) : (
               <p className="text-xs sm:text-sm text-white/80">
-                Pedidos en estado <span className="font-semibold">LAVAR / LAVANDO</span>
+                Pedidos en estado{' '}
+                <span className="font-semibold">LAVAR / LAVANDO</span>
               </p>
             )}
           </div>
@@ -397,7 +433,6 @@ function RotulosPageInner() {
               mx-auto
               px-2 sm:px-4
             "
-            // Contenedor con ancho fijo en cm para controlar la hoja
             style={{
               width: '19.5cm', // interior de la hoja A4 ~21cm menos márgenes
               maxWidth: '100%',
@@ -408,13 +443,13 @@ function RotulosPageInner() {
                 grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2
               "
               style={{
-                columnGap: '0.2cm', // misma separación horizontal
-                rowGap: '0.2cm', // que vertical
+                columnGap: '0.2cm',
+                rowGap: '0.2cm',
               }}
             >
               {rotulos.map((r, idx) => (
                 <RotuloCard
-                  key={idx} // se replica por copies
+                  key={idx}
                   pedido={r.pedido}
                   bolsaIndex={r.bolsaIndex}
                   bolsasTotal={r.bolsasTotal}
@@ -441,10 +476,8 @@ function RotuloCard({
   bolsaIndex: number;
   bolsasTotal: number;
 }) {
-  const direccionLimpia =
-    !pedido.direccion || pedido.direccion?.trim().toUpperCase() === 'LOCAL'
-      ? 'LAVANDERÍA FABIOLA'
-      : pedido.direccion.toUpperCase();
+  // Usamos el helper para acortar la dirección
+  const direccionLimpia = formatDireccionForRotulo(pedido.direccion);
 
   // Mostrar fracción SOLO si hay más de 1 bolsa (no mostrar 1/1)
   const fraccionTexto = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
