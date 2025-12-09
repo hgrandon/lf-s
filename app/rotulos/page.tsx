@@ -408,8 +408,8 @@ function RotulosPageInner() {
                 grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2
               "
               style={{
-                columnGap: '0.4cm', // misma separación horizontal
-                rowGap: '0.4cm', // que vertical
+                columnGap: '0.2cm', // misma separación horizontal
+                rowGap: '0.2cm', // que vertical
               }}
             >
               {rotulos.map((r, idx) => (
