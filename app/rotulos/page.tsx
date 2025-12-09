@@ -71,7 +71,7 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
-/* ===========
+/* ==========
    WRAPPER con Suspense
 ========== */
 
@@ -89,8 +89,8 @@ export default function RotulosPage() {
   );
 }
 
-/* ===========
-   COMPONENTE REAL (usa useSearchParams)
+/* ==========
+   COMPONENTE REAL
 ========== */
 
 function RotulosPageInner() {
@@ -132,7 +132,7 @@ function RotulosPageInner() {
         const { data, error } = await supabase
           .from('pedido')
           .select(
-            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
+            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas'
           )
           .in('estado', ['LAVAR', 'LAVANDO'])
           .order('nro', { ascending: true });
@@ -144,7 +144,7 @@ function RotulosPageInner() {
         const { data, error } = await supabase
           .from('pedido')
           .select(
-            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas',
+            'nro, telefono, total, estado, tipo_entrega, fecha_ingreso, fecha_entrega, bolsas'
           )
           .eq('nro', pedidoFiltrado)
           .limit(1);
@@ -165,8 +165,8 @@ function RotulosPageInner() {
         new Set(
           pedidosRaw
             .map((p) => (p.telefono || '').toString().trim())
-            .filter((t) => t.length > 0),
-        ),
+            .filter((t) => t.length > 0)
+        )
       );
 
       const clientesMap = new Map<string, ClienteDb>();
@@ -216,12 +216,6 @@ function RotulosPageInner() {
         .sort((a, b) => a.nro - b.nro);
 
       // ---------- LÓGICA COPIES vs BOLSAS ----------
-      // Caso especial:
-      //   - Modo individual
-      //   - Sólo 1 pedido
-      //   - DB dice bolsas <= 1
-      //   - copies > 1
-      // => interpretamos copies como "número de bolsas"
       let useCopiesAsBolsas = false;
       let originalBolsas = 1;
 
@@ -232,7 +226,7 @@ function RotulosPageInner() {
         }
       }
 
-      // 4) “Explotar” cada pedido en N rótulos (1/3, 2/3, 3/3…)
+      // Explota cada pedido en N rótulos (1/3, 2/3, 3/3…)
       const baseRotulos: RotuloConBolsa[] = [];
       for (const ped of pedidosBase) {
         const totalBolsas =
@@ -249,8 +243,7 @@ function RotulosPageInner() {
         }
       }
 
-      // Si NO estamos usando copies como bolsas,
-      // entonces copies = "juegos completos" de esos rótulos
+      // Si NO usamos copies como bolsas, entonces copies = juegos completos
       const finalRotulos: RotuloConBolsa[] = [];
       const copiesForReplication = useCopiesAsBolsas ? 1 : copies;
 
@@ -287,7 +280,7 @@ function RotulosPageInner() {
     if (typeof window === 'undefined' || typeof window.print !== 'function') {
       alert(
         'La opción de impresión solo funciona en un navegador de escritorio. ' +
-          'Abre la app en el PC para generar el PDF.',
+          'Abre la app en el PC para generar el PDF.'
       );
       return;
     }
@@ -383,7 +376,7 @@ function RotulosPageInner() {
       </section>
 
       {/* CONTENIDO IMPRIMIBLE */}
-      <section className="relative z-10 mx-auto max-w-6xl px-2 sm:px-4 pb-8">
+      <section className="relative z-10 pb-8 print:bg-white">
         {loading && (
           <div className="mt-10 text-center text-sm print:hidden">
             Cargando pedidos para rótulos…
@@ -398,29 +391,38 @@ function RotulosPageInner() {
           </div>
         )}
 
-                {!loading && rotulos.length > 0 && (
-                  <div
-                    className="
-                      grid
-                      grid-cols-2
-                      gap-1
-                      sm:gap-1.5
-                      print:grid-cols-2
-                      print:gap-[0.25cm]
-                      justify-items-center
-                    "
-                  >
-                    {rotulos.map((r, idx) => (
-                      <RotuloCard
-                        key={idx} // se replica por copies; usamos índice
-                        pedido={r.pedido}
-                        bolsaIndex={r.bolsaIndex}
-                        bolsasTotal={r.bolsasTotal}
-                      />
-                    ))}
-                  </div>
-                )}
-
+        {!loading && rotulos.length > 0 && (
+          <div
+            className="
+              mx-auto
+              px-2 sm:px-4
+            "
+            // Contenedor con ancho fijo en cm para controlar la hoja
+            style={{
+              width: '19.5cm', // interior de la hoja A4 ~21cm menos márgenes
+              maxWidth: '100%',
+            }}
+          >
+            <div
+              className="
+                grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2
+              "
+              style={{
+                columnGap: '0.4cm', // misma separación horizontal
+                rowGap: '0.4cm', // que vertical
+              }}
+            >
+              {rotulos.map((r, idx) => (
+                <RotuloCard
+                  key={idx} // se replica por copies
+                  pedido={r.pedido}
+                  bolsaIndex={r.bolsaIndex}
+                  bolsasTotal={r.bolsasTotal}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );
@@ -456,7 +458,7 @@ function RotuloCard({
         print:border-violet-700
       "
       style={{
-        width: '8.3cm',
+        // La columna decide el ancho, aquí solo fijamos alto y padding
         height: '2.5cm',
         padding: '0.2cm',
       }}
