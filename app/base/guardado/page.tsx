@@ -2,15 +2,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Truck, Archive, Loader2 } from 'lucide-react';
 
 export default function GuardadoMenuPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [loading, setLoading] = useState(true);
   const [localCount, setLocalCount] = useState(0);
   const [domCount, setDomCount] = useState(0);
+
+  // Tomamos el nro que viene desde BASE (si existe)
+  const nroParam = searchParams.get('nro');
+  const nroQuery = nroParam ? `?nro=${nroParam}` : '';
 
   useEffect(() => {
     (async () => {
@@ -37,7 +43,8 @@ export default function GuardadoMenuPage() {
   }, []);
 
   function go(where: 'local' | 'domicilio') {
-    router.push(`/base/guardado/${where}`);
+    // Reenviamos el ?nro=XXXX si venía desde BASE
+    router.push(`/base/guardado/${where}${nroQuery}`);
   }
 
   return (
@@ -77,7 +84,6 @@ export default function GuardadoMenuPage() {
               <span className="mt-2 font-bold text-lg tracking-wide">
                 LOCAL
               </span>
-
             </>
           )}
         </button>
@@ -101,7 +107,6 @@ export default function GuardadoMenuPage() {
               <span className="mt-2 font-bold text-lg tracking-wide">
                 DOMICILIO
               </span>
-
             </>
           )}
         </button>
