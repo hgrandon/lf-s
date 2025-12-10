@@ -95,6 +95,54 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
   return `${day}-${month}-${year}`;
 }
 
+// Normaliza a formato chileno "56..." para usar con API de WhatsApp
+function normalizarTelefonoChile(raw?: string | null): string | null {
+  if (!raw) return null;
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return null;
+
+  // ya viene con 56
+  if (digits.startsWith('56')) return digits;
+
+  // 9 dígitos -> asumimos celular chileno
+  if (digits.length === 9) return `56${digits}`;
+
+  // fallback: prepende 56 igual
+  return `56${digits}`;
+}
+
+/**
+ * Envía el WhatsApp de recepción de pedido:
+ * "Tu pedido N° X ya está recepcionado..."
+ */
+async function enviarWhatsAppRecepcion(params: {
+  telefonoDestino: string | null;
+  nro: number;
+}) {
+  try {
+    const { telefonoDestino, nro } = params;
+
+    // Si no hay teléfono del cliente, usamos un backup fijo (tu número)
+    const fallback = '56991335828'; // cámbialo si quieres otro
+    const to = normalizarTelefonoChile(telefonoDestino) ?? fallback;
+
+    const message = [
+      `Tu pedido N° ${nro} ya está recepcionado.`,
+      ``,
+      `Te enviaremos un mensaje muy pronto.`,
+    ].join('\n');
+
+    await fetch('/api/whatsapp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, message }),
+    });
+  } catch (e) {
+    console.error('No se pudo enviar WhatsApp de recepción', e);
+    // No rompemos el flujo si falla el envío
+  }
+}
+
 /* =========================
    Config estado (icono ciclo)
 ========================= */
@@ -1127,6 +1175,12 @@ export default function PedidoPage() {
         const { error: eF } = await supabase.from('pedido_foto').insert(filasFotos);
         if (eF) throw eF;
       }
+
+      // 👉 Enviar WhatsApp automático de recepción
+      await enviarWhatsAppRecepcion({
+        telefonoDestino: telefonoPedido,
+        nro: nextInfo.nro,
+      });
 
       router.push('/menu');
     } catch (e: any) {
