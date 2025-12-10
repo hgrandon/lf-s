@@ -1,5 +1,5 @@
 'use client';
-
+import { Suspense } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -113,7 +113,11 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function LavandoPage() {
+/* =========================
+   CONTENIDO REAL DE LA PÁGINA
+========================= */
+
+function LavandoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1113,6 +1117,27 @@ export default function LavandoPage() {
         onChange={onFileSelected}
       />
     </main>
+  );
+}
+
+/* =========================
+   WRAPPER CON SUSPENSE (Next 16)
+========================= */
+
+export default function LavandoPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="animate-spin" size={18} />
+            Cargando vista Lavando…
+          </div>
+        </main>
+      }
+    >
+      <LavandoContent />
+    </Suspense>
   );
 }
 
