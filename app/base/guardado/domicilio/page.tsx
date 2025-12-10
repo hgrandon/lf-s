@@ -6,8 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
 } from 'react';
-import type { ComponentType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
@@ -45,7 +45,8 @@ type Pedido = {
   total: number | null;
   estado: PedidoEstado;
   detalle?: string | null;
-  foto_url?: string | null;
+  foto_url?: string | null; // principal
+  fotos?: string[]; // lista de fotos para slider
   pagado?: boolean | null;
   items?: Item[];
   token_servicio?: string | null;
@@ -58,32 +59,39 @@ const CLP = new Intl.NumberFormat('es-CL', {
   maximumFractionDigits: 0,
 });
 
-function firstFotoFromMixed(input: unknown): string | null {
-  if (!input) return null;
+/** Devuelve TODAS las fotos posibles desde string | JSON | array */
+function allFotosFromMixed(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input.filter(
+      (x): x is string => typeof x === 'string' && x.trim() !== '',
+    );
+  }
   if (typeof input === 'string') {
     const s = input.trim();
-    if (!s) return null;
+    if (!s) return [];
     if (s.startsWith('[')) {
       try {
         const arr = JSON.parse(s);
-        if (
-          Array.isArray(arr) &&
-          arr.length > 0 &&
-          typeof arr[0] === 'string'
-        ) {
-          return arr[0] as string;
+        if (Array.isArray(arr)) {
+          return arr.filter(
+            (x: unknown): x is string =>
+              typeof x === 'string' && x.trim() !== '',
+          );
         }
-        return null;
       } catch {
-        return null;
+        // si falla JSON, lo tratamos como string simple
       }
     }
-    return s;
+    return [s];
   }
-  if (Array.isArray(input) && input.length > 0 && typeof input[0] === 'string') {
-    return input[0] as string;
-  }
-  return null;
+  return [];
+}
+
+/** Por compatibilidad con vistas antiguas: primera foto de la lista */
+function firstFotoFromMixed(input: unknown): string | null {
+  const all = allFotosFromMixed(input);
+  return all[0] ?? null;
 }
 
 /** Normaliza a E.164 Chile. Acepta "9 1234 5678", "569...", "+569...", etc. */
@@ -104,10 +112,9 @@ function getBaseUrl() {
 }
 
 /* =========================
-   MODO: DOMICILIO
+   MODO: DOMICILIO (GUARDADO)
 ========================= */
 
-const MODO_ENTREGA: 'DOMICILIO' = 'DOMICILIO';
 const TITULO = 'Guardado Domicilio';
 
 /* =========================
@@ -150,8 +157,9 @@ function GuardadoPageInner() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Picker / upload
+  // Picker / upload / eliminar
   const [pickerForPedido, setPickerForPedido] = useState<number | null>(null);
+  const [pickerFotoUrl, setPickerFotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<Record<number, boolean>>({});
   const inputCamRef = useRef<HTMLInputElement>(null);
   const inputFileRef = useRef<HTMLInputElement>(null);
@@ -163,11 +171,15 @@ function GuardadoPageInner() {
   // Para abrir/scroll al pedido desde ?nro=...
   const [initialScrollDone, setInitialScrollDone] = useState(false);
 
+  // Índice de la foto actual por pedido (slider)
+  const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
+
   const pedidoAbierto = useMemo(
     () => pedidos.find((p) => p.id === openId) ?? null,
     [pedidos, openId],
   );
 
+  // Carga inicial: pedidos GUARDADO + DOMICILIO
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -190,7 +202,9 @@ function GuardadoPageInner() {
         if (e1) throw e1;
 
         const ids = (rows ?? []).map((r) => (r as any).id);
-        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
+        const tels = (rows ?? [])
+          .map((r) => (r as any).telefono)
+          .filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -250,21 +264,36 @@ function GuardadoPageInner() {
           itemsByPedido.set(pid, arr);
         });
 
-        const fotoByPedido = new Map<number, string>();
-        (rows ?? []).forEach((r: any) => {
-          const f = firstFotoFromMixed(r.foto_url);
-          if (f) fotoByPedido.set(r.id, f);
-        });
+        // Agrupar fotos por pedido desde tabla pedido_foto
+        const fotosByPedido = new Map<number, string[]>();
         (fotos ?? []).forEach((f: any) => {
           const pid = Number(f.pedido_id ?? f.nro);
-          if (!fotoByPedido.has(pid) && typeof f.url === 'string' && f.url) {
-            fotoByPedido.set(pid, f.url);
-          }
+          const url = typeof f.url === 'string' ? f.url.trim() : '';
+          if (!pid || !url) return;
+          const arr = fotosByPedido.get(pid) ?? [];
+          arr.push(url);
+          fotosByPedido.set(pid, arr);
         });
 
         const mapped: Pedido[] = (rows ?? []).map((r: any) => {
           const tel = r.telefono ? String(r.telefono) : null;
           const nombre = tel ? nombreByTel.get(tel) || '' : '';
+
+          // fotos base que puedan venir en foto_url (string o JSON)
+          const baseFotos = allFotosFromMixed(r.foto_url);
+          const extra = fotosByPedido.get(r.id) ?? [];
+
+          const fotosArr: string[] = [];
+          baseFotos.forEach((u) => {
+            if (u && !fotosArr.includes(u)) fotosArr.push(u);
+          });
+          extra.forEach((u) => {
+            if (u && !fotosArr.includes(u)) fotosArr.push(u);
+          });
+
+          const principal =
+            fotosArr[0] ?? firstFotoFromMixed(r.foto_url) ?? null;
+
           return {
             id: r.id,
             cliente: nombre || tel || 'SIN NOMBRE',
@@ -272,7 +301,8 @@ function GuardadoPageInner() {
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
-            foto_url: fotoByPedido.get(r.id) ?? null,
+            foto_url: principal,
+            fotos: fotosArr,
             pagado: r.pagado ?? false,
             items: itemsByPedido.get(r.id) ?? [],
             token_servicio: r.token_servicio ?? null,
@@ -346,6 +376,7 @@ function GuardadoPageInner() {
       return;
     }
 
+    // En GUARDADO DOMICILIO, si sale a otro estado lo quitamos de la lista
     if (next !== 'GUARDADO') {
       setPedidos((curr) => curr.filter((p) => p.id !== id));
       setOpenId(null);
@@ -423,7 +454,8 @@ function GuardadoPageInner() {
         'Gracias por preferirnos 💜',
       ].join('\n');
 
-      const backup = (process.env.NEXT_PUBLIC_WA_BACKUP || '56991335828').trim();
+      const backup =
+        (process.env.NEXT_PUBLIC_WA_BACKUP || '56991335828').trim();
       const telE164 = toE164CL(p.telefono) || toE164CL(backup);
       if (!telE164) {
         navigator.clipboard?.writeText(link);
@@ -450,9 +482,10 @@ function GuardadoPageInner() {
     }
   }
 
-  // ------- Cargar/Adjuntar foto -------
-  function openPickerFor(pid: number) {
+  // ------- Cargar/Adjuntar foto: abrir modal -------
+  function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
+    setPickerFotoUrl(fotoUrl);
   }
 
   async function handlePick(kind: 'camera' | 'file') {
@@ -461,16 +494,19 @@ function GuardadoPageInner() {
     else inputFileRef.current?.click();
   }
 
+  // Subida de archivo (cámara / archivo)
   async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
     e.target.value = '';
     const pid = pickerForPedido;
     if (!pid) {
       setPickerForPedido(null);
+      setPickerFotoUrl(null);
       return;
     }
     if (!file) {
       setPickerForPedido(null);
+      setPickerFotoUrl(null);
       return;
     }
 
@@ -488,7 +524,9 @@ function GuardadoPageInner() {
         });
       if (upErr) throw upErr;
 
-      const { data: pub } = supabase.storage.from('fotos').getPublicUrl(up!.path);
+      const { data: pub } = supabase.storage
+        .from('fotos')
+        .getPublicUrl(up!.path);
       const publicUrl = pub.publicUrl;
 
       const { error: insErr } = await supabase
@@ -496,14 +534,35 @@ function GuardadoPageInner() {
         .insert({ pedido_id: pid, url: publicUrl });
       if (insErr) throw insErr;
 
-      await supabase.from('pedido').update({ foto_url: publicUrl }).eq('nro', pid);
+      // Obtener fotos actuales del pedido para actualizar JSON en foto_url
+      const pedidoActual = pedidos.find((p) => p.id === pid);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+      const nuevasFotos = [...fotosActuales, publicUrl];
 
+      // Guardamos la lista completa en foto_url como JSON
+      await supabase
+        .from('pedido')
+        .update({ foto_url: JSON.stringify(nuevasFotos) })
+        .eq('nro', pid);
+
+      // Actualizar estado local
       setPedidos((prev) =>
-        prev.map((p) => (p.id === pid ? { ...p, foto_url: publicUrl } : p)),
+        prev.map((p) =>
+          p.id === pid
+            ? {
+                ...p,
+                foto_url: publicUrl,
+                fotos: nuevasFotos,
+              }
+            : p,
+        ),
       );
-      setImageError((prev) => ({
+      setImageError((prev) => ({ ...prev, [pid]: false }));
+      setCurrentSlide((prev) => ({
         ...prev,
-        [pid]: false,
+        [pid]: nuevasFotos.length - 1,
       }));
       snack(`Foto subida al pedido #${pid}`);
     } catch (err: any) {
@@ -515,7 +574,112 @@ function GuardadoPageInner() {
         [pid!]: false,
       }));
       setPickerForPedido(null);
+      setPickerFotoUrl(null);
     }
+  }
+
+  // ------- Eliminar foto (botón del modal) -------
+  async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
+    if (!pedidoId) return;
+
+    try {
+      const pedidoActual = pedidos.find((p) => p.id === pedidoId);
+      const fotosActuales =
+        pedidoActual?.fotos ??
+        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+
+      const targetUrl = fotoUrl || fotosActuales[0] || null;
+      if (!targetUrl) {
+        snack('No hay foto para eliminar.');
+        return;
+      }
+
+      // Intentar borrar del storage (si es URL de Supabase)
+      try {
+        const urlObj = new URL(targetUrl);
+        const pathname = urlObj.pathname; // /storage/v1/object/public/fotos/...
+        const marker = '/object/public/';
+        const idx = pathname.indexOf(marker);
+        if (idx >= 0) {
+          let path = pathname.substring(idx + marker.length); // fotos/...
+          if (path.startsWith('fotos/')) {
+            path = path.substring('fotos/'.length);
+          }
+          if (path) {
+            await supabase.storage.from('fotos').remove([path]);
+          }
+        }
+      } catch (e) {
+        console.warn(
+          'No se pudo borrar la imagen del bucket (no es URL de storage o falló el parseo).',
+          e,
+        );
+      }
+
+      // Borrar de tabla pedido_foto
+      await supabase
+        .from('pedido_foto')
+        .delete()
+        .match({ pedido_id: pedidoId, url: targetUrl });
+
+      // Actualizar lista de fotos para el pedido
+      const nuevasFotos = fotosActuales.filter((u) => u !== targetUrl);
+
+      // Actualizar foto_url en pedido (JSON o null)
+      await supabase
+        .from('pedido')
+        .update({
+          foto_url: nuevasFotos.length ? JSON.stringify(nuevasFotos) : null,
+        })
+        .eq('nro', pedidoId);
+
+      // Actualizar estado local
+      setPedidos((prev) =>
+        prev.map((p) =>
+          p.id === pedidoId
+            ? {
+                ...p,
+                fotos: nuevasFotos,
+                foto_url: nuevasFotos[0] ?? null,
+              }
+            : p,
+        ),
+      );
+
+      setCurrentSlide((prev) => {
+        const next = { ...prev };
+        if (!nuevasFotos.length) {
+          delete next[pedidoId];
+        } else {
+          next[pedidoId] = Math.min(
+            prev[pedidoId] ?? 0,
+            nuevasFotos.length - 1,
+          );
+        }
+        return next;
+      });
+
+      setImageError((prev) => ({ ...prev, [pedidoId]: false }));
+
+      snack(`Foto eliminada del pedido #${pedidoId}`);
+    } catch (err) {
+      console.error(err);
+      snack('No se pudo eliminar la foto.');
+    }
+  }
+
+  // Slider: cambiar de foto
+  function changeSlide(pedidoId: number, direction: -1 | 1) {
+    const pedido = pedidos.find((p) => p.id === pedidoId);
+    const fotos = pedido?.fotos ?? [];
+    const total = fotos.length;
+    if (!pedido || total <= 1) return;
+
+    setCurrentSlide((prev) => {
+      const current = prev[pedidoId] ?? 0;
+      const next = (current + direction + total) % total;
+      return { ...prev, [pedidoId]: next };
+    });
   }
 
   // Modal de edición
@@ -538,18 +702,15 @@ function GuardadoPageInner() {
     const pid = askPaidForId;
     if (!pid) return;
 
-    // Cerramos el modal
     setAskPaidForId(null);
 
-    // Si el usuario indicó "Pagado", marcamos pagado=TRUE antes de entregar
     if (forceMarkPaid) {
       const p = pedidos.find((x) => x.id === pid);
       if (p && !p.pagado) {
-        await togglePago(pid); // usa la misma función que ya tienes
+        await togglePago(pid);
       }
     }
 
-    // En todos los casos se pasa a ENTREGADO
     await changeEstado(pid, 'ENTREGADO');
   }
 
@@ -563,9 +724,7 @@ function GuardadoPageInner() {
                    bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
                    backdrop-blur-md border-b border-white/10"
       >
-        <h1 className="font-bold text-base lg:text-xl">
-          {TITULO}
-        </h1>
+        <h1 className="font-bold text-base lg:text-xl">{TITULO}</h1>
         <button
           onClick={() => router.push('/base/guardado')}
           className="text-xs lg:text-sm text-white/90 hover:text-white"
@@ -603,6 +762,19 @@ function GuardadoPageInner() {
             const totalCalc = p.items?.length
               ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
               : Number(p.total ?? 0);
+
+            const fotos =
+              p.fotos && p.fotos.length
+                ? p.fotos
+                : p.foto_url
+                ? [p.foto_url]
+                : [];
+            const totalFotos = fotos.length;
+            const slideIndex =
+              totalFotos > 0
+                ? Math.min(currentSlide[p.id] ?? 0, totalFotos - 1)
+                : 0;
+            const activeFoto = totalFotos > 0 ? fotos[slideIndex] : null;
 
             return (
               <div
@@ -759,40 +931,68 @@ function GuardadoPageInner() {
                         </div>
                       )}
 
+                      {/* Galería de fotos DOMICILIO */}
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !imageError[p.id] ? (
+                        {activeFoto && !imageError[p.id] ? (
                           <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                            onDoubleClick={() => openPickerFor(p.id)}
-                            title="Doble clic para cambiar la imagen"
+                            className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
+                            onDoubleClick={() =>
+                              openPickerFor(p.id, activeFoto)
+                            }
+                            title="Doble clic para opciones de imagen"
                           >
-                            <div
-                              className="relative w-full max-h-[70vh]"
-                              style={{ paddingTop: '75%' }}
-                            >
-                              <Image
-                                src={p.foto_url!}
-                                alt={`Foto pedido ${p.id}`}
-                                fill
-                                sizes="(max-width: 768px) 100vw, 600px"
-                                style={{
-                                  objectFit: 'cover',
-                                }}
-                                onError={() =>
-                                  setImageError((prev) => ({
-                                    ...prev,
-                                    [p.id]: true,
-                                  }))
-                                }
-                                priority={false}
-                                crossOrigin="anonymous"
-                                unoptimized
-                              />
-                            </div>
+                            <Image
+                              src={activeFoto}
+                              alt={`Foto pedido ${p.id}`}
+                              width={0}
+                              height={0}
+                              sizes="100vw"
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                maxHeight: '70vh',
+                              }}
+                              onError={() =>
+                                setImageError((prev) => ({
+                                  ...prev,
+                                  [p.id]: true,
+                                }))
+                              }
+                              priority={false}
+                            />
+
+                            {totalFotos > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    changeSlide(p.id, -1);
+                                  }}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
+                                >
+                                  ◀
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    changeSlide(p.id, 1);
+                                  }}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-xs"
+                                >
+                                  ▶
+                                </button>
+                                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[10px]">
+                                  {slideIndex + 1} / {totalFotos}
+                                </div>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <button
-                            onClick={() => openPickerFor(p.id)}
+                            onClick={() => openPickerFor(p.id, null)}
                             className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
                             title="Agregar imagen"
                           >
@@ -973,12 +1173,12 @@ function GuardadoPageInner() {
         </div>
       )}
 
-      {/* Modal para elegir cámara/archivo */}
+      {/* Modal para cámara / archivo / eliminar imagen */}
       {pickerForPedido && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50">
           <div className="w-[420px] max-w-[92vw] rounded-2xl bg-white p-4 text-violet-800 shadow-2xl">
             <h3 className="text-lg font-semibold mb-3">
-              Agregar imagen al pedido #{pickerForPedido}
+              Imagen del pedido #{pickerForPedido}
             </h3>
             <div className="grid gap-2">
               <button
@@ -993,10 +1193,27 @@ function GuardadoPageInner() {
                 className="flex items-center gap-2 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
               >
                 <ImagePlus size={18} />
-                Buscar en archivos
+                Cargar foto
               </button>
+
+              {pickerFotoUrl && (
+                <button
+                  onClick={async () => {
+                    await handleDeleteFoto(pickerForPedido, pickerFotoUrl);
+                    setPickerForPedido(null);
+                    setPickerFotoUrl(null);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-red-100 text-red-700 px-4 py-3 hover:bg-red-200 mt-1"
+                >
+                  Eliminar foto actual
+                </button>
+              )}
+
               <button
-                onClick={() => setPickerForPedido(null)}
+                onClick={() => {
+                  setPickerForPedido(null);
+                  setPickerFotoUrl(null);
+                }}
                 className="mt-1 rounded-xl px-3 py-2 text-sm hover:bg-violet-50"
               >
                 Cancelar
