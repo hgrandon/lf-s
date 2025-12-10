@@ -128,9 +128,11 @@ export default function LavarPage() {
     [pedidos, openId],
   );
 
+  // ================== CARGA + REALTIME COMO LAVANDO ==================
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function fetchPedidos() {
       try {
         setLoading(true);
         setErrMsg(null);
@@ -258,10 +260,27 @@ export default function LavarPage() {
           setLoading(false);
         }
       }
-    })();
+    }
+
+    // 1) carga inicial
+    fetchPedidos();
+
+    // 2) suscripción realtime (igual idea que en otras pantallas)
+    const channel = supabase
+      .channel('realtime-lavar')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedido' },
+        () => {
+          // si algo cambia en pedido, recargamos los que están en LAVAR
+          fetchPedidos();
+        },
+      )
+      .subscribe();
 
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -487,7 +506,7 @@ export default function LavarPage() {
   function changeSlide(pedidoId: number, direction: -1 | 1) {
     const pedido = pedidos.find((p) => p.id === pedidoId);
     const fotos = pedido?.fotos ?? [];
-       const total = fotos.length;
+    const total = fotos.length;
     if (!pedido || total <= 1) return;
 
     setCurrentSlide((prev) => {
@@ -594,7 +613,20 @@ export default function LavarPage() {
                   ].join(' ')}
                 >
                   <button
-                    onClick={() => setOpenId(isOpen ? null : p.id)}
+                    onClick={() => {
+                      const goingToOpen = !isOpen;
+                      setOpenId(goingToOpen ? p.id : null);
+
+                      // scroll suave al abrir, como en otras pantallas
+                      if (goingToOpen) {
+                        setTimeout(() => {
+                          const el = document.getElementById(`pedido-${p.id}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 80);
+                      }
+                    }}
                     className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
                   >
                     <div className="flex items-center gap-3">
@@ -1005,4 +1037,3 @@ function IconBtn({
     </button>
   );
 }
-
