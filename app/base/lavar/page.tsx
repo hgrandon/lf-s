@@ -62,7 +62,9 @@ function allFotosFromMixed(input: unknown): string[] {
       try {
         const arr = JSON.parse(s);
         if (Array.isArray(arr)) {
-          return arr.filter((x: unknown): x is string => typeof x === 'string' && x.trim() !== '');
+          return arr.filter(
+            (x: unknown): x is string => typeof x === 'string' && x.trim() !== '',
+          );
         }
       } catch {
         // si falla el JSON, lo tomamos como string simple
@@ -232,8 +234,7 @@ export default function LavarPage() {
           return {
             id: r.id,
             cliente:
-              nombreByTel.get(String(r.telefono)) ??
-              String(r.telefono ?? 'SIN NOMBRE'),
+              nombreByTel.get(String(r.telefono)) ?? String(r.telefono ?? 'SIN NOMBRE'),
             total: r.total ?? null,
             estado: r.estado,
             detalle: r.detalle ?? null,
@@ -359,8 +360,7 @@ export default function LavarPage() {
       // Obtener fotos actuales del pedido para actualizar JSON en foto_url
       const pedidoActual = pedidos.find((p) => p.id === pid);
       const fotosActuales =
-        pedidoActual?.fotos ??
-        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+        pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
       const nuevasFotos = [...fotosActuales, publicUrl];
 
       // Guardamos la lista completa en foto_url como JSON
@@ -404,8 +404,7 @@ export default function LavarPage() {
     try {
       const pedidoActual = pedidos.find((p) => p.id === pedidoId);
       const fotosActuales =
-        pedidoActual?.fotos ??
-        allFotosFromMixed(pedidoActual?.foto_url ?? null);
+        pedidoActual?.fotos ?? allFotosFromMixed(pedidoActual?.foto_url ?? null);
 
       const targetUrl = fotoUrl || fotosActuales[0] || null;
       if (!targetUrl) {
@@ -470,10 +469,7 @@ export default function LavarPage() {
         if (!nuevasFotos.length) {
           delete next[pedidoId];
         } else {
-          next[pedidoId] = Math.min(
-            prev[pedidoId] ?? 0,
-            nuevasFotos.length - 1,
-          );
+          next[pedidoId] = Math.min(prev[pedidoId] ?? 0, nuevasFotos.length - 1);
         }
         return next;
       });
@@ -491,7 +487,7 @@ export default function LavarPage() {
   function changeSlide(pedidoId: number, direction: -1 | 1) {
     const pedido = pedidos.find((p) => p.id === pedidoId);
     const fotos = pedido?.fotos ?? [];
-    const total = fotos.length;
+       const total = fotos.length;
     if (!pedido || total <= 1) return;
 
     setCurrentSlide((prev) => {
@@ -523,9 +519,8 @@ export default function LavarPage() {
     router.push(`/editar?nro=${targetId}`);
   }
 
- return (
-  <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
-
+  return (
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       <header
@@ -562,9 +557,7 @@ export default function LavarPage() {
           {!loading &&
             !errMsg &&
             (Array.isArray(pedidos) ? pedidos.length === 0 : true) && (
-              <div className="text-white/80">
-                No hay pedidos en estado LAVAR.
-              </div>
+              <div className="text-white/80">No hay pedidos en estado LAVAR.</div>
             )}
 
           {!loading &&
@@ -575,10 +568,7 @@ export default function LavarPage() {
               const detOpen = !!openDetail[p.id];
               const totalCalc =
                 Array.isArray(p.items) && p.items.length
-                  ? p.items.reduce(
-                      (a, it) => a + it.qty * it.valor,
-                      0,
-                    )
+                  ? p.items.reduce((a, it) => a + it.qty * it.valor, 0)
                   : p.total ?? 0;
 
               const fotos =
@@ -592,12 +582,12 @@ export default function LavarPage() {
                 totalFotos > 0
                   ? Math.min(currentSlide[p.id] ?? 0, totalFotos - 1)
                   : 0;
-              const activeFoto =
-                totalFotos > 0 ? fotos[slideIndex] : null;
+              const activeFoto = totalFotos > 0 ? fotos[slideIndex] : null;
 
               return (
                 <div
                   key={p.id}
+                  id={`pedido-${p.id}`}
                   className={[
                     'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                     isOpen ? 'border-white/40' : 'border-white/15',
@@ -625,8 +615,7 @@ export default function LavarPage() {
                           N° {p.id}
                         </div>
                         <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                          {p.cliente}{' '}
-                          {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                          {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                         </div>
                       </div>
                     </div>
@@ -634,11 +623,7 @@ export default function LavarPage() {
                       <div className="font-extrabold text-white/95 text-sm lg:text-base">
                         {CLP.format(totalCalc)}
                       </div>
-                      {isOpen ? (
-                        <ChevronDown size={18} />
-                      ) : (
-                        <ChevronRight size={18} />
-                      )}
+                      {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                     </div>
                   </button>
 
@@ -657,9 +642,7 @@ export default function LavarPage() {
                           {/* Lado izquierdo: título */}
                           <div className="flex items-center gap-2">
                             <Table size={16} />
-                            <span className="font-semibold">
-                              Detalle Pedido
-                            </span>
+                            <span className="font-semibold">Detalle Pedido</span>
                           </div>
 
                           {/* Lado derecho: botón Editar + flecha */}
@@ -677,11 +660,7 @@ export default function LavarPage() {
                               <span>Editar</span>
                             </button>
 
-                            {detOpen ? (
-                              <ChevronDown size={16} />
-                            ) : (
-                              <ChevronRight size={16} />
-                            )}
+                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </div>
                         </button>
 
@@ -691,23 +670,14 @@ export default function LavarPage() {
                               <table className="w-full text-xs lg:text-sm text-white/95">
                                 <thead className="bg-white/10 text-white/90">
                                   <tr>
-                                    <th className="text-left px-3 py-2 w-[40%]">
-                                      Artículo
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[15%]">
-                                      Can.
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[20%]">
-                                      Valor
-                                    </th>
-                                    <th className="text-right px-3 py-2 w-[25%]">
-                                      Subtotal
-                                    </th>
+                                    <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
+                                    <th className="text-right px-3 py-2 w-[15%]">Can.</th>
+                                    <th className="text-right px-3 py-2 w-[20%]">Valor</th>
+                                    <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/10">
-                                  {Array.isArray(p.items) &&
-                                  p.items.length ? (
+                                  {Array.isArray(p.items) && p.items.length ? (
                                     p.items.map((it, idx) => (
                                       <tr key={idx}>
                                         <td className="px-3 py-2 truncate">
@@ -715,16 +685,12 @@ export default function LavarPage() {
                                             ? it.articulo.slice(0, 15) + '.'
                                             : it.articulo}
                                         </td>
-                                        <td className="px-3 py-2 text-right">
-                                          {it.qty}
-                                        </td>
+                                        <td className="px-3 py-2 text-right">{it.qty}</td>
                                         <td className="px-3 py-2 text-right">
                                           {CLP.format(it.valor)}
                                         </td>
                                         <td className="px-3 py-2 text-right">
-                                          {CLP.format(
-                                            it.qty * it.valor,
-                                          )}
+                                          {CLP.format(it.qty * it.valor)}
                                         </td>
                                       </tr>
                                     ))
@@ -757,9 +723,7 @@ export default function LavarPage() {
                           {activeFoto && !imageError[p.id] ? (
                             <div
                               className="relative w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in"
-                              onDoubleClick={() =>
-                                openPickerFor(p.id, activeFoto)
-                              }
+                              onDoubleClick={() => openPickerFor(p.id, activeFoto)}
                               title="Doble clic para opciones de imagen"
                             >
                               <Image
@@ -775,10 +739,7 @@ export default function LavarPage() {
                                   maxHeight: '70vh',
                                 }}
                                 onError={() =>
-                                  setImageError((prev) => ({
-                                    ...prev,
-                                    [p.id]: true,
-                                  }))
+                                  setImageError((prev) => ({ ...prev, [p.id]: true }))
                                 }
                                 priority={false}
                               />
@@ -843,18 +804,16 @@ export default function LavarPage() {
               title="Lavando"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'LAVANDO')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'LAVANDO')
               }
               active={pedidoAbierto?.estado === 'LAVANDO'}
               Icon={WashingMachine}
             />
             <IconBtn
-              title="Guardardo"
+              title="Guardado"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'GUARDADO')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'GUARDADO')
               }
               active={pedidoAbierto?.estado === 'GUARDADO'}
               Icon={CheckCircle2}
@@ -863,8 +822,7 @@ export default function LavarPage() {
               title="Entregar"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'ENTREGAR')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGAR')
               }
               active={pedidoAbierto?.estado === 'ENTREGAR'}
               Icon={Truck}
@@ -873,8 +831,7 @@ export default function LavarPage() {
               title="Entregado"
               disabled={!pedidoAbierto || saving}
               onClick={() =>
-                pedidoAbierto &&
-                changeEstado(pedidoAbierto.id, 'ENTREGADO')
+                pedidoAbierto && changeEstado(pedidoAbierto.id, 'ENTREGADO')
               }
               active={pedidoAbierto?.estado === 'ENTREGADO'}
               Icon={PackageCheck}
@@ -882,9 +839,7 @@ export default function LavarPage() {
             <IconBtn
               title={pedidoAbierto?.pagado ? 'Pagado' : 'Pendiente de Pago'}
               disabled={!pedidoAbierto || saving}
-              onClick={() =>
-                pedidoAbierto && togglePago(pedidoAbierto.id)
-              }
+              onClick={() => pedidoAbierto && togglePago(pedidoAbierto.id)}
               active={!!pedidoAbierto?.pagado}
               Icon={CreditCard}
             />
