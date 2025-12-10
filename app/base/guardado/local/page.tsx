@@ -147,6 +147,23 @@ function GuardadoPageInner() {
     [pedidos, openId],
   );
 
+  const totalPedidos = pedidos.length;
+  const totalMonto = useMemo(
+    () =>
+      pedidos.reduce((acc, p) => {
+        if (p.items?.length) {
+          return (
+            acc +
+            p.items.reduce((a, it) => {
+              return a + it.qty * it.valor;
+            }, 0)
+          );
+        }
+        return acc + Number(p.total ?? 0);
+      }, 0),
+    [pedidos],
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -154,7 +171,7 @@ function GuardadoPageInner() {
         setLoading(true);
         setErrMsg(null);
 
-        let query = supabase
+        const { data: rows, error: e1 } = await supabase
           .from('pedido')
           .select(
             'id:nro, telefono, total, estado, detalle, pagado, foto_url, token_servicio, tipo_entrega',
@@ -164,11 +181,12 @@ function GuardadoPageInner() {
           .or('tipo_entrega.is.null,tipo_entrega.eq.LOCAL')
           .order('nro', { ascending: false });
 
-        const { data: rows, error: e1 } = await query;
         if (e1) throw e1;
 
         const ids = (rows ?? []).map((r) => (r as any).id);
-        const tels = (rows ?? []).map((r) => (r as any).telefono).filter(Boolean);
+        const tels = (rows ?? [])
+          .map((r) => (r as any).telefono)
+          .filter(Boolean);
 
         if (!rows?.length) {
           if (!cancelled) {
@@ -413,7 +431,9 @@ function GuardadoPageInner() {
         const w2 = window.open(apiUrl, '_blank');
         if (!w2) {
           navigator.clipboard?.writeText(`${texto}\n`);
-          alert('No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.');
+          alert(
+            'No pude abrir WhatsApp. El texto y el link se copiaron al portapapeles.',
+          );
         }
       }
     } finally {
@@ -523,13 +543,21 @@ function GuardadoPageInner() {
     <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-32 pt-16 lg:pt-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
+      {/* HEADER */}
       <header
         className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between
                    px-4 lg:px-10 py-3 lg:py-4
                    bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
                    backdrop-blur-md border-b border-white/10"
       >
-        <h1 className="font-bold text-base lg:text-xl">{TITULO}</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="font-bold text-base lg:text-xl">{TITULO}</h1>
+          <div className="text-[11px] lg:text-xs text-white/80 flex items-center gap-2">
+            <span>{totalPedidos} pedidos</span>
+            <span className="opacity-60">•</span>
+            <span>Total {CLP.format(totalMonto)}</span>
+          </div>
+        </div>
         <button
           onClick={() => router.push('/base/guardado')}
           className="text-xs lg:text-sm text-white/90 hover:text-white"
@@ -538,6 +566,7 @@ function GuardadoPageInner() {
         </button>
       </header>
 
+      {/* LISTA DE PEDIDOS */}
       <section className="relative z-10 w-full px-3 sm:px-6 lg:px-10 grid gap-4 mt-2">
         {loading && (
           <div className="mt-4 flex items-center gap-2 text-white/90">
@@ -577,6 +606,7 @@ function GuardadoPageInner() {
                   isOpen ? 'border-white/40' : 'border-white/15',
                 ].join(' ')}
               >
+                {/* CABECERA DEL PEDIDO */}
                 <button
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                   className="w-full flex items-center justify-between gap-3 lg:gap-4 px-3 sm:px-4 lg:px-6 py-3"
@@ -596,10 +626,15 @@ function GuardadoPageInner() {
 
                     <div className="text-left">
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">
-                        N° {p.id}
+                        N° {p.id}{' '}
+                        <span className="ml-1 text-[10px] lg:text-xs bg-black/30 px-2 py-[2px] rounded-full align-middle">
+                          LOCAL
+                        </span>
                       </div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
-                        {p.cliente} {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        {p.cliente}{' '}
+                        {p.telefono && `• +${toE164CL(p.telefono)?.slice(2) ?? p.telefono}`}{' '}
+                        {p.pagado ? '• PAGADO' : '• PENDIENTE'}
                       </div>
                     </div>
                   </div>
@@ -611,6 +646,7 @@ function GuardadoPageInner() {
                   </div>
                 </button>
 
+                {/* DETALLE */}
                 {isOpen && (
                   <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
                     <div className="rounded-xl bg-white/5 border border-white/15 p-2 lg:p-3">
@@ -621,7 +657,7 @@ function GuardadoPageInner() {
                             [p.id]: !prev[p.id],
                           }))
                         }
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg.white/5 border border-white/10"
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
                       >
                         <div className="flex items-center gap-2">
                           <Table size={16} />
@@ -649,7 +685,7 @@ function GuardadoPageInner() {
                         <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
                           <div className="overflow-x-auto w-full max-w-4xl">
                             <table className="w-full text-xs lg:text-sm text-white/95">
-                              <thead className="bg-white/10 text.white/90">
+                              <thead className="bg-white/10 text-white/90">
                                 <tr>
                                   <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
                                   <th className="text-right px-3 py-2 w-[15%]">Can.</th>
@@ -699,6 +735,7 @@ function GuardadoPageInner() {
                         </div>
                       )}
 
+                      {/* FOTO */}
                       <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
                         {p.foto_url && !imageError[p.id] ? (
                           <div

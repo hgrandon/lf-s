@@ -1,115 +1,107 @@
 // app/base/guardado/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import { Truck, Archive, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Archive, Home, Truck } from 'lucide-react';
 
-export default function GuardadoMenuPage() {
+const TITULO = 'Pedidos Guardados';
+
+export default function GuardadoPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const [loading, setLoading] = useState(true);
-  const [localCount, setLocalCount] = useState(0);
-  const [domCount, setDomCount] = useState(0);
-
-  // Tomamos el nro que viene desde BASE (si existe)
-  const nroParam = searchParams.get('nro');
-  const nroQuery = nroParam ? `?nro=${nroParam}` : '';
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-
-      // GUARDADO LOCAL: tipo_entrega NULL o LOCAL
-      const { data: localRows } = await supabase
-        .from('pedido')
-        .select('nro')
-        .eq('estado', 'GUARDADO')
-        .or('tipo_entrega.is.null,tipo_entrega.eq.LOCAL');
-
-      // GUARDADO DOMICILIO
-      const { data: domRows } = await supabase
-        .from('pedido')
-        .select('nro')
-        .eq('estado', 'GUARDADO')
-        .eq('tipo_entrega', 'DOMICILIO');
-
-      setLocalCount(localRows?.length ?? 0);
-      setDomCount(domRows?.length ?? 0);
-      setLoading(false);
-    })();
-  }, []);
-
-  function go(where: 'local' | 'domicilio') {
-    // Reenviamos el ?nro=XXXX si venía desde BASE
-    router.push(`/base/guardado/${where}${nroQuery}`);
-  }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white pb-20">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-20 bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95 backdrop-blur-md px-6 py-4 border-b border-white/10">
-        <div className="flex items-center justify-between">
-          <h1 className="font-bold text-lg">Guardado</h1>
-          <button
-            onClick={() => router.push('/base')}
-            className="text-white/90 hover:text-white text-sm"
-          >
-            ← Volver
-          </button>
-        </div>
+    <main className="relative min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+      {/* Glow de fondo */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
+
+      {/* HEADER */}
+      <header
+        className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between
+                   px-4 lg:px-10 py-3 lg:py-4
+                   bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
+                   backdrop-blur-md border-b border-white/10"
+      >
+        <h1 className="font-bold text-base lg:text-xl flex items-center gap-2">
+          <Archive size={18} />
+          {TITULO}
+        </h1>
+        <button
+          onClick={() => router.push('/base')}
+          className="text-xs lg:text-sm text-white/90 hover:text-white"
+        >
+          ← Volver a BASE
+        </button>
       </header>
 
-      {/* Menú Tarjetas */}
-      <section className="pt-24 px-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* LOCAL */}
-        <button
-          onClick={() => go('local')}
-          className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
-                     p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
-        >
-          {loading ? (
-            <Loader2 className="animate-spin" size={24} />
-          ) : (
-            <>
-              {/* Número grande + icono al lado derecho */}
-              <div className="flex items-center gap-4">
-                <span className="text-4xl lg:text-5xl font-black leading-none">
-                  {localCount}
-                </span>
-                <Archive size={48} />
-              </div>
-              <span className="mt-2 font-bold text-lg tracking-wide">
-                LOCAL
-              </span>
-            </>
-          )}
-        </button>
+      {/* CONTENIDO */}
+      <section className="relative z-10 pt-20 lg:pt-24 pb-10 px-4 sm:px-6 lg:px-10">
+        <p className="text-sm text-white/80 mb-4">
+          Elige qué pedidos guardados quieres ver:
+        </p>
 
-        {/* DOMICILIO */}
-        <button
-          onClick={() => go('domicilio')}
-          className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md shadow-xl
-                     p-6 flex flex-col items-center gap-3 hover:bg-white/20 transition"
-        >
-          {loading ? (
-            <Loader2 className="animate-spin" size={24} />
-          ) : (
-            <>
-              <div className="flex items-center gap-4">
-                <span className="text-4xl lg:text-5xl font-black leading-none">
-                  {domCount}
-                </span>
-                <Truck size={48} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+          {/* CARD LOCAL */}
+          <button
+            onClick={() => router.push('/base/guardado/local')}
+            className="group rounded-2xl bg-white/10 border border-white/20 
+                       p-4 flex flex-col items-start gap-3
+                       hover:bg-white/15 hover:border-white/40 transition shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-full bg-emerald-500/90 flex items-center justify-center
+                           shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+              >
+                <Home size={20} />
               </div>
-              <span className="mt-2 font-bold text-lg tracking-wide">
-                DOMICILIO
-              </span>
-            </>
-          )}
-        </button>
+              <div className="text-left">
+                <div className="font-bold text-sm tracking-wide uppercase">
+                  Guardado Local
+                </div>
+                <div className="text-xs text-white/75">
+                  Pedidos listos en tienda para retiro.
+                </div>
+              </div>
+            </div>
+            <span className="mt-1 inline-flex text-[11px] text-emerald-100/90">
+              Ver pedidos con tipo de entrega LOCAL o sin tipo.
+            </span>
+          </button>
+
+          {/* CARD DOMICILIO */}
+          <button
+            onClick={() => router.push('/base/guardado/domicilio')}
+            className="group rounded-2xl bg-white/10 border border-white/20 
+                       p-4 flex flex-col items-start gap-3
+                       hover:bg-white/15 hover:border-white/40 transition shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-full bg-sky-500/90 flex items-center justify-center
+                           shadow-[0_0_0_3px_rgba(56,189,248,0.35)]"
+              >
+                <Truck size={20} />
+              </div>
+              <div className="text-left">
+                <div className="font-bold text-sm tracking-wide uppercase">
+                  Guardado Domicilio
+                </div>
+                <div className="text-xs text-white/75">
+                  Pedidos listos para despacho a domicilio.
+                </div>
+              </div>
+            </div>
+            <span className="mt-1 inline-flex text-[11px] text-sky-100/90">
+              Ver pedidos con tipo de entrega DOMICILIO.
+            </span>
+          </button>
+        </div>
+
+        <p className="mt-6 text-[11px] text-white/60 max-w-xl">
+          Desde cada vista podrás cambiar el estado del pedido (LAVAR, LAVANDO,
+          ENTREGAR, ENTREGADO), marcar como pagado, agregar o cambiar foto y
+          enviar comprobante por WhatsApp.
+        </p>
       </section>
     </main>
   );
