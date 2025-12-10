@@ -27,12 +27,7 @@ import Fotos from '../pedido/fotos/Fotos';
    Tipos extra
 ========================= */
 
-type PedidoEstado =
-  | 'LAVAR'
-  | 'LAVANDO'
-  | 'GUARDADO'
-  | 'ENTREGADO'
-  | 'ENTREGAR';
+type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
 
 type NextInfo = {
   nro: number;
@@ -119,14 +114,17 @@ function getEstadoConfig(e: PedidoEstado) {
    Modales reutilizables
 ========================= */
 
+/** Modal para nuevo/editar cliente (versión móvil, igual a pedido) */
 function NuevoClienteModal({
   open,
   telefono,
+  clienteActual,
   onClose,
   onSaved,
 }: {
   open: boolean;
   telefono: string;
+  clienteActual?: Cliente | null;
   onClose: () => void;
   onSaved: (c: Cliente) => void;
 }) {
@@ -141,12 +139,17 @@ function NuevoClienteModal({
 
   useEffect(() => {
     if (open) {
-      setForm({ telefono, nombre: '', direccion: '' });
+      const telBase = (clienteActual?.telefono || telefono || '').replace(/\D/g, '');
+      setForm({
+        telefono: telBase,
+        nombre: (clienteActual?.nombre || '').toString(),
+        direccion: (clienteActual?.direccion || '').toString(),
+      });
       setError(null);
       const t = setTimeout(() => refFirst.current?.focus(), 60);
       return () => clearTimeout(t);
     }
-  }, [open, telefono]);
+  }, [open, telefono, clienteActual]);
 
   async function handleSave() {
     try {
@@ -186,10 +189,13 @@ function NuevoClienteModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-2 sm:px-4">
-      <div className="w-full max-w-md rounded-t-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b">
-          <div className="font-bold text-sm sm:text-base">Nuevo cliente</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+      <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden max-h-[80vh]">
+        {/* header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
+          <div className="font-bold text-sm sm:text-base">
+            {clienteActual ? 'Editar cliente' : 'Nuevo cliente'}
+          </div>
           <button
             onClick={onClose}
             className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
@@ -197,62 +203,75 @@ function NuevoClienteModal({
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
+
+        {/* cuerpo */}
+        <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Teléfono</label>
             <input
               ref={refFirst}
               value={form.telefono}
               onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
+                setForm((prev) => ({
+                  ...prev,
                   telefono: e.target.value.replace(/\D/g, ''),
                 }))
               }
               inputMode="tel"
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="9 dígitos…"
+              placeholder="Ej: 991234567"
             />
           </div>
+
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Nombre</label>
             <input
               value={form.nombre}
               onChange={(e) =>
-                setForm((p) => ({ ...p, nombre: e.target.value }))
+                setForm((prev) => ({
+                  ...prev,
+                  nombre: e.target.value.toUpperCase(),
+                }))
               }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="NOMBRE Y APELLIDO"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+              placeholder="EJ: JUAN PÉREZ"
             />
           </div>
+
           <div className="grid gap-1">
             <label className="text-xs sm:text-sm font-medium">Dirección</label>
             <input
               value={form.direccion}
               onChange={(e) =>
-                setForm((p) => ({ ...p, direccion: e.target.value }))
+                setForm((prev) => ({
+                  ...prev,
+                  direccion: e.target.value.toUpperCase(),
+                }))
               }
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm"
-              placeholder="CALLE Y NÚMERO"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+              placeholder="EJ: LOS CARRERA 1234"
             />
           </div>
+
           {error && (
             <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
               {error}
             </div>
           )}
         </div>
-        <div className="px-5 py-3 border-t flex justify-end gap-2">
+
+        {/* footer */}
+        <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-xl px-3 py-2 text-sm hover:bg-slate-50"
+            className="rounded-xl px-3 py-2 text-xs sm:text-sm hover:bg-slate-50"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-xs sm:text-sm disabled:opacity-60"
           >
             {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             Guardar
@@ -274,7 +293,6 @@ function DetalleArticuloModal({
   onClose: () => void;
   onConfirm: (d: { articulo: string; qty: number; valor: number }) => void;
 }) {
-  // Usamos STRING para que sea fácil editar 7000 -> 8000
   const [qtyStr, setQtyStr] = useState('1');
   const [valorStr, setValorStr] = useState('');
 
@@ -292,7 +310,6 @@ function DetalleArticuloModal({
   if (!open || !articulo) return null;
 
   function handleAgregar() {
-    // Convertimos a número SOLO al confirmar
     const qNum = Number(qtyStr.replace(/\D/g, '') || '0');
     const vNum = Number(valorStr.replace(/\D/g, '') || '0');
 
@@ -318,9 +335,7 @@ function DetalleArticuloModal({
             <label className="text-sm font-semibold text-left">Valor</label>
             <input
               value={valorStr}
-              onChange={(e) =>
-                setValorStr(e.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(e) => setValorStr(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
               className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
               placeholder="0"
@@ -331,9 +346,7 @@ function DetalleArticuloModal({
             <label className="text-sm font-semibold text-left">Cantidad</label>
             <input
               value={qtyStr}
-              onChange={(e) =>
-                setQtyStr(e.target.value.replace(/[^0-9]/g, ''))
-              }
+              onChange={(e) => setQtyStr(e.target.value.replace(/[^0-9]/g, ''))}
               inputMode="numeric"
               className="w-full rounded-xl border px-3 py-2 sm:py-3 outline-none focus:ring-2 focus:ring-violet-300 text-base"
               placeholder="1"
@@ -402,6 +415,7 @@ function DeleteItemModal({
   );
 }
 
+/** Modal NUEVO ARTÍCULO ajustado a celular y MAYÚSCULAS (copiado de pedido) */
 function NuevoArticuloModal({
   open,
   onClose,
@@ -428,22 +442,39 @@ function NuevoArticuloModal({
     try {
       setSaving(true);
       setError(null);
+
+      const nombreLimpio = nombre.trim().toUpperCase();
+      const precioNumero = Number(precio || 0);
+
+      if (!nombreLimpio) {
+        throw new Error('Nombre obligatorio.');
+      }
+      if (precioNumero < 0) {
+        throw new Error('El precio no puede ser negativo.');
+      }
+
       const payload = {
-        nombre: nombre.trim().toUpperCase(),
-        precio: Number(precio || 0),
+        nombre: nombreLimpio,
+        precio: precioNumero,
         activo: true,
       };
-      if (!payload.nombre) throw new Error('Nombre obligatorio.');
+
       const { data, error } = await supabase
         .from('articulo')
-        .insert(payload)
+        .upsert(payload, { onConflict: 'nombre' })
         .select('id,nombre,precio,activo')
         .maybeSingle();
+
       if (error) throw error;
+      if (!data) throw new Error('No se recibió respuesta al guardar el artículo.');
+
       onSaved(data as Articulo);
       onClose();
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo guardar el artículo');
+      setError(
+        e?.message ??
+          'No se pudo guardar el artículo. Inténtalo nuevamente.',
+      );
     } finally {
       setSaving(false);
     }
@@ -452,10 +483,12 @@ function NuevoArticuloModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
-      <div className="w-[520px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div className="font-bold">Nuevo artículo</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-2 sm:px-4">
+      {/* modal centrado, tamaño pensado para celular */}
+      <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        {/* header compacto */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
+          <div className="font-bold text-sm sm:text-base">Nuevo artículo</div>
           <button
             onClick={onClose}
             className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
@@ -463,43 +496,47 @@ function NuevoArticuloModal({
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 py-4 grid gap-3">
+
+        {/* cuerpo con scroll interno si se pasa de altura */}
+        <div className="px-4 sm:px-5 py-3 grid gap-3 max-h-[55vh] overflow-y-auto">
           <div className="grid gap-1">
-            <label className="text-sm font-medium">Nombre</label>
+            <label className="text-xs sm:text-sm font-medium">Nombre</label>
             <input
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-              placeholder="Ej: COBERTOR KING"
+              onChange={(e) => setNombre(e.target.value.toUpperCase())}
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm uppercase"
+              placeholder="EJ: COBERTOR KING"
             />
           </div>
           <div className="grid gap-1">
-            <label className="text-sm font-medium">Precio (CLP)</label>
+            <label className="text-xs sm:text-sm font-medium">Precio (CLP)</label>
             <input
               value={String(precio)}
               onChange={(e) => setPrecio(Number(e.target.value || 0))}
               inputMode="numeric"
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-right"
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 text-sm text-right"
               placeholder="0"
             />
           </div>
           {error && (
-            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-sm">
+            <div className="rounded-lg bg-rose-100 text-rose-700 px-3 py-2 text-xs sm:text-sm">
               {error}
             </div>
           )}
         </div>
-        <div className="px-5 py-4 border-t flex justify-end gap-2">
+
+        {/* footer compacto */}
+        <div className="px-4 sm:px-5 py-3 border-t flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-xl px-4 py-2 hover:bg-slate-50"
+            className="rounded-xl px-3 py-2 text-xs sm:text-sm hover:bg-slate-50"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-xs sm:text-sm disabled:opacity-60"
           >
             {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             Guardar
@@ -526,8 +563,7 @@ export default function EditarPedidoPage() {
   // estado / pagado / tipo entrega (EDITABLES)
   const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
   const [pagado, setPagado] = useState<boolean>(false);
-  const [tipoEntrega, setTipoEntrega] =
-    useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
+  const [tipoEntrega, setTipoEntrega] = useState<'LOCAL' | 'DOMICILIO'>('LOCAL');
 
   // bolsas
   const [bolsas, setBolsas] = useState<number | null>(null);
@@ -673,7 +709,6 @@ export default function EditarPedidoPage() {
 
     setNroInput(String(nroNum));
     void handleCargarPedido(nroNum);
-    // solo una vez al montar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -734,17 +769,14 @@ export default function EditarPedidoPage() {
       setPagadoOriginal(pagadoPed);
       setTipoEntregaOriginal(tipoPed);
 
-      // bolsas
       const bolsasPed =
         typeof ped.bolsas === 'number' && !Number.isNaN(ped.bolsas)
           ? ped.bolsas
           : null;
       setBolsas(bolsasPed);
 
-      // Teléfono
       setTelefono(ped.telefono ?? '');
 
-      // Líneas
       const { data: lineas, error: eL } = await supabase
         .from('pedido_linea')
         .select('articulo,cantidad,valor')
@@ -764,7 +796,6 @@ export default function EditarPedidoPage() {
       });
       setItems(itemsCargados);
 
-      // Fotos
       let fotosArray: string[] = [];
       const { data: fotosRows } = await supabase
         .from('pedido_foto')
@@ -1108,6 +1139,14 @@ export default function EditarPedidoPage() {
               onTelefonoChange={(v) => setTelefono(v.replace(/\D/g, ''))}
               checkingCli={checkingCli}
               cliente={cliente}
+              onEditarCliente={() => {
+                const digits = (telefono || '').replace(/\D/g, '');
+                if (digits.length < 8) {
+                  alert('Primero ingresa un teléfono válido.');
+                  return;
+                }
+                setOpenCliModal(true);
+              }}
             />
           </>
         )}
@@ -1257,8 +1296,12 @@ export default function EditarPedidoPage() {
       <NuevoClienteModal
         open={openCliModal}
         telefono={(telefono || '').replace(/\D/g, '')}
+        clienteActual={cliente}
         onClose={() => setOpenCliModal(false)}
-        onSaved={(c) => setCliente(c)}
+        onSaved={(c) => {
+          setCliente(c);
+          setTelefono(c.telefono);
+        }}
       />
 
       <NuevoArticuloModal
