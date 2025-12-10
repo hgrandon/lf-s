@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -115,6 +115,7 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
 
 export default function LavandoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -288,6 +289,28 @@ export default function LavandoPage() {
     };
   }, []);
 
+  // ⭐ NUEVO: abrir automáticamente el pedido si viene ?nro= en la URL
+  useEffect(() => {
+    const nroStr = searchParams.get('nro');
+    const nro = nroStr ? Number(nroStr) : NaN;
+    if (!nro || !Array.isArray(pedidos) || pedidos.length === 0) return;
+
+    const found = pedidos.find((p) => p.id === nro);
+    if (!found) return;
+
+    // Abrimos el pedido y su detalle
+    setOpenId(found.id);
+    setOpenDetail((prev) => ({ ...prev, [found.id]: true }));
+
+    // Hacemos scroll suave al centro
+    setTimeout(() => {
+      const el = document.getElementById(`pedido-${found.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 200);
+  }, [searchParams, pedidos]);
+
   function snack(msg: string) {
     setNotice(msg);
     setTimeout(() => setNotice(null), 1800);
@@ -362,7 +385,7 @@ export default function LavandoPage() {
     setSaving(false);
   }
 
-  // ------- Subida de foto / abrir modal -------
+  // ------- Subida de foto / abrir modal ------- 
   function openPickerFor(pid: number, fotoUrl: string | null) {
     setPickerForPedido(pid);
     setPickerFotoUrl(fotoUrl);
@@ -440,7 +463,7 @@ export default function LavandoPage() {
     }
   }
 
-  // ------- Eliminar foto (botón del modal) -------
+  // ------- Eliminar foto (botón del modal) ------- 
   async function handleDeleteFoto(pedidoId: number, fotoUrl?: string | null) {
     if (!pedidoId) return;
 
@@ -646,6 +669,7 @@ export default function LavandoPage() {
               return (
                 <div
                   key={p.id}
+                  id={`pedido-${p.id}`}
                   className={[
                     'rounded-2xl bg-white/10 border backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.15)]',
                     isOpen ? 'border-white/40' : 'border-white/15',
