@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
   ChevronRight,
@@ -23,7 +23,13 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 type Item = { articulo: string; qty: number; valor: number };
-type PedidoEstado = 'LAVAR' | 'LAVANDO' | 'GUARDAR' | 'GUARDADO' | 'ENTREGADO' | 'ENTREGAR';
+type PedidoEstado =
+  | 'LAVAR'
+  | 'LAVANDO'
+  | 'GUARDAR'
+  | 'GUARDADO'
+  | 'ENTREGADO'
+  | 'ENTREGAR';
 
 type Pedido = {
   id: number; // nro
@@ -98,8 +104,13 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function LavarPage() {
+/* =========================
+   CONTENIDO REAL DE LAVAR
+========================= */
+
+function LavarContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -128,7 +139,7 @@ export default function LavarPage() {
     [pedidos, openId],
   );
 
-  // ================== CARGA + REALTIME COMO LAVANDO ==================
+  // ================== CARGA + REALTIME ==================
   useEffect(() => {
     let cancelled = false;
 
@@ -265,7 +276,7 @@ export default function LavarPage() {
     // 1) carga inicial
     fetchPedidos();
 
-    // 2) suscripción realtime (igual idea que en otras pantallas)
+    // 2) suscripción realtime
     const channel = supabase
       .channel('realtime-lavar')
       .on(
@@ -283,6 +294,28 @@ export default function LavarPage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // ⭐ NUEVO: abrir automáticamente el pedido si viene ?nro= en la URL (igual que Lavando)
+  useEffect(() => {
+    const nroStr = searchParams.get('nro');
+    const nro = nroStr ? Number(nroStr) : NaN;
+    if (!nro || !Array.isArray(pedidos) || pedidos.length === 0) return;
+
+    const found = pedidos.find((p) => p.id === nro);
+    if (!found) return;
+
+    // Abrimos el pedido y su detalle
+    setOpenId(found.id);
+    setOpenDetail((prev) => ({ ...prev, [found.id]: true }));
+
+    // Scroll suave al centro
+    setTimeout(() => {
+      const el = document.getElementById(`pedido-${found.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 200);
+  }, [searchParams, pedidos]);
 
   function snack(msg: string) {
     setNotice(msg);
@@ -543,7 +576,7 @@ export default function LavarPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
 
       <header
-        className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between
+        className="fixed top-0 left-0 right-0 z-20 flex items-center justify_between
                    px-4 lg:px-10 py-3 lg:py-4
                    bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
                    backdrop-blur-md border-b border-white/10"
@@ -617,12 +650,14 @@ export default function LavarPage() {
                       const goingToOpen = !isOpen;
                       setOpenId(goingToOpen ? p.id : null);
 
-                      // scroll suave al abrir, como en otras pantallas
                       if (goingToOpen) {
                         setTimeout(() => {
                           const el = document.getElementById(`pedido-${p.id}`);
                           if (el) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            el.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'start',
+                            });
                           }
                         }, 80);
                       }
@@ -692,7 +727,11 @@ export default function LavarPage() {
                               <span>Editar</span>
                             </button>
 
-                            {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            {detOpen ? (
+                              <ChevronDown size={16} />
+                            ) : (
+                              <ChevronRight size={16} />
+                            )}
                           </div>
                         </button>
 
@@ -1003,6 +1042,27 @@ export default function LavarPage() {
         onChange={onFileSelected}
       />
     </main>
+  );
+}
+
+/* =========================
+   WRAPPER CON SUSPENSE
+========================= */
+
+export default function LavarPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white">
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="animate-spin" size={18} />
+            Cargando vista Lavar…
+          </div>
+        </main>
+      }
+    >
+      <LavarContent />
+    </Suspense>
   );
 }
 
