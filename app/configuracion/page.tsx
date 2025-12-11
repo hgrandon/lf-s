@@ -49,7 +49,7 @@ function readSessionSafely(): LfSession | null {
 
 /* =========================
    Tipos de usuarios
-   (tabla public.usuario)
+   (tabla public.usuario / vista vw_usuario_app)
 ========================= */
 
 type Usuario = {
@@ -355,7 +355,7 @@ export default function ConfiguracionPage() {
     setAuthChecked(true);
   }, [router]);
 
-  // Cargar usuarios (tabla public.usuario)
+  // Cargar usuarios DESDE LA VISTA vw_usuario_app
   useEffect(() => {
     if (!authOk) return;
     (async () => {
@@ -364,7 +364,7 @@ export default function ConfiguracionPage() {
         setLoadError(null);
 
         const { data, error } = await supabase
-          .from('usuario')
+          .from('vw_usuario_app')
           .select('id,nombre,telefono,rol,activo')
           .order('nombre', { ascending: true });
 
