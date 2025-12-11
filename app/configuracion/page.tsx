@@ -48,16 +48,24 @@ function readSessionSafely(): LfSession | null {
 }
 
 /* =========================
-   Tipos de usuarios (tabla `usuario`)
+   Tipos de usuarios
 ========================= */
 
-type RolUsuario = 'ADMIN' | 'USER';
-
+/**
+ * Usamos la tabla real `public.usuario` con columnas:
+ *  - id        uuid (PK)
+ *  - telefono  text
+ *  - nombre    text
+ *  - rol       text
+ *  - pin_hash  text
+ *  - activo    bool
+ *  - creado_en timestamptz
+ */
 type Usuario = {
   id: string;
   nombre: string;
   telefono: string;
-  rol: RolUsuario;
+  rol: string;
   activo: boolean;
 };
 
@@ -78,26 +86,26 @@ function UsuarioModal({
 }) {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [rol, setRol] = useState<RolUsuario>('USER');
+  const [rol, setRol] = useState('USER');
   const [activo, setActivo] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-
-    if (initial) {
-      setNombre(initial.nombre ?? '');
-      setTelefono(initial.telefono ?? '');
-      setRol((initial.rol as RolUsuario) ?? 'USER');
-      setActivo(initial.activo ?? true);
-    } else {
-      setNombre('');
-      setTelefono('');
-      setRol('USER');
-      setActivo(true);
+    if (open) {
+      if (initial) {
+        setNombre(initial.nombre ?? '');
+        setTelefono(initial.telefono ?? '');
+        setRol(initial.rol ?? 'USER');
+        setActivo(initial.activo ?? true);
+      } else {
+        setNombre('');
+        setTelefono('');
+        setRol('USER');
+        setActivo(true);
+      }
+      setError(null);
     }
-    setError(null);
   }, [open, initial]);
 
   if (!open) return null;
@@ -107,40 +115,34 @@ function UsuarioModal({
       setSaving(true);
       setError(null);
 
-      const telLimpio = telefono.replace(/\D/g, '');
-      const nombreLimpio = nombre.trim().toUpperCase();
-
-      if (!nombreLimpio) throw new Error('El nombre es obligatorio.');
-      if (!telLimpio) throw new Error('El teléfono es obligatorio.');
-      if (telLimpio.length < 8) {
-        throw new Error('El teléfono debe tener al menos 8 dígitos.');
-      }
-
       const payload = {
-        nombre: nombreLimpio,
-        telefono: telLimpio,
-        rol: rol.toUpperCase() as RolUsuario,
+        nombre: nombre.trim().toUpperCase(),
+        telefono: telefono.trim(),
+        rol: rol.trim().toUpperCase(),
         activo,
       };
+
+      if (!payload.nombre) throw new Error('El nombre es obligatorio.');
+      if (!payload.telefono) throw new Error('El teléfono / usuario es obligatorio.');
 
       let dataRow: any = null;
 
       if (initial?.id) {
-        // update
+        // UPDATE a tabla public.usuario
         const { data, error } = await supabase
           .from('usuario')
           .update(payload)
           .eq('id', initial.id)
-          .select('id,nombre,telefono,rol,activo')
+          .select('id, telefono, nombre, rol, activo')
           .maybeSingle();
         if (error) throw error;
         dataRow = data;
       } else {
-        // insert
+        // INSERT a tabla public.usuario
         const { data, error } = await supabase
           .from('usuario')
           .insert(payload)
-          .select('id,nombre,telefono,rol,activo')
+          .select('id, telefono, nombre, rol, activo')
           .maybeSingle();
         if (error) throw error;
         dataRow = data;
@@ -149,11 +151,11 @@ function UsuarioModal({
       if (!dataRow) throw new Error('No se recibió respuesta del servidor.');
 
       const usuarioGuardado: Usuario = {
-        id: String(dataRow.id),
-        nombre: dataRow.nombre ?? '',
-        telefono: dataRow.telefono ?? '',
-        rol: (dataRow.rol as RolUsuario) ?? 'USER',
-        activo: !!dataRow.activo,
+        id: dataRow.id,
+        nombre: dataRow.nombre,
+        telefono: dataRow.telefono,
+        rol: dataRow.rol,
+        activo: dataRow.activo,
       };
 
       onSaved(usuarioGuardado);
@@ -197,18 +199,15 @@ function UsuarioModal({
           </div>
 
           <div className="grid gap-1">
-            <label className="font-medium">Teléfono</label>
+            <label className="font-medium">Teléfono / Usuario</label>
             <input
               value={telefono}
-              onChange={(e) =>
-                setTelefono(e.target.value.replace(/[^0-9+ ]/g, ''))
-              }
-              inputMode="tel"
+              onChange={(e) => setTelefono(e.target.value)}
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-              placeholder="Ej: 991234567"
+              placeholder="Ej: 991335828"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Debe coincidir con el teléfono que usas en el login UUD.
+              Debe coincidir con el dato que usas para ingresar (login UUD).
             </p>
           </div>
 
@@ -216,11 +215,12 @@ function UsuarioModal({
             <label className="font-medium">Rol</label>
             <select
               value={rol}
-              onChange={(e) => setRol(e.target.value as RolUsuario)}
+              onChange={(e) => setRol(e.target.value)}
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 bg-white"
             >
               <option value="ADMIN">ADMIN</option>
               <option value="USER">USER</option>
+              <option value="SUPERVISOR">SUPERVISOR</option>
             </select>
           </div>
 
@@ -356,7 +356,7 @@ export default function ConfiguracionPage() {
     setAuthChecked(true);
   }, [router]);
 
-  // Cargar usuarios
+  // Cargar usuarios desde public.usuario
   useEffect(() => {
     if (!authOk) return;
     (async () => {
@@ -366,7 +366,7 @@ export default function ConfiguracionPage() {
 
         const { data, error } = await supabase
           .from('usuario')
-          .select('id,nombre,telefono,rol,activo')
+          .select('id, telefono, nombre, rol, activo')
           .order('nombre', { ascending: true });
 
         if (error) throw error;
@@ -376,7 +376,7 @@ export default function ConfiguracionPage() {
             id: String(r.id),
             nombre: r.nombre ?? '',
             telefono: r.telefono ?? '',
-            rol: (r.rol as RolUsuario) ?? 'USER',
+            rol: r.rol ?? '',
             activo: !!r.activo,
           })) ?? [];
 
@@ -549,7 +549,7 @@ export default function ConfiguracionPage() {
                   <thead>
                     <tr className="text-left text-[11px] sm:text-xs text-slate-500">
                       <th className="px-3 py-1">Nombre</th>
-                      <th className="px-3 py-1">Teléfono</th>
+                      <th className="px-3 py-1">Teléfono / Usuario</th>
                       <th className="px-3 py-1">Rol</th>
                       <th className="px-3 py-1 text-center">Estado</th>
                       <th className="px-3 py-1 text-right">Acciones</th>
