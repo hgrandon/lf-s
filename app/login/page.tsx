@@ -1,17 +1,10 @@
 // app/login/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  Loader2,
-  Eye,
-  EyeOff,
-  Phone,
-  Lock,
-  LogIn,
-} from 'lucide-react';
+import { Loader2, Eye, EyeOff, Phone, Lock, LogIn } from 'lucide-react';
 import Image from 'next/image';
 import { compare } from 'bcryptjs';
 
@@ -19,15 +12,34 @@ import { compare } from 'bcryptjs';
    Tipos de sesión (UUD)
 ========================= */
 
-type AuthMode = 'clave' | 'usuario';
+type AuthMode = 'usuario';
 
 type LfSession = {
-  mode: AuthMode;        // ahora siempre 'usuario' para este login
-  display: string;       // nombre que veremos en la app (FABIOLA, MAURICIO, etc.)
+  mode: AuthMode;        // siempre 'usuario' para este login
+  display: string;       // nombre visible: FABIOLA, MAURICIO, etc.
   rol?: string | null;   // ADMIN / USER
   ts: number;            // timestamp creación sesión
   ttl: number;           // tiempo de vida en ms (ej: 12 horas)
 };
+
+/* =========================
+   Helpers
+========================= */
+
+function sanitizeTelefono(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
+/**
+ * Redirige a la ruta indicada en ?next=/algo
+ * o, si no viene, al menú.
+ */
+function getNextPath(searchParams: URLSearchParams | null): string {
+  if (!searchParams) return '/menu';
+  const next = searchParams.get('next');
+  if (!next || !next.startsWith('/')) return '/menu';
+  return next;
+}
 
 /* =========================
    Componente Login
@@ -35,6 +47,7 @@ type LfSession = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [telefono, setTelefono] = useState('');
   const [pin, setPin] = useState('');
@@ -43,11 +56,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Si ya existe sesión válida, mandamos directo al menú
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('lf_auth');
+      if (!raw) return;
+      const sess = JSON.parse(raw) as LfSession | null;
+      if (!sess?.ts || !sess?.ttl) return;
+      const expired = Date.now() - sess.ts > sess.ttl;
+      if (!expired) {
+        // sesión válida → ir directo a menú
+        router.replace('/menu');
+      }
+    } catch {
+      // ignoramos errores de parseo
+    }
+  }, [router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
 
-    const telDigits = telefono.replace(/\D/g, '');
+    const telDigits = sanitizeTelefono(telefono);
 
     if (telDigits.length < 8) {
       setErrorMsg('Ingresa un teléfono válido (al menos 8 dígitos).');
@@ -107,8 +138,11 @@ export default function LoginPage() {
         localStorage.setItem('lf_auth', JSON.stringify(session));
       }
 
-      // 4) Redirigir al menú
-      router.replace('/menu');
+      // 4) Redirigir al destino (next) o al menú
+      const nextPath = getNextPath(
+        searchParams ? new URLSearchParams(searchParams.toString()) : null,
+      );
+      router.replace(nextPath);
     } catch (e: any) {
       console.error('Error en login', e);
       setErrorMsg(e?.message ?? 'No se pudo iniciar sesión. Intenta otra vez.');
@@ -127,7 +161,6 @@ export default function LoginPage() {
           {/* Logo + título */}
           <div className="flex flex-col items-center gap-3 mb-6">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-500 flex items-center justify-center shadow-lg">
-              {/* usa /logo.png o el icono que tengas */}
               <Image
                 src="/logo.png"
                 alt="Lavandería Fabiola"
@@ -161,9 +194,7 @@ export default function LoginPage() {
                 <Phone className="text-violet-500" size={18} />
                 <input
                   value={telefono}
-                  onChange={(e) =>
-                    setTelefono(e.target.value.replace(/\D/g, ''))
-                  }
+                  onChange={(e) => setTelefono(sanitizeTelefono(e.target.value))}
                   inputMode="tel"
                   placeholder="Ej: 991335828"
                   className="flex-1 bg-transparent border-none outline-none text-sm"
