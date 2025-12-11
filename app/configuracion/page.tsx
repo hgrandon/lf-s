@@ -49,22 +49,13 @@ function readSessionSafely(): LfSession | null {
 
 /* =========================
    Tipos de usuarios
+   (tabla public.usuario)
 ========================= */
 
-/**
- * Usamos la tabla real `public.usuario` con columnas:
- *  - id        uuid (PK)
- *  - telefono  text
- *  - nombre    text
- *  - rol       text
- *  - pin_hash  text
- *  - activo    bool
- *  - creado_en timestamptz
- */
 type Usuario = {
-  id: string;
+  id: string;        // uuid
   nombre: string;
-  telefono: string;
+  telefono: string;  // se usa como "usuario"
   rol: string;
   activo: boolean;
 };
@@ -115,35 +106,43 @@ function UsuarioModal({
       setSaving(true);
       setError(null);
 
+      const nombreLimpio = nombre.trim().toUpperCase();
+      const telDigits = telefono.replace(/\D/g, '');
+
+      if (!nombreLimpio) throw new Error('El nombre es obligatorio.');
+      if (!telDigits) throw new Error('El teléfono es obligatorio.');
+      if (telDigits.length < 8) {
+        throw new Error('El teléfono debe tener al menos 8 dígitos.');
+      }
+
       const payload = {
-        nombre: nombre.trim().toUpperCase(),
-        telefono: telefono.trim(),
-        rol: rol.trim().toUpperCase(),
+        nombre: nombreLimpio,
+        telefono: telDigits,
+        rol: (rol || 'USER').toUpperCase(),
         activo,
       };
-
-      if (!payload.nombre) throw new Error('El nombre es obligatorio.');
-      if (!payload.telefono) throw new Error('El teléfono / usuario es obligatorio.');
 
       let dataRow: any = null;
 
       if (initial?.id) {
-        // UPDATE a tabla public.usuario
+        // UPDATE en public.usuario
         const { data, error } = await supabase
           .from('usuario')
           .update(payload)
           .eq('id', initial.id)
-          .select('id, telefono, nombre, rol, activo')
+          .select('id,nombre,telefono,rol,activo')
           .maybeSingle();
+
         if (error) throw error;
         dataRow = data;
       } else {
-        // INSERT a tabla public.usuario
+        // INSERT en public.usuario
         const { data, error } = await supabase
           .from('usuario')
           .insert(payload)
-          .select('id, telefono, nombre, rol, activo')
+          .select('id,nombre,telefono,rol,activo')
           .maybeSingle();
+
         if (error) throw error;
         dataRow = data;
       }
@@ -192,9 +191,9 @@ function UsuarioModal({
             <label className="font-medium">Nombre</label>
             <input
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-              placeholder="Nombre completo"
+              onChange={(e) => setNombre(e.target.value.toUpperCase())}
+              className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300 uppercase"
+              placeholder="NOMBRE COMPLETO"
             />
           </div>
 
@@ -202,12 +201,13 @@ function UsuarioModal({
             <label className="font-medium">Teléfono / Usuario</label>
             <input
               value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
+              onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ''))}
+              inputMode="tel"
               className="rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-violet-300"
-              placeholder="Ej: 991335828"
+              placeholder="Ej: 991234567"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Debe coincidir con el dato que usas para ingresar (login UUD).
+              Este teléfono se usa como identificador de usuario (login).
             </p>
           </div>
 
@@ -220,7 +220,6 @@ function UsuarioModal({
             >
               <option value="ADMIN">ADMIN</option>
               <option value="USER">USER</option>
-              <option value="SUPERVISOR">SUPERVISOR</option>
             </select>
           </div>
 
@@ -356,7 +355,7 @@ export default function ConfiguracionPage() {
     setAuthChecked(true);
   }, [router]);
 
-  // Cargar usuarios desde public.usuario
+  // Cargar usuarios (tabla public.usuario)
   useEffect(() => {
     if (!authOk) return;
     (async () => {
@@ -366,14 +365,14 @@ export default function ConfiguracionPage() {
 
         const { data, error } = await supabase
           .from('usuario')
-          .select('id, telefono, nombre, rol, activo')
+          .select('id,nombre,telefono,rol,activo')
           .order('nombre', { ascending: true });
 
         if (error) throw error;
 
         const rows: Usuario[] =
           (data as any[] | null)?.map((r) => ({
-            id: String(r.id),
+            id: r.id,
             nombre: r.nombre ?? '',
             telefono: r.telefono ?? '',
             rol: r.rol ?? '',
@@ -408,6 +407,7 @@ export default function ConfiguracionPage() {
         .from('usuario')
         .delete()
         .eq('id', usuarioDelete.id);
+
       if (error) throw error;
 
       setUsuarios((prev) => prev.filter((u) => u.id !== usuarioDelete.id));
@@ -681,4 +681,3 @@ export default function ConfiguracionPage() {
     </main>
   );
 }
-
