@@ -130,6 +130,8 @@ function buildWhatsappUrl(
     ``,
     `Te avisaremos por este mismo medio cuando esté listo.`,
     `¡Gracias por preferirnos!`,
+        ``,
+    `Cualquier consulta hazla llegar al WhatsApp 991335828.`,
   ].join('\n');
 
   return `https://wa.me/${to}?text=${encodeURIComponent(message)}`;
