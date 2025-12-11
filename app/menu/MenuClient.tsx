@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import MenuTile from '@/app/components/MenuTile';
 import {
   ClipboardList,
@@ -35,7 +35,6 @@ function getCurrentRole(): string | null {
 
     const parsed = JSON.parse(raw) as AuthSession;
 
-    // respetar TTL si lo estás usando
     if (parsed.ttl && parsed.ts && Date.now() - parsed.ts > parsed.ttl) {
       localStorage.removeItem('lf_auth');
       return null;
@@ -54,7 +53,7 @@ function isAdminRole(rol: string | null | undefined): boolean {
 }
 
 /* =========================
-   Config de tiles
+   Configuración de Tiles
 ========================= */
 
 type TileConfig = {
@@ -65,18 +64,21 @@ type TileConfig = {
 };
 
 const tiles: TileConfig[] = [
-  { href: '/pedido',    title: 'Pedido',        icon: <ClipboardList size={22} /> },
-  { href: '/clientes',  title: 'Cliente',       icon: <User size={22} /> },
-  { href: '/base',      title: 'Base',          icon: <Database size={22} /> },
-  { href: '/empresa',   title: 'Empresa',       icon: <Building2 size={22} /> },
-  { href: '/finanzas',  title: 'Finanzas',      icon: <PiggyBank size={22} /> },          // solo admin
-  { href: '/guardar',   title: 'Guardar',       icon: <Save size={22} />,          disabled: true },
-  { href: '/entregar',  title: 'Entregar',      icon: <PackageCheck size={22} />,  disabled: true },
-  { href: '/ruta',      title: 'Ruta',          icon: <RouteIcon size={22} />,     disabled: true },
-  { href: '/domicilio', title: 'Domicilio',     icon: <Home size={22} />,          disabled: true },
-  { href: '/config',    title: 'Configuración', icon: <Settings size={22} /> },           // solo admin
-  { href: '/articulos', title: 'Artículos',     icon: <Tag size={22} />,           disabled: true },
-  { href: '/logout',    title: 'Salir',         icon: <LogOut size={22} /> },
+  { href: '/pedido',      title: 'Pedido',        icon: <ClipboardList size={22} /> },
+  { href: '/clientes',    title: 'Cliente',       icon: <User size={22} /> },
+  { href: '/base',        title: 'Base',          icon: <Database size={22} /> },
+  { href: '/empresa',     title: 'Empresa',       icon: <Building2 size={22} /> },
+  { href: '/finanzas',    title: 'Finanzas',      icon: <PiggyBank size={22} /> }, // Solo admin
+  { href: '/guardar',     title: 'Guardar',       icon: <Save size={22} />,       disabled: true },
+  { href: '/entregar',    title: 'Entregar',      icon: <PackageCheck size={22} />, disabled: true },
+  { href: '/ruta',        title: 'Ruta',          icon: <RouteIcon size={22} />,  disabled: true },
+  { href: '/domicilio',   title: 'Domicilio',     icon: <Home size={22} />,       disabled: true },
+
+  // 🔥 ARREGLO AQUÍ: ruta correcta
+  { href: '/configuracion', title: 'Configuración', icon: <Settings size={22} /> },
+
+  { href: '/articulos',   title: 'Artículos',     icon: <Tag size={22} />,        disabled: true },
+  { href: '/logout',      title: 'Salir',         icon: <LogOut size={22} /> },
 ];
 
 /* =========================
@@ -91,31 +93,17 @@ export default function MenuClient() {
     setIsAdmin(isAdminRole(role));
   }, []);
 
-  // pequeño skeleton mientras leemos el rol
   if (isAdmin === null) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div
-            key={t.href}
-            className="h-24 rounded-2xl bg-white/10 animate-pulse"
-          />
+          <div key={t.href} className="h-24 rounded-2xl bg-white/10 animate-pulse" />
         ))}
       </div>
     );
   }
 
-  // si NO es admin, ocultamos Finanzas y Configuración
-  const visibleTiles = useMemo(
-    () =>
-      tiles.filter((t) => {
-        if (!isAdmin && (t.href === '/finanzas' || t.href === '/config')) {
-          return false;
-        }
-        return true;
-      }),
-    [isAdmin],
-  );
+  const visibleTiles = tiles.filter((t) => !(t.title === 'Finanzas' && !isAdmin));
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
