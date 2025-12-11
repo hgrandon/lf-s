@@ -16,6 +16,7 @@ import {
   Truck,
   PackageCheck,
   Building2,
+  MessageCircle,
 } from 'lucide-react';
 
 import Correlativo from './correlativo/Correlativo';
@@ -95,7 +96,7 @@ function formatFechaDisplay(iso: string | undefined): string | undefined {
   return `${day}-${month}-${year}`;
 }
 
-// Normaliza a formato chileno "56..." para usar con API de WhatsApp
+// Normaliza a formato chileno "56..." para usar en wa.me
 function normalizarTelefonoChile(raw?: string | null): string | null {
   if (!raw) return null;
   const digits = String(raw).replace(/\D/g, '');
@@ -111,36 +112,21 @@ function normalizarTelefonoChile(raw?: string | null): string | null {
   return `56${digits}`;
 }
 
-/**
- * Envía el WhatsApp de recepción de pedido:
- * "Tu pedido N° X ya está recepcionado..."
- */
-async function enviarWhatsAppRecepcion(params: {
-  telefonoDestino: string | null;
-  nro: number;
-}) {
-  try {
-    const { telefonoDestino, nro } = params;
+// Construye URL wa.me con el mensaje del pedido recepcionado
+function buildWhatsappUrl(telefonoDestino: string | null, nro: number): string {
+  const fallback = '56991335828'; // tu número por defecto
+  const to = normalizarTelefonoChile(telefonoDestino) ?? fallback;
 
-    // Si no hay teléfono del cliente, usamos un backup fijo (tu número)
-    const fallback = '56991335828'; // cámbialo si quieres otro
-    const to = normalizarTelefonoChile(telefonoDestino) ?? fallback;
+  const message = [
+    `💧 LAVANDERÍA FABIOLA`,
+    ``,
+    `Tu pedido N° ${nro} ya fue recepcionado ✅`,
+    ``,
+    `Te avisaremos por este mismo medio cuando esté listo.`,
+    `¡Gracias por preferirnos!`,
+  ].join('\n');
 
-    const message = [
-      `Tu pedido N° ${nro} ya está recepcionado.`,
-      ``,
-      `Te enviaremos un mensaje muy pronto.`,
-    ].join('\n');
-
-    await fetch('/api/whatsapp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, message }),
-    });
-  } catch (e) {
-    console.error('No se pudo enviar WhatsApp de recepción', e);
-    // No rompemos el flujo si falla el envío
-  }
+  return `https://wa.me/${to}?text=${encodeURIComponent(message)}`;
 }
 
 /* =========================
@@ -655,7 +641,7 @@ function BolsasModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b">
+        <div className="flex items-center justify_between px-5 py-3 border-b">
           <h2 className="font-bold text-sm sm:text-base">
             Número de bolsas para este pedido
           </h2>
@@ -696,6 +682,74 @@ function BolsasModal({
           >
             <Save size={16} />
             Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Modal para confirmar envío de WhatsApp después de guardar */
+type WhatsData = { nro: number; telefono: string | null };
+
+function WhatsAppConfirmModal({
+  open,
+  data,
+  onClose,
+  onSend,
+}: {
+  open: boolean;
+  data: WhatsData | null;
+  onClose: () => void;
+  onSend: () => void;
+}) {
+  if (!open || !data) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4">
+      <div className="w-full max-w-sm rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="text-violet-600" size={18} />
+            <span className="font-semibold text-sm sm:text-base">
+              Pedido guardado correctamente
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-slate-100 text-slate-500"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 text-sm text-slate-700 space-y-2">
+          <p>
+            El pedido <span className="font-semibold">N° {data.nro}</span> fue guardado con
+            éxito.
+          </p>
+          <p>
+            ¿Quieres abrir <span className="font-semibold">WhatsApp</span> con un mensaje
+            listo para enviar al cliente?
+          </p>
+          <p className="text-xs text-slate-500">
+            (Solo se abrirá el chat, tú decides si lo envías o lo editas antes.)
+          </p>
+        </div>
+
+        <div className="px-5 py-3 border-t flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-sm font-semibold py-2 hover:bg-slate-100"
+          >
+            No, ir al menú
+          </button>
+          <button
+            onClick={onSend}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2"
+          >
+            <MessageCircle size={18} />
+            Sí, abrir WhatsApp
           </button>
         </div>
       </div>
@@ -781,6 +835,10 @@ export default function PedidoPage() {
   const [estado, setEstado] = useState<PedidoEstado>('LAVAR');
 
   const [bolsasModalOpen, setBolsasModalOpen] = useState(false);
+
+  // Modal WhatsApp post-guardar
+  const [whatsOpen, setWhatsOpen] = useState(false);
+  const [whatsData, setWhatsData] = useState<WhatsData | null>(null);
 
   const fotoInputRef = useRef<HTMLInputElement>(null!);
 
@@ -1176,13 +1234,9 @@ export default function PedidoPage() {
         if (eF) throw eF;
       }
 
-      // 👉 Enviar WhatsApp automático de recepción
-      await enviarWhatsAppRecepcion({
-        telefonoDestino: telefonoPedido,
-        nro: nextInfo.nro,
-      });
-
-      router.push('/menu');
+      // ✅ Pedido guardado: abrimos modal para preguntar si quiere enviar WhatsApp
+      setWhatsData({ nro: nextInfo.nro, telefono: telefonoPedido });
+      setWhatsOpen(true);
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'No se pudo guardar el pedido');
@@ -1345,7 +1399,7 @@ export default function PedidoPage() {
               type="button"
               onClick={() =>
                 setTipoEntrega((prev) =>
-                  prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
+                  prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICICLIO',
                 )
               }
               className="flex flex-col items-center text-xs focus:outline-none"
@@ -1429,6 +1483,22 @@ export default function PedidoPage() {
         onConfirm={(nBolsas) => {
           setBolsasModalOpen(false);
           guardarPedido(nBolsas);
+        }}
+      />
+
+      <WhatsAppConfirmModal
+        open={whatsOpen}
+        data={whatsData}
+        onClose={() => {
+          setWhatsOpen(false);
+          router.push('/menu');
+        }}
+        onSend={() => {
+          if (!whatsData) return;
+          const url = buildWhatsappUrl(whatsData.telefono, whatsData.nro);
+          window.open(url, '_blank');
+          setWhatsOpen(false);
+          router.push('/menu');
         }}
       />
 
