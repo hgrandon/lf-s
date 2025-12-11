@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import MenuTile from '@/app/components/MenuTile';
 import {
   ClipboardList,
@@ -68,14 +68,14 @@ const tiles: TileConfig[] = [
   { href: '/pedido',    title: 'Pedido',        icon: <ClipboardList size={22} /> },
   { href: '/clientes',  title: 'Cliente',       icon: <User size={22} /> },
   { href: '/base',      title: 'Base',          icon: <Database size={22} /> },
-  { href: '/empresa',   title: 'Empresa',       icon: <Building2  size={22} /> },
-  { href: '/finanzas',  title: 'Finanzas',      icon: <PiggyBank size={22} /> },         // <- solo admin
-  { href: '/guardar',   title: 'Guardar',       icon: <Save size={22} />,       disabled: true },
-  { href: '/entregar',  title: 'Entregar',      icon: <PackageCheck size={22} />, disabled: true },
-  { href: '/ruta',      title: 'Ruta',          icon: <RouteIcon size={22} />,  disabled: true },
-  { href: '/domicilio', title: 'Domicilio',     icon: <Home size={22} />,       disabled: true },
-  { href: '/config',    title: 'Configuración', icon: <Settings size={22} /> },
-  { href: '/articulos', title: 'Artículos',     icon: <Tag size={22} />,        disabled: true },
+  { href: '/empresa',   title: 'Empresa',       icon: <Building2 size={22} /> },
+  { href: '/finanzas',  title: 'Finanzas',      icon: <PiggyBank size={22} /> },          // solo admin
+  { href: '/guardar',   title: 'Guardar',       icon: <Save size={22} />,          disabled: true },
+  { href: '/entregar',  title: 'Entregar',      icon: <PackageCheck size={22} />,  disabled: true },
+  { href: '/ruta',      title: 'Ruta',          icon: <RouteIcon size={22} />,     disabled: true },
+  { href: '/domicilio', title: 'Domicilio',     icon: <Home size={22} />,          disabled: true },
+  { href: '/config',    title: 'Configuración', icon: <Settings size={22} /> },           // solo admin
+  { href: '/articulos', title: 'Artículos',     icon: <Tag size={22} />,           disabled: true },
   { href: '/logout',    title: 'Salir',         icon: <LogOut size={22} /> },
 ];
 
@@ -105,11 +105,17 @@ export default function MenuClient() {
     );
   }
 
-  // si NO es admin, sacamos el tile de Finanzas del menú
-  const visibleTiles = tiles.filter((t) => {
-    if (t.title === 'Finanzas' && !isAdmin) return false;
-    return true;
-  });
+  // si NO es admin, ocultamos Finanzas y Configuración
+  const visibleTiles = useMemo(
+    () =>
+      tiles.filter((t) => {
+        if (!isAdmin && (t.href === '/finanzas' || t.href === '/config')) {
+          return false;
+        }
+        return true;
+      }),
+    [isAdmin],
+  );
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
