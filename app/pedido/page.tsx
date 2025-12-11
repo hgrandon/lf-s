@@ -1395,15 +1395,15 @@ export default function PedidoPage() {
             </button>
 
             {/* Tipo entrega */}
-            <button
-              type="button"
-              onClick={() =>
-                setTipoEntrega((prev) =>
-                  prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICICLIO',
-                )
-              }
-              className="flex flex-col items-center text-xs focus:outline-none"
-            >
+              <button
+                type="button"
+                onClick={() =>
+                  setTipoEntrega((prev) =>
+                    prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
+                  )
+                }
+                className="flex flex-col items-center text-xs focus:outline-none"
+              >
               <Home
                 size={32}
                 className={
