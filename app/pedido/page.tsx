@@ -112,15 +112,21 @@ function normalizarTelefonoChile(raw?: string | null): string | null {
   return `56${digits}`;
 }
 
-// Construye URL wa.me con el mensaje del pedido recepcionado
-function buildWhatsappUrl(telefonoDestino: string | null, nro: number): string {
+// Construye URL wa.me con el mensaje del pedido recepcionado (con nombre)
+function buildWhatsappUrl(
+  telefonoDestino: string | null,
+  nro: number,
+  nombreCliente: string | null,
+): string {
   const fallback = '56991335828'; // tu número por defecto
   const to = normalizarTelefonoChile(telefonoDestino) ?? fallback;
 
+  const nombre = (nombreCliente ?? '').trim() || 'estimado/a';
+
   const message = [
-    `💧 LAVANDERÍA FABIOLA`,
+    `Hola ${nombre},`,
     ``,
-    `Tu pedido N° ${nro} ya fue recepcionado ✅`,
+    `Pedido N° ${nro} ya fue recepcionado ✅`,
     ``,
     `Te avisaremos por este mismo medio cuando esté listo.`,
     `¡Gracias por preferirnos!`,
@@ -641,7 +647,7 @@ function BolsasModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify_between px-5 py-3 border-b">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
           <h2 className="font-bold text-sm sm:text-base">
             Número de bolsas para este pedido
           </h2>
@@ -690,7 +696,7 @@ function BolsasModal({
 }
 
 /** Modal para confirmar envío de WhatsApp después de guardar */
-type WhatsData = { nro: number; telefono: string | null };
+type WhatsData = { nro: number; telefono: string | null; nombre: string | null };
 
 function WhatsAppConfirmModal({
   open,
@@ -941,10 +947,10 @@ export default function PedidoPage() {
 
         const usoPorArticulo: Record<string, number> = {};
         for (const l of historico) {
-          const nombre = (l.articulo || '').toUpperCase().trim();
-          if (!nombre) continue;
+          const nombreArt = (l.articulo || '').toUpperCase().trim();
+          if (!nombreArt) continue;
           const cant = Number(l.cantidad || 0);
-          usoPorArticulo[nombre] = (usoPorArticulo[nombre] || 0) + cant;
+          usoPorArticulo[nombreArt] = (usoPorArticulo[nombreArt] || 0) + cant;
         }
 
         const ordenados = [...articulos].sort((a, b) => {
@@ -1235,7 +1241,11 @@ export default function PedidoPage() {
       }
 
       // ✅ Pedido guardado: abrimos modal para preguntar si quiere enviar WhatsApp
-      setWhatsData({ nro: nextInfo.nro, telefono: telefonoPedido });
+      setWhatsData({
+        nro: nextInfo.nro,
+        telefono: telefonoPedido,
+        nombre: cliente?.nombre ?? empresaNombre ?? null,
+      });
       setWhatsOpen(true);
     } catch (e: any) {
       console.error(e);
@@ -1395,15 +1405,15 @@ export default function PedidoPage() {
             </button>
 
             {/* Tipo entrega */}
-              <button
-                type="button"
-                onClick={() =>
-                  setTipoEntrega((prev) =>
-                    prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
-                  )
-                }
-                className="flex flex-col items-center text-xs focus:outline-none"
-              >
+            <button
+              type="button"
+              onClick={() =>
+                setTipoEntrega((prev) =>
+                  prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
+                )
+              }
+              className="flex flex-col items-center text-xs focus:outline-none"
+            >
               <Home
                 size={32}
                 className={
@@ -1495,7 +1505,11 @@ export default function PedidoPage() {
         }}
         onSend={() => {
           if (!whatsData) return;
-          const url = buildWhatsappUrl(whatsData.telefono, whatsData.nro);
+          const url = buildWhatsappUrl(
+            whatsData.telefono,
+            whatsData.nro,
+            whatsData.nombre,
+          );
           window.open(url, '_blank');
           setWhatsOpen(false);
           router.push('/menu');
