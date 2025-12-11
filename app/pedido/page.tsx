@@ -130,7 +130,7 @@ function buildWhatsappUrl(
     ``,
     `Te avisaremos por este mismo medio cuando esté listo.`,
     `¡Gracias por preferirnos!`,
-        ``,
+    ``,
     `Cualquier consulta hazla llegar al WhatsApp 991335828.`,
   ].join('\n');
 
@@ -545,8 +545,7 @@ function NuevoArticuloModal({
       onClose();
     } catch (e: any) {
       setError(
-        e?.message ??
-          'No se pudo guardar el artículo. Inténtalo nuevamente.',
+        e?.message ?? 'No se pudo guardar el artículo. Inténtalo nuevamente.',
       );
     } finally {
       setSaving(false);
@@ -1158,7 +1157,7 @@ export default function PedidoPage() {
     }
   }
 
-  /* === Guardar pedido === */
+  /* === Guardar pedido (con creado_por) === */
   async function guardarPedido(numBolsas: number) {
     if (!nextInfo) return;
     if (!items.length) {
@@ -1200,6 +1199,10 @@ export default function PedidoPage() {
         }
       }
 
+      // 🧑‍💻 NUEVO: quién está creando el pedido (usuario logeado)
+      const sess = readSessionSafely();
+      const creadoPor = sess?.display ?? null;
+
       const payload = {
         nro: nextInfo.nro,
         telefono: telefonoPedido,
@@ -1213,6 +1216,8 @@ export default function PedidoPage() {
         foto_url: fotosArray.length ? JSON.stringify(fotosArray) : null,
         es_empresa: ES_EMPRESA,
         empresa_nombre: empresaNombre ?? null,
+        // campo nuevo en la tabla pedido
+        creado_por: creadoPor,
       };
 
       const { error: eP } = await supabase.from('pedido').insert(payload);
