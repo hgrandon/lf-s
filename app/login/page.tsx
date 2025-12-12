@@ -1,8 +1,8 @@
 // app/login/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Eye, EyeOff, Phone, Lock, LogIn } from 'lucide-react';
 import Image from 'next/image';
@@ -12,34 +12,15 @@ import { compare } from 'bcryptjs';
    Tipos de sesión (UUD)
 ========================= */
 
-type AuthMode = 'usuario';
+type AuthMode = 'clave' | 'usuario';
 
 type LfSession = {
-  mode: AuthMode;        // siempre 'usuario' para este login
-  display: string;       // nombre visible: FABIOLA, MAURICIO, etc.
-  rol?: string | null;   // ADMIN / USER
-  ts: number;            // timestamp creación sesión
-  ttl: number;           // tiempo de vida en ms (ej: 12 horas)
+  mode: AuthMode;      // siempre 'usuario' para este login
+  display: string;     // nombre visible (FABIOLA, MAURICIO, etc.)
+  rol?: string | null; // ADMIN / USER
+  ts: number;          // timestamp creación sesión
+  ttl: number;         // tiempo de vida en ms (ej: 12 horas)
 };
-
-/* =========================
-   Helpers
-========================= */
-
-function sanitizeTelefono(raw: string): string {
-  return raw.replace(/\D/g, '');
-}
-
-/**
- * Redirige a la ruta indicada en ?next=/algo
- * o, si no viene, al menú.
- */
-function getNextPath(searchParams: URLSearchParams | null): string {
-  if (!searchParams) return '/menu';
-  const next = searchParams.get('next');
-  if (!next || !next.startsWith('/')) return '/menu';
-  return next;
-}
 
 /* =========================
    Componente Login
@@ -47,7 +28,6 @@ function getNextPath(searchParams: URLSearchParams | null): string {
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [telefono, setTelefono] = useState('');
   const [pin, setPin] = useState('');
@@ -56,29 +36,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Si ya existe sesión válida, mandamos directo al menú
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem('lf_auth');
-      if (!raw) return;
-      const sess = JSON.parse(raw) as LfSession | null;
-      if (!sess?.ts || !sess?.ttl) return;
-      const expired = Date.now() - sess.ts > sess.ttl;
-      if (!expired) {
-        // sesión válida → ir directo a menú
-        router.replace('/menu');
-      }
-    } catch {
-      // ignoramos errores de parseo
-    }
-  }, [router]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
 
-    const telDigits = sanitizeTelefono(telefono);
+    const telDigits = telefono.replace(/\D/g, '');
 
     if (telDigits.length < 8) {
       setErrorMsg('Ingresa un teléfono válido (al menos 8 dígitos).');
@@ -112,7 +74,7 @@ export default function LoginPage() {
         return;
       }
 
-      // 2) Validar PIN usando bcryptjs en el cliente
+      // 2) Validar PIN con bcryptjs
       const hash: string | null = data.pin_hash ?? null;
       if (!hash) {
         setErrorMsg('Este usuario no tiene clave configurada. Pide que te asignen una.');
@@ -138,11 +100,8 @@ export default function LoginPage() {
         localStorage.setItem('lf_auth', JSON.stringify(session));
       }
 
-      // 4) Redirigir al destino (next) o al menú
-      const nextPath = getNextPath(
-        searchParams ? new URLSearchParams(searchParams.toString()) : null,
-      );
-      router.replace(nextPath);
+      // 4) Redirigir al menú principal
+      router.replace('/menu');
     } catch (e: any) {
       console.error('Error en login', e);
       setErrorMsg(e?.message ?? 'No se pudo iniciar sesión. Intenta otra vez.');
@@ -194,7 +153,7 @@ export default function LoginPage() {
                 <Phone className="text-violet-500" size={18} />
                 <input
                   value={telefono}
-                  onChange={(e) => setTelefono(sanitizeTelefono(e.target.value))}
+                  onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ''))}
                   inputMode="tel"
                   placeholder="Ej: 991335828"
                   className="flex-1 bg-transparent border-none outline-none text-sm"
@@ -242,20 +201,16 @@ export default function LoginPage() {
               disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2.5 shadow-[0_8px_24px_rgba(88,28,135,0.45)] disabled:opacity-60"
             >
-              {loading ? (
-                <Loader2 className="animate-spin" size={18} />
-              ) : (
-                <LogIn size={18} />
-              )}
+              {loading ? <Loader2 className="animate-spin" size={18} /> : <LogIn size={18} />}
               Entrar
             </button>
           </form>
 
-          {/* Pie: info para cambiar clave */}
+          {/* Pie */}
           <div className="mt-4 pt-3 border-t border-slate-100 text-center">
             <p className="text-[11px] text-slate-500 leading-snug">
-              ¿Olvidaste tu clave? Pide a un <strong>ADMIN</strong> que la
-              actualice en <strong>Configuración &gt; Usuarios</strong>.
+              ¿Olvidaste tu clave? Pide a un <strong>ADMIN</strong> que la actualice en{' '}
+              <strong>Configuración &gt; Usuarios</strong>.
             </p>
           </div>
         </div>
