@@ -1232,6 +1232,27 @@ export default function PedidoPage() {
           valor: it.valor,
         }));
 
+
+        const { error: evErr } = await supabase
+          .from('pedido_evento')
+          .insert({
+            pedido_nro: nextInfo.nro,
+            telefono: telefonoPedido,
+            estado_anterior: null,
+            estado_nuevo: 'LAVAR',
+            tipo_entrega: tipoEntrega,
+            accion: 'CREAR_PEDIDO',
+            realizado_por: sess?.display ?? 'CLAVE',
+            rol: sess?.rol ?? null,
+            origen: 'pedido_page',
+            nota: ES_EMPRESA ? 'Pedido creado en modo empresa' : null,
+          });
+
+        if (evErr) throw evErr;
+
+
+
+
       if (lineas.length) {
         const { error: eL } = await supabase.from('pedido_linea').insert(lineas);
         if (eL) throw eL;
