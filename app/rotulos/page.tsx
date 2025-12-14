@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Printer, RefreshCw, ArrowLeft, AlertTriangle } from 'lucide-react';
 
+/* =========================
+   TIPOS
+========================= */
+
 type EstadoKey =
   | 'LAVAR'
   | 'LAVANDO'
@@ -18,9 +22,6 @@ type PedidoDb = {
   telefono: string | null;
   total: number | null;
   estado: string | null;
-  tipo_entrega: string | null;
-  fecha_ingreso: string | null;
-  fecha_entrega: string | null;
   bolsas: number | null;
 };
 
@@ -46,6 +47,10 @@ type RotuloConBolsa = {
   bolsasTotal: number;
 };
 
+/* =========================
+   FORMATOS
+========================= */
+
 const CLP = new Intl.NumberFormat('es-CL', {
   style: 'currency',
   currency: 'CLP',
@@ -66,123 +71,179 @@ function formatDireccionForRotulo(raw?: string | null): string {
   return out.join(' ');
 }
 
+/* =========================
+   WRAPPER
+========================= */
+
 export default function RotulosPage() {
   return (
-    <Suspense fallback={<div>Cargando…</div>}>
+    <Suspense fallback={<div className="p-4">Cargando rótulos…</div>}>
       <RotulosInner />
     </Suspense>
   );
 }
 
+/* =========================
+   COMPONENTE PRINCIPAL
+========================= */
+
 function RotulosInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const nroParam = searchParams.get('nro');
+  const copiesParam = searchParams.get('copies');
+
+  const pedidoFiltrado = nroParam ? Number(nroParam) : null;
+  const copies = Math.max(1, Number(copiesParam) || 1);
+  const modoIndividual = !!pedidoFiltrado;
 
   const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const mounted = useRef(true);
+  const mountedRef = useRef(true);
   useEffect(() => {
     return () => {
-      mounted.current = false;
+      mountedRef.current = false;
     };
   }, []);
+
+  /* =========================
+     FETCH
+  ========================= */
 
   async function fetchRotulos() {
     setLoading(true);
     setErr(null);
 
     try {
-      const { data: pedidos, error } = await supabase
+      let query = supabase
         .from('pedido')
         .select('nro, telefono, total, estado, bolsas')
-        .in('estado', ['LAVAR', 'LAVANDO'])
         .order('nro');
 
-      if (error) throw error;
-      if (!pedidos) return;
+      if (modoIndividual) {
+        query = query.eq('nro', pedidoFiltrado);
+      } else {
+        query = query.in('estado', ['LAVAR', 'LAVANDO']);
+      }
 
-      const telefonos = [
-        ...new Set(pedidos.map((p) => p.telefono).filter(Boolean)),
-      ];
+      const { data: pedidos, error } = await query;
+      if (error) throw error;
+      if (!pedidos || pedidos.length === 0) {
+        setRotulos([]);
+        return;
+      }
+
+      const telefonos = Array.from(
+        new Set(pedidos.map((p) => p.telefono).filter(Boolean))
+      ) as string[];
 
       const { data: clientes } = await supabase
         .from('clientes')
         .select('telefono, nombre, direccion')
         .in('telefono', telefonos);
 
-      const mapClientes = new Map<string, ClienteDb>();
+      const clientesMap = new Map<string, ClienteDb>();
       clientes?.forEach((c) =>
-        mapClientes.set(c.telefono, c as ClienteDb)
+        clientesMap.set(c.telefono, c as ClienteDb)
       );
 
       const final: RotuloConBolsa[] = [];
 
       pedidos.forEach((p) => {
-        const cli = p.telefono ? mapClientes.get(p.telefono) : null;
-        const bolsas = Math.max(1, p.bolsas || 1);
+        const cli = p.telefono
+          ? clientesMap.get(p.telefono)
+          : undefined;
 
-        for (let i = 1; i <= bolsas; i++) {
-          final.push({
-            pedido: {
-              nro: p.nro,
-              telefono: p.telefono || '',
-              clienteNombre: cli?.nombre?.toUpperCase() || '',
-              direccion: cli?.direccion?.toUpperCase() || '',
-              total: p.total,
-              estado: p.estado as EstadoKey,
-              bolsas,
-            },
-            bolsaIndex: i,
-            bolsasTotal: bolsas,
-          });
+        if (modoIndividual) {
+          for (let i = 1; i <= copies; i++) {
+            final.push({
+              pedido: {
+                nro: p.nro,
+                telefono: p.telefono || '',
+                clienteNombre: cli?.nombre?.toUpperCase() || '',
+                direccion: cli?.direccion?.toUpperCase() || '',
+                total: p.total,
+                estado: p.estado as EstadoKey,
+                bolsas: copies,
+              },
+              bolsaIndex: i,
+              bolsasTotal: copies,
+            });
+          }
+        } else {
+          const bolsas = Math.max(1, p.bolsas || 1);
+          for (let i = 1; i <= bolsas; i++) {
+            final.push({
+              pedido: {
+                nro: p.nro,
+                telefono: p.telefono || '',
+                clienteNombre: cli?.nombre?.toUpperCase() || '',
+                direccion: cli?.direccion?.toUpperCase() || '',
+                total: p.total,
+                estado: p.estado as EstadoKey,
+                bolsas,
+              },
+              bolsaIndex: i,
+              bolsasTotal: bolsas,
+            });
+          }
         }
       });
 
-      if (mounted.current) setRotulos(final);
+      if (mountedRef.current) setRotulos(final);
     } catch (e: any) {
-      setErr(e.message);
+      setErr(e?.message || 'Error cargando rótulos');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     fetchRotulos();
-  }, [nroParam]);
+  }, [nroParam, copiesParam]);
 
   function handlePrint() {
     window.print();
   }
 
+  /* =========================
+     RENDER
+  ========================= */
+
   return (
     <main className="bg-white text-black">
       {/* CONTROLES */}
-      <div className="p-3 flex gap-2 print:hidden">
+      <div className="p-3 flex gap-3 print:hidden items-center">
         <button onClick={() => router.push('/base')}>
-          <ArrowLeft /> Volver
+          <ArrowLeft size={16} /> Volver
         </button>
         <button onClick={fetchRotulos}>
-          <RefreshCw /> Actualizar
+          <RefreshCw size={16} /> Actualizar
         </button>
         <button onClick={handlePrint}>
-          <Printer /> Imprimir
+          <Printer size={16} /> Imprimir
         </button>
       </div>
 
-      {err && <div>{err}</div>}
-      {loading && <div>Cargando…</div>}
+      {err && (
+        <div className="p-3 text-red-600 flex gap-2">
+          <AlertTriangle size={16} /> {err}
+        </div>
+      )}
 
-      {/* ROTULOS */}
+      {loading && <div className="p-3">Cargando…</div>}
+
+      {/* RÓTULOS */}
       <div className="print-root">
         {rotulos.map((r, i) => (
           <RotuloCard key={i} {...r} />
         ))}
       </div>
 
-      {/* CSS IMPRESIÓN */}
+      {/* IMPRESIÓN */}
       <style jsx global>{`
         @media print {
           @page {
@@ -197,12 +258,15 @@ function RotulosInner() {
         .print-root {
           display: flex;
           flex-direction: column;
-          gap: 0;
         }
       `}</style>
     </main>
   );
 }
+
+/* =========================
+   TARJETA RÓTULO
+========================= */
 
 function RotuloCard({
   pedido,
@@ -227,7 +291,7 @@ function RotuloCard({
       }}
     >
       {/* HEADER */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2cm' }}>
+      <div style={{ display: 'flex', gap: '0.2cm' }}>
         <img
           src="/logo.png"
           alt="Logo"
@@ -277,7 +341,9 @@ function RotuloCard({
           color: '#6d28d9',
         }}
       >
-        <span>{pedido.total ? CLP.format(pedido.total) : '$0'}</span>
+        <span>
+          {pedido.total != null ? CLP.format(pedido.total) : '$0'}
+        </span>
         <span>{formatDireccionForRotulo(pedido.direccion)}</span>
       </div>
     </div>
