@@ -288,10 +288,10 @@ export default function BasePage() {
         href: '/base/lavando',
       },
       {
-        title: 'Editar',
+        title: 'Reporte Empresa',
         key: null,
         icon: Archive,
-        href: '/editar',
+        href: '/reporte_empresa',
       },
       {
         title: 'Guardado',
