@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Printer, RefreshCw, ArrowLeft, AlertTriangle } from 'lucide-react';
@@ -146,50 +146,31 @@ function RotulosInner() {
         .in('telefono', telefonos);
 
       const clientesMap = new Map<string, ClienteDb>();
-      clientes?.forEach((c) =>
-        clientesMap.set(c.telefono, c as ClienteDb)
-      );
+      clientes?.forEach((c) => clientesMap.set(c.telefono, c as ClienteDb));
 
       const final: RotuloConBolsa[] = [];
 
       pedidos.forEach((p) => {
-        const cli = p.telefono
-          ? clientesMap.get(p.telefono)
-          : undefined;
+        const cli = p.telefono ? clientesMap.get(p.telefono) : undefined;
 
-        if (modoIndividual) {
-          for (let i = 1; i <= copies; i++) {
-            final.push({
-              pedido: {
-                nro: p.nro,
-                telefono: p.telefono || '',
-                clienteNombre: cli?.nombre?.toUpperCase() || '',
-                direccion: cli?.direccion?.toUpperCase() || '',
-                total: p.total,
-                estado: p.estado as EstadoKey,
-                bolsas: copies,
-              },
-              bolsaIndex: i,
-              bolsasTotal: copies,
-            });
-          }
-        } else {
-          const bolsas = Math.max(1, p.bolsas || 1);
-          for (let i = 1; i <= bolsas; i++) {
-            final.push({
-              pedido: {
-                nro: p.nro,
-                telefono: p.telefono || '',
-                clienteNombre: cli?.nombre?.toUpperCase() || '',
-                direccion: cli?.direccion?.toUpperCase() || '',
-                total: p.total,
-                estado: p.estado as EstadoKey,
-                bolsas,
-              },
-              bolsaIndex: i,
-              bolsasTotal: bolsas,
-            });
-          }
+        const bolsas = modoIndividual
+          ? copies
+          : Math.max(1, p.bolsas || 1);
+
+        for (let i = 1; i <= bolsas; i++) {
+          final.push({
+            pedido: {
+              nro: p.nro,
+              telefono: p.telefono || '',
+              clienteNombre: cli?.nombre?.toUpperCase() || '',
+              direccion: cli?.direccion?.toUpperCase() || '',
+              total: p.total,
+              estado: p.estado as EstadoKey,
+              bolsas,
+            },
+            bolsaIndex: i,
+            bolsasTotal: bolsas,
+          });
         }
       });
 
@@ -215,7 +196,6 @@ function RotulosInner() {
 
   return (
     <main className="bg-white text-black">
-      {/* CONTROLES */}
       <div className="p-3 flex gap-3 print:hidden items-center">
         <button onClick={() => router.push('/base')}>
           <ArrowLeft size={16} /> Volver
@@ -236,28 +216,35 @@ function RotulosInner() {
 
       {loading && <div className="p-3">Cargando…</div>}
 
-      {/* RÓTULOS */}
       <div className="print-root">
         {rotulos.map((r, i) => (
           <RotuloCard key={i} {...r} />
         ))}
       </div>
 
-      {/* IMPRESIÓN */}
       <style jsx global>{`
         @media print {
           @page {
-            size: 6cm 4cm;
+            size: A4;
             margin: 0;
           }
+
           body {
             margin: 0;
+          }
+
+          .print-root {
+            display: grid;
+            grid-template-columns: repeat(3, 7cm);
+            grid-auto-rows: 4cm;
+            width: 21cm;
           }
         }
 
         .print-root {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(3, 7cm);
+          grid-auto-rows: 4cm;
         }
       `}</style>
     </main>
@@ -268,48 +255,46 @@ function RotulosInner() {
    TARJETA RÓTULO
 ========================= */
 
-function RotuloCard({
-  pedido,
-  bolsaIndex,
-  bolsasTotal,
-}: RotuloConBolsa) {
-  const fraccion =
-    bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
+function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
+  const fraccion = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
 
   return (
     <div
       style={{
-        width: '6cm',
+        width: '7cm',
         height: '4cm',
         border: '1px solid #6d28d9',
-        padding: '0.2cm',
+        padding: '0.25cm',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        pageBreakAfter: 'always',
       }}
     >
-      {/* HEADER */}
-      <div style={{ display: 'flex', gap: '0.2cm' }}>
+      <div style={{ display: 'flex', gap: '0.25cm' }}>
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '1.4cm', height: '1.4cm' }}
+          style={{ width: '1.5cm', height: '1.5cm' }}
         />
+
         <div style={{ flex: 1 }}>
           <div
             style={{
               fontSize: '9px',
               fontWeight: 700,
               color: '#6d28d9',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
           >
             {pedido.clienteNombre || 'SIN NOMBRE'}
           </div>
+
           <div
             style={{
-              fontSize: '32px',
+              fontSize: '36px',
               fontWeight: 900,
               lineHeight: 1,
               color: '#6d28d9',
@@ -318,10 +303,11 @@ function RotuloCard({
             {pedido.nro}
           </div>
         </div>
+
         {fraccion && (
           <div
             style={{
-              fontSize: '16px',
+              fontSize: '18px',
               fontWeight: 900,
               color: '#6d28d9',
             }}
@@ -331,12 +317,11 @@ function RotuloCard({
         )}
       </div>
 
-      {/* FOOTER */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          fontSize: '9px',
+          fontSize: '10px',
           fontWeight: 700,
           color: '#6d28d9',
         }}
