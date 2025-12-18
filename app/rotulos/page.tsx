@@ -236,8 +236,9 @@ function RotulosInner() {
           .print-root {
             display: grid;
             grid-template-columns: repeat(3, 8cm);
-            grid-auto-rows: 4cm;
-            width: 21cm;
+            grid-auto-rows: 3cm;
+            column-gap: 1mm;
+            row-gap: 1mm;
           }
         }
 
