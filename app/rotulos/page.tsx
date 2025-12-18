@@ -264,7 +264,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         width: '8cm',
         height: '3cm',
         border: '1px solid #6d28d9',
-        padding: '0.25cm',
+        padding: '0.2cm',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
