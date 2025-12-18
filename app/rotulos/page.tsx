@@ -223,36 +223,37 @@ function RotulosInner() {
       </div>
 
       <style jsx global>{`
-          @media print {
-            @page {
-              size: A4;
-              margin: 0;
-            }
+            @media print {
+              @page {
+                size: A4;
+                margin: 0;
+              }
 
-            body {
-              margin: 0;
+              body {
+                margin: 0;
+              }
+
+              .print-root {
+                display: grid;
+                grid-template-columns: repeat(3, 8cm);
+                grid-auto-rows: 3.05cm;
+                column-gap: 1mm;
+                row-gap: 1mm;
+              }
             }
 
             .print-root {
               display: grid;
               grid-template-columns: repeat(3, 8cm);
-              grid-auto-rows: 2.9cm; /* 👈 CLAVE */
+              grid-auto-rows: 3.05cm;
               column-gap: 1mm;
               row-gap: 1mm;
             }
-          }
 
-          .print-root {
-            display: grid;
-            grid-template-columns: repeat(3, 8cm);
-            grid-auto-rows: 2.9cm;
-            column-gap: 1mm;
-            row-gap: 1mm;
-          }
+            .print-root > * {
+              box-sizing: border-box;
+            }
 
-          .print-root > * {
-            box-sizing: border-box;
-          }
 
       `}</style>
     </main>
