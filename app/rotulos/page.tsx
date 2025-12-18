@@ -235,7 +235,7 @@ function RotulosInner() {
 
           .print-root {
             display: grid;
-            grid-template-columns: repeat(3, 7cm);
+            grid-template-columns: repeat(3, 8cm);
             grid-auto-rows: 4cm;
             width: 21cm;
           }
@@ -243,7 +243,7 @@ function RotulosInner() {
 
         .print-root {
           display: grid;
-          grid-template-columns: repeat(3, 7cm);
+          grid-template-columns: repeat(3, 8cm);
           grid-auto-rows: 4cm;
         }
       `}</style>
@@ -261,8 +261,8 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
   return (
     <div
       style={{
-        width: '7cm',
-        height: '4cm',
+        width: '8cm',
+        height: '3cm',
         border: '1px solid #6d28d9',
         padding: '0.25cm',
         boxSizing: 'border-box',
@@ -275,13 +275,13 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '1.5cm', height: '1.5cm' }}
+          style={{ width: '2.0cm', height: '2.0cm' }}
         />
 
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: '9px',
+              fontSize: '11px',
               fontWeight: 700,
               color: '#6d28d9',
               whiteSpace: 'nowrap',
@@ -294,7 +294,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
           <div
             style={{
-              fontSize: '36px',
+              fontSize: '48px',
               fontWeight: 900,
               lineHeight: 1,
               color: '#6d28d9',
@@ -307,7 +307,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         {fraccion && (
           <div
             style={{
-              fontSize: '18px',
+              fontSize: '26px',
               fontWeight: 900,
               color: '#6d28d9',
             }}
