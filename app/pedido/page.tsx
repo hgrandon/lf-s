@@ -128,9 +128,9 @@ function buildWhatsappUrl(
     ``,
     `Pedido N° ${nro} ya fue recepcionado ✅`,
     ``,
-    `Cuando esté listo te llegará un WhatsApp.`,
+    `Cuando esté listo, te llegará un WhatsApp.`,
+    ``,
     `¡Gracias por preferirnos!`,
-
   ].join('\n');
 
   return `https://wa.me/${to}?text=${encodeURIComponent(message)}`;

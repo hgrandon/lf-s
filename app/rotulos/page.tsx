@@ -236,7 +236,7 @@ function RotulosInner() {
               .print-root {
                 display: grid;
                 grid-template-columns: repeat(3, 8cm);
-                grid-auto-rows: 3.05cm;
+                grid-auto-rows: 3.5cm;
                 column-gap: 1mm;
                 row-gap: 1mm;
               }
@@ -245,7 +245,7 @@ function RotulosInner() {
             .print-root {
               display: grid;
               grid-template-columns: repeat(3, 8cm);
-              grid-auto-rows: 3.05cm;
+              grid-auto-rows: 3.5cm;
               column-gap: 1mm;
               row-gap: 1mm;
             }
@@ -271,7 +271,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
     <div
       style={{
         width: '8cm',
-        height: '3cm',
+        height: '3.5cm',
         border: '1px solid #6d28d9',
         padding: '0.2cm',
         boxSizing: 'border-box',
@@ -280,18 +280,18 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', gap: '0.25cm' }}>
+      <div style={{ display: 'flex', gap: '0.25cm', alignItems: 'center' }}>
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '2.0cm', height: '2.0cm' }}
+          style={{ width: '3cm', height: '3cm' }}
         />
 
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: '11px',
-              fontWeight: 700,
+              fontSize: '20px',
+              fontWeight: 800,
               color: '#6d28d9',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -303,9 +303,9 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
           <div
             style={{
-              fontSize: '48px',
+              fontSize: '78px',
               fontWeight: 900,
-              lineHeight: 1,
+              lineHeight: 0.9,
               color: '#6d28d9',
             }}
           >
@@ -316,7 +316,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         {fraccion && (
           <div
             style={{
-              fontSize: '26px',
+              fontSize: '44px',
               fontWeight: 900,
               color: '#6d28d9',
             }}
@@ -329,17 +329,15 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
-          fontSize: '10px',
-          fontWeight: 700,
+          justifyContent: 'flex-end',
+          fontSize: '18px',
+          fontWeight: 800,
           color: '#6d28d9',
         }}
       >
-        <span>
-          {pedido.total != null ? CLP.format(pedido.total) : '$0'}
-        </span>
-        <span>{formatDireccionForRotulo(pedido.direccion)}</span>
+        {formatDireccionForRotulo(pedido.direccion)}
       </div>
     </div>
   );
 }
+
