@@ -269,7 +269,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.1cm',   // 👈 controla la distancia vertical
+        gap: '0.5cm',   // 👈 controla la distancia vertical
       }}
     >
         <div
