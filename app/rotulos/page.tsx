@@ -269,7 +269,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.11cm',   // 👈 controla la distancia vertical
+        gap: '0.15cm',   // 👈 controla la distancia vertical
       }}
     >
         <div
@@ -339,6 +339,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
           fontWeight: 800,
           color: '#6d28d9',
           textAlign: 'right',
+          marginTop: '0.05cm', // 👈 la acerca aún más al número
         }}
       >
         {formatDireccionForRotulo(pedido.direccion)}
