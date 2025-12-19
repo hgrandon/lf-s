@@ -272,7 +272,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', gap: '0.3cm', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
         <img
           src="/logo.png"
           alt="Logo"
