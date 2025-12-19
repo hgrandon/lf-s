@@ -237,7 +237,7 @@ function RotulosInner() {
               display: grid;
               grid-template-columns: repeat(2, 11cm); /* 👈 ANCHO EXACTO */
               grid-auto-rows: 4.3cm;          /* 👈 ALTO EXACTO */
-              column-gap: 1cm;
+              column-gap: 0.3cm;
               row-gap: 0.4cm;
               box-sizing: border-box;
             }
