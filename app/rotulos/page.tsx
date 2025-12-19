@@ -47,6 +47,21 @@ type RotuloConBolsa = {
   bolsasTotal: number;
 };
 
+
+function formatNombre2(raw?: string | null): string {
+  if (!raw) return '';
+
+  return raw
+    .trim()
+    .toUpperCase()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join(' ');
+}
+
+
+
+
 /* =========================
    UTILIDADES
 ========================= */
