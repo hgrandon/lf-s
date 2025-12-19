@@ -204,11 +204,11 @@ function RotulosInner() {
         ))}
       </div>
 
-           <style jsx global>{`
+          <style jsx global>{`
             @media print {
               @page {
                 size: A4;
-                margin: 10mm;
+                margin: 0.5cm;
               }
 
               body {
@@ -217,18 +217,21 @@ function RotulosInner() {
             }
 
             .print-root {
+              width: 18cm;               /* 👈 CONTENEDOR REAL */
+              margin: 0 auto;            /* 👈 CENTRADO */
               display: grid;
-              grid-template-columns: repeat(2, 7.8cm);
+              grid-template-columns: repeat(2, 8.5cm); /* 👈 MÁS AIRE */
               grid-auto-rows: 3.5cm;
-              column-gap: 4mm;
-              row-gap: 4mm;
-              justify-content: center;
+              column-gap: 0.8cm;         /* 👈 MARGEN VISUAL */
+              row-gap: 0.4cm;
+              box-sizing: border-box;
             }
 
             .print-root > * {
               box-sizing: border-box;
             }
           `}</style>
+
 
     </main>
   );
