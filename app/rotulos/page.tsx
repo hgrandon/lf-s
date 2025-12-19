@@ -247,8 +247,8 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
   return (
     <div
       style={{
-        width: '7.8cm',
-        height: '3.5cm',
+        width: '100%',
+        height: '100%',
         border: '1px solid #6d28d9',
         padding: '0.2cm',
         boxSizing: 'border-box',
