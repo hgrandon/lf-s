@@ -275,8 +275,8 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2.5cm 1fr auto',
-            columnGap: '0.15cm',
+            gridTemplateColumns: '2cm 1fr auto',
+            columnGap: '0.08cm',
             alignItems: 'flex-start',          // 👈 ALTURA FIJA (CLAVE)
             width: '100%',
           }}
