@@ -232,8 +232,9 @@ function RotulosInner() {
             }
 
             .print-root {
-              width: 16cm;                  /* 2 columnas de 8cm + separación */
-              margin: 0 auto;
+              width: 16cm;   /* 2 columnas de 8cm + separación */
+              margin-left: 0;
+              margin-right: auto;
               display: grid;
               grid-template-columns: repeat(2, 9.1cm); /* 👈 ANCHO EXACTO */
               grid-auto-rows: 2.5cm;          /* 👈 ALTO EXACTO */
