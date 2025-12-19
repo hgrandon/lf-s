@@ -235,7 +235,7 @@ function RotulosInner() {
               width: 16.2cm;                  /* 2 columnas de 8cm + separación */
               margin: 0 auto;
               display: grid;
-              grid-template-columns: repeat(2, 8cm); /* 👈 ANCHO EXACTO */
+              grid-template-columns: repeat(2, 9cm); /* 👈 ANCHO EXACTO */
               grid-auto-rows: 4.1cm;          /* 👈 ALTO EXACTO */
               column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
               row-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
