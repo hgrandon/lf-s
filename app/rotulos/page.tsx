@@ -167,7 +167,7 @@ function RotulosInner() {
             pedido: {
               nro: p.nro,
               telefono: p.telefono || '',
-              clienteNombre: cli?.nombre?.toUpperCase() || '',
+              clienteNombre: formatNombre2(cli?.nombre),
               direccion: cli?.direccion?.toUpperCase() || '',
               total: null,
               estado: p.estado as EstadoKey,
@@ -282,7 +282,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: '22px',
+              fontSize: '18px',
               fontWeight: 900,
               color: '#6d28d9',
               whiteSpace: 'nowrap',
@@ -320,7 +320,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
       <div
         style={{
-          fontSize: '20px',
+          fontSize: '18px',
           fontWeight: 800,
           color: '#6d28d9',
           textAlign: 'right',
