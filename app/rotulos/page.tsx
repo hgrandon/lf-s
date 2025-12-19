@@ -236,7 +236,7 @@ function RotulosInner() {
               margin: 0 auto;
               display: grid;
               grid-template-columns: repeat(2, 9.1cm); /* 👈 ANCHO EXACTO */
-              grid-auto-rows: 3.5cm;          /* 👈 ALTO EXACTO */
+              grid-auto-rows: 3.3cm;          /* 👈 ALTO EXACTO */
               column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
               row-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
               box-sizing: border-box;
@@ -269,7 +269,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
+        gap: '0.15cm',   // 👈 controla la distancia vertical
       }}
     >
         <div
