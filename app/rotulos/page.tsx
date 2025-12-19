@@ -235,10 +235,10 @@ function RotulosInner() {
               width: 20cm;                  /* 2 columnas de 8cm + separación */
               margin: 0 auto;
               display: grid;
-              grid-template-columns: repeat(2, 11cm); /* 👈 ANCHO EXACTO */
-              grid-auto-rows: 4.3cm;          /* 👈 ALTO EXACTO */
-              column-gap: 0.3cm;
-              row-gap: 0.4cm;
+              grid-template-columns: repeat(2, 10.5cm); /* 👈 ANCHO EXACTO */
+              grid-auto-rows: 4.1cm;          /* 👈 ALTO EXACTO */
+              column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
+              row-gap: 0.2cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
               box-sizing: border-box;
             }
 
