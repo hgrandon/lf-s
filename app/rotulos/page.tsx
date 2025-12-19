@@ -276,7 +276,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '3cm', height: '3cm' }}
+          style={{ width: '2.5cm', height: '2.5cm' }}
         />
 
         <div style={{ flex: 1 }}>
