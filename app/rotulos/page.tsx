@@ -232,15 +232,13 @@ function RotulosInner() {
             }
 
             .print-root {
-              width: 17cm;
+              width: 18cm;                  /* 2 columnas de 8cm + separación */
               margin: 0 auto;
-              padding-left: 0.3cm;   /* 👈 EMPUJA TODO A LA IZQUIERDA */
-              padding-right: 0.1cm;  /* 👈 margen mínimo de seguridad */
               display: grid;
-              grid-template-columns: repeat(2, 8cm);
-              grid-auto-rows: 4cm;
-              column-gap: 0.6cm;
-              row-gap: 0.3cm;
+              grid-template-columns: repeat(2, 11cm); /* 👈 ANCHO EXACTO */
+              grid-auto-rows: 4.1cm;          /* 👈 ALTO EXACTO */
+              column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
+              row-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
               box-sizing: border-box;
             }
 
