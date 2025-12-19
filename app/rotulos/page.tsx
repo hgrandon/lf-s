@@ -48,14 +48,8 @@ type RotuloConBolsa = {
 };
 
 /* =========================
-   FORMATOS
+   UTILIDADES
 ========================= */
-
-const CLP = new Intl.NumberFormat('es-CL', {
-  style: 'currency',
-  currency: 'CLP',
-  maximumFractionDigits: 0,
-});
 
 function formatDireccionForRotulo(raw?: string | null): string {
   if (!raw) return 'LAVANDERÍA FABIOLA';
@@ -109,10 +103,6 @@ function RotulosInner() {
     };
   }, []);
 
-  /* =========================
-     FETCH
-  ========================= */
-
   async function fetchRotulos() {
     setLoading(true);
     setErr(null);
@@ -164,7 +154,7 @@ function RotulosInner() {
               telefono: p.telefono || '',
               clienteNombre: cli?.nombre?.toUpperCase() || '',
               direccion: cli?.direccion?.toUpperCase() || '',
-              total: p.total,
+              total: null,
               estado: p.estado as EstadoKey,
               bolsas,
             },
@@ -186,14 +176,6 @@ function RotulosInner() {
     fetchRotulos();
   }, [nroParam, copiesParam]);
 
-  function handlePrint() {
-    window.print();
-  }
-
-  /* =========================
-     RENDER
-  ========================= */
-
   return (
     <main className="bg-white text-black">
       <div className="p-3 flex gap-3 print:hidden items-center">
@@ -203,7 +185,7 @@ function RotulosInner() {
         <button onClick={fetchRotulos}>
           <RefreshCw size={16} /> Actualizar
         </button>
-        <button onClick={handlePrint}>
+        <button onClick={() => window.print()}>
           <Printer size={16} /> Imprimir
         </button>
       </div>
@@ -223,38 +205,29 @@ function RotulosInner() {
       </div>
 
       <style jsx global>{`
-            @media print {
-              @page {
-                size: A4;
-                margin: 0;
-              }
+        @media print {
+          @page {
+            size: A4;
+            margin: 5mm;
+          }
 
-              body {
-                margin: 0;
-              }
+          body {
+            margin: 0;
+          }
+        }
 
-              .print-root {
-                display: grid;
-                grid-template-columns: repeat(3, 8cm);
-                grid-auto-rows: 3.5cm;
-                column-gap: 1mm;
-                row-gap: 1mm;
-              }
-            }
+        .print-root {
+          display: grid;
+          grid-template-columns: repeat(3, 7.8cm);
+          grid-auto-rows: 3.5cm;
+          column-gap: 2mm;
+          row-gap: 2mm;
+          justify-content: center;
+        }
 
-            .print-root {
-              display: grid;
-              grid-template-columns: repeat(3, 8cm);
-              grid-auto-rows: 3.5cm;
-              column-gap: 1mm;
-              row-gap: 1mm;
-            }
-
-            .print-root > * {
-              box-sizing: border-box;
-            }
-
-
+        .print-root > * {
+          box-sizing: border-box;
+        }
       `}</style>
     </main>
   );
@@ -270,7 +243,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
   return (
     <div
       style={{
-        width: '8cm',
+        width: '7.8cm',
         height: '3.5cm',
         border: '1px solid #6d28d9',
         padding: '0.2cm',
@@ -280,18 +253,18 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', gap: '0.25cm', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.3cm', alignItems: 'center' }}>
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '3cm', height: '3cm' }}
+          style={{ width: '3.2cm', height: '3.2cm' }}
         />
 
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: '20px',
-              fontWeight: 800,
+              fontSize: '22px',
+              fontWeight: 900,
               color: '#6d28d9',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -303,9 +276,9 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
           <div
             style={{
-              fontSize: '78px',
+              fontSize: '82px',
               fontWeight: 900,
-              lineHeight: 0.9,
+              lineHeight: 0.88,
               color: '#6d28d9',
             }}
           >
@@ -316,7 +289,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         {fraccion && (
           <div
             style={{
-              fontSize: '44px',
+              fontSize: '46px',
               fontWeight: 900,
               color: '#6d28d9',
             }}
@@ -328,11 +301,10 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          fontSize: '18px',
+          fontSize: '20px',
           fontWeight: 800,
           color: '#6d28d9',
+          textAlign: 'right',
         }}
       >
         {formatDireccionForRotulo(pedido.direccion)}
@@ -340,4 +312,3 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
     </div>
   );
 }
-
