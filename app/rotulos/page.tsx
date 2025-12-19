@@ -232,10 +232,10 @@ function RotulosInner() {
             }
 
             .print-root {
-              width: 16.2cm;                  /* 2 columnas de 8cm + separación */
+              width: 16cm;                  /* 2 columnas de 8cm + separación */
               margin: 0 auto;
               display: grid;
-              grid-template-columns: repeat(2, 9.2cm); /* 👈 ANCHO EXACTO */
+              grid-template-columns: repeat(2, 9.1cm); /* 👈 ANCHO EXACTO */
               grid-auto-rows: 4.1cm;          /* 👈 ALTO EXACTO */
               column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
               row-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
