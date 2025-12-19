@@ -334,7 +334,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
       <div
         style={{
-          fontSize: '18px',
+          fontSize: '14px',
           fontWeight: 800,
           color: '#6d28d9',
           textAlign: 'right',
