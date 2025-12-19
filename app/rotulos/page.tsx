@@ -217,7 +217,7 @@ function RotulosInner() {
             }
 
             .print-root {
-              width: 22cm;                  /* 2 columnas de 8cm + separación */
+              width: 20cm;                  /* 2 columnas de 8cm + separación */
               margin: 0 auto;
               display: grid;
               grid-template-columns: repeat(2, 11cm); /* 👈 ANCHO EXACTO */
@@ -261,7 +261,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '3.2cm', height: '3.2cm' }}
+          style={{ width: '3cm', height: '3cm' }}
         />
 
         <div style={{ flex: 1 }}>
@@ -280,7 +280,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
           <div
             style={{
-              fontSize: '82px',
+              fontSize: '72px',
               fontWeight: 900,
               lineHeight: 0.88,
               color: '#6d28d9',
