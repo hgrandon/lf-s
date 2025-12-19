@@ -272,7 +272,15 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                width: '100%',
+              }}
+            >
+
+
         <img
           src="/logo.png"
           alt="Logo"
@@ -311,7 +319,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
               fontSize: '40px',
               fontWeight: 900,
               color: '#6d28d9',
-              marginLeft: '0.5cm', // 👈 ACERCA AL NÚMERO
+              marginLeft: '0.15cm', // 👈 ACERCA AL NÚMERO
               whiteSpace: 'nowrap',
             }}
           >
