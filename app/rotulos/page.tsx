@@ -217,12 +217,12 @@ function RotulosInner() {
             }
 
             .print-root {
-              width: 18cm;               /* 👈 CONTENEDOR REAL */
-              margin: 0 auto;            /* 👈 CENTRADO */
+              width: 16.8cm;                  /* 2 columnas de 8cm + separación */
+              margin: 0 auto;
               display: grid;
-              grid-template-columns: repeat(2, 8.5cm); /* 👈 MÁS AIRE */
-              grid-auto-rows: 3.5cm;
-              column-gap: 0.8cm;         /* 👈 MARGEN VISUAL */
+              grid-template-columns: repeat(2, 8cm); /* 👈 ANCHO EXACTO */
+              grid-auto-rows: 4cm;          /* 👈 ALTO EXACTO */
+              column-gap: 1cm;
               row-gap: 0.4cm;
               box-sizing: border-box;
             }
