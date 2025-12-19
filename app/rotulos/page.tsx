@@ -47,10 +47,12 @@ type RotuloConBolsa = {
   bolsasTotal: number;
 };
 
+/* =========================
+   FORMATOS
+========================= */
 
 function formatNombre2(raw?: string | null): string {
   if (!raw) return '';
-
   return raw
     .trim()
     .toUpperCase()
@@ -58,13 +60,6 @@ function formatNombre2(raw?: string | null): string {
     .slice(0, 2)
     .join(' ');
 }
-
-
-
-
-/* =========================
-   UTILIDADES
-========================= */
 
 function formatDireccionForRotulo(raw?: string | null): string {
   if (!raw) return 'LAVANDERÍA FABIOLA';
@@ -157,10 +152,7 @@ function RotulosInner() {
 
       pedidos.forEach((p) => {
         const cli = p.telefono ? clientesMap.get(p.telefono) : undefined;
-
-        const bolsas = modoIndividual
-          ? copies
-          : Math.max(1, p.bolsas || 1);
+        const bolsas = modoIndividual ? copies : Math.max(1, p.bolsas || 1);
 
         for (let i = 1; i <= bolsas; i++) {
           final.push({
@@ -168,7 +160,7 @@ function RotulosInner() {
               nro: p.nro,
               telefono: p.telefono || '',
               clienteNombre: formatNombre2(cli?.nombre),
-              direccion: cli?.direccion?.toUpperCase() || '',
+              direccion: cli?.direccion || '',
               total: null,
               estado: p.estado as EstadoKey,
               bolsas,
@@ -219,35 +211,32 @@ function RotulosInner() {
         ))}
       </div>
 
-          <style jsx global>{`
-            @media print {
-              @page {
-                size: A4;
-                margin: 0.5cm;
-              }
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 0.5cm;
+          }
+          body {
+            margin: 0;
+          }
+        }
 
-              body {
-                margin: 0;
-              }
-            }
+        .print-root {
+          width: 17cm;
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: repeat(2, 8cm);
+          grid-auto-rows: 4cm;
+          column-gap: 0.6cm;
+          row-gap: 0.3cm;
+          box-sizing: border-box;
+        }
 
-            .print-root {
-              width: 20cm;                  /* 2 columnas de 8cm + separación */
-              margin: 0 auto;
-              display: grid;
-              grid-template-columns: repeat(2, 11cm); /* 👈 ANCHO EXACTO */
-              grid-auto-rows: 4.1cm;          /* 👈 ALTO EXACTO */
-              column-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO HORIZONTAL */
-              row-gap: 0.1cm;   /* 👈 ESTE ES EL ESPACIO VERTICAL */
-              box-sizing: border-box;
-            }
-
-            .print-root > * {
-              box-sizing: border-box;
-            }
-          `}</style>
-
-
+        .print-root > * {
+          box-sizing: border-box;
+        }
+      `}</style>
     </main>
   );
 }
@@ -265,24 +254,24 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         width: '100%',
         height: '100%',
         border: '1px solid #6d28d9',
-        padding: '0.2cm',
+        padding: '0.15cm',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', gap: '0.3cm', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.25cm', alignItems: 'center' }}>
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: '3cm', height: '3cm' }}
+          style={{ width: '2.8cm', height: '2.8cm' }}
         />
 
         <div style={{ flex: 1 }}>
           <div
             style={{
-              fontSize: '18px',
+              fontSize: '16px',
               fontWeight: 900,
               color: '#6d28d9',
               whiteSpace: 'nowrap',
@@ -295,9 +284,9 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
           <div
             style={{
-              fontSize: '72px',
+              fontSize: '60px',
               fontWeight: 900,
-              lineHeight: 0.88,
+              lineHeight: 0.9,
               color: '#6d28d9',
             }}
           >
@@ -308,7 +297,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         {fraccion && (
           <div
             style={{
-              fontSize: '46px',
+              fontSize: '38px',
               fontWeight: 900,
               color: '#6d28d9',
             }}
@@ -320,7 +309,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
 
       <div
         style={{
-          fontSize: '18px',
+          fontSize: '16px',
           fontWeight: 800,
           color: '#6d28d9',
           textAlign: 'right',
