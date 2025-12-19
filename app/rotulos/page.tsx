@@ -291,16 +291,18 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
         />
 
         <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: '18px',
-              fontWeight: 900,
-              color: '#6d28d9',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
+            <div
+                style={{
+                  fontSize: '15px',
+                  fontWeight: 900,
+                  color: '#6d28d9',
+                  lineHeight: '1.1',
+                  maxHeight: '0.9cm',       // 👈 limita el alto
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
             {pedido.clienteNombre || 'SIN NOMBRE'}
           </div>
 
