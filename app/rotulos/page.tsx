@@ -204,31 +204,32 @@ function RotulosInner() {
         ))}
       </div>
 
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: A4;
-            margin: 5mm;
-          }
+           <style jsx global>{`
+            @media print {
+              @page {
+                size: A4;
+                margin: 10mm;
+              }
 
-          body {
-            margin: 0;
-          }
-        }
+              body {
+                margin: 0;
+              }
+            }
 
-        .print-root {
-          display: grid;
-          grid-template-columns: repeat(3, 7.8cm);
-          grid-auto-rows: 3.5cm;
-          column-gap: 2mm;
-          row-gap: 2mm;
-          justify-content: center;
-        }
+            .print-root {
+              display: grid;
+              grid-template-columns: repeat(2, 7.8cm);
+              grid-auto-rows: 3.5cm;
+              column-gap: 4mm;
+              row-gap: 4mm;
+              justify-content: center;
+            }
 
-        .print-root > * {
-          box-sizing: border-box;
-        }
-      `}</style>
+            .print-root > * {
+              box-sizing: border-box;
+            }
+          `}</style>
+
     </main>
   );
 }
