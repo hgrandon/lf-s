@@ -338,7 +338,7 @@ function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
           fontWeight: 800,
           color: '#6d28d9',
           textAlign: 'right',
-          marginTop: '-0.45cm', // 👈 la acerca aún más al número
+          marginTop: '-0.95cm', // 👈 la acerca aún más al número
         }}
       >
         {formatDireccionForRotulo(pedido.direccion)}
