@@ -128,10 +128,9 @@ function buildWhatsappUrl(
     ``,
     `Pedido N° ${nro} ya fue recepcionado ✅`,
     ``,
-    `Te avisaremos por este mismo medio cuando esté listo.`,
+    `Cuando esté listo te llegará un WhatsApp.`,
     `¡Gracias por preferirnos!`,
-    ``,
-    `Cualquier consulta hazla llegar al WhatsApp 991335828.`,
+
   ].join('\n');
 
   return `https://wa.me/${to}?text=${encodeURIComponent(message)}`;
