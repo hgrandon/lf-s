@@ -389,7 +389,7 @@ function GuardadoPageInner() {
 
       const texto = [
         `*SERVICIO N° ${p.id}*`,
-        'Tu comprobante está aquí:',
+        'Tu detalle está aquí:',
         link,
         '',
         'Gracias por preferirnos 💜',

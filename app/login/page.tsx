@@ -155,7 +155,7 @@ export default function LoginPage() {
                   value={telefono}
                   onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ''))}
                   inputMode="tel"
-                  placeholder="Ej: 991335828"
+                  placeholder="Ej: 987654321"
                   className="flex-1 bg-transparent border-none outline-none text-sm"
                 />
               </div>
