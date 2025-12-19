@@ -20,6 +20,7 @@ type EstadoKey =
 type PedidoDb = {
   nro: number;
   telefono: string | null;
+  total: number | null;
   estado: string | null;
   bolsas: number | null;
 };
@@ -32,8 +33,11 @@ type ClienteDb = {
 
 type PedidoRotulo = {
   nro: number;
+  telefono: string;
   clienteNombre: string;
   direccion: string;
+  total: number | null;
+  estado: EstadoKey;
   bolsas: number;
 };
 
@@ -44,39 +48,60 @@ type RotuloConBolsa = {
 };
 
 /* =========================
-   UTIL
+   UTILIDADES
 ========================= */
 
-function formatDireccion(raw?: string | null) {
+function formatDireccionForRotulo(raw?: string | null): string {
   if (!raw) return 'LAVANDERÍA FABIOLA';
-  return raw.toUpperCase();
+  const upper = raw.toUpperCase().trim();
+  if (upper === 'LOCAL') return 'LAVANDERÍA FABIOLA';
+
+  const parts = upper.split(/\s+/);
+  const out: string[] = [];
+  for (const p of parts) {
+    out.push(p);
+    if (/\d/.test(p)) break;
+  }
+  return out.join(' ');
 }
 
 /* =========================
-   PAGE
+   WRAPPER
 ========================= */
 
 export default function RotulosPage() {
   return (
-    <Suspense fallback={<div className="p-4">Cargando…</div>}>
+    <Suspense fallback={<div className="p-4">Cargando rótulos…</div>}>
       <RotulosInner />
     </Suspense>
   );
 }
 
+/* =========================
+   COMPONENTE PRINCIPAL
+========================= */
+
 function RotulosInner() {
   const router = useRouter();
-  const params = useSearchParams();
+  const searchParams = useSearchParams();
 
-  const nro = params.get('nro');
-  const copies = Math.max(1, Number(params.get('copies')) || 1);
+  const nroParam = searchParams.get('nro');
+  const copiesParam = searchParams.get('copies');
+
+  const pedidoFiltrado = nroParam ? Number(nroParam) : null;
+  const copies = Math.max(1, Number(copiesParam) || 1);
+  const modoIndividual = !!pedidoFiltrado;
 
   const [rotulos, setRotulos] = useState<RotuloConBolsa[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   async function fetchRotulos() {
     setLoading(true);
@@ -85,176 +110,209 @@ function RotulosInner() {
     try {
       let query = supabase
         .from('pedido')
-        .select('nro, telefono, estado, bolsas')
+        .select('nro, telefono, total, estado, bolsas')
         .order('nro');
 
-      if (nro) query = query.eq('nro', Number(nro));
-      else query = query.in('estado', ['LAVAR', 'LAVANDO']);
+      if (modoIndividual) {
+        query = query.eq('nro', pedidoFiltrado);
+      } else {
+        query = query.in('estado', ['LAVAR', 'LAVANDO']);
+      }
 
       const { data: pedidos, error } = await query;
       if (error) throw error;
-      if (!pedidos) return setRotulos([]);
+      if (!pedidos || pedidos.length === 0) {
+        setRotulos([]);
+        return;
+      }
 
-      const tels = pedidos.map(p => p.telefono).filter(Boolean) as string[];
+      const telefonos = Array.from(
+        new Set(pedidos.map((p) => p.telefono).filter(Boolean))
+      ) as string[];
 
       const { data: clientes } = await supabase
         .from('clientes')
         .select('telefono, nombre, direccion')
-        .in('telefono', tels);
+        .in('telefono', telefonos);
 
-      const map = new Map<string, ClienteDb>();
-      clientes?.forEach(c => map.set(c.telefono, c));
+      const clientesMap = new Map<string, ClienteDb>();
+      clientes?.forEach((c) => clientesMap.set(c.telefono, c as ClienteDb));
 
-      const out: RotuloConBolsa[] = [];
+      const final: RotuloConBolsa[] = [];
 
-      pedidos.forEach(p => {
-        const cli = p.telefono ? map.get(p.telefono) : undefined;
-        const total = nro ? copies : Math.max(1, p.bolsas || 1);
+      pedidos.forEach((p) => {
+        const cli = p.telefono ? clientesMap.get(p.telefono) : undefined;
 
-        for (let i = 1; i <= total; i++) {
-          out.push({
+        const bolsas = modoIndividual
+          ? copies
+          : Math.max(1, p.bolsas || 1);
+
+        for (let i = 1; i <= bolsas; i++) {
+          final.push({
             pedido: {
               nro: p.nro,
+              telefono: p.telefono || '',
               clienteNombre: cli?.nombre?.toUpperCase() || '',
-              direccion: cli?.direccion || '',
-              bolsas: total,
+              direccion: cli?.direccion?.toUpperCase() || '',
+              total: null,
+              estado: p.estado as EstadoKey,
+              bolsas,
             },
             bolsaIndex: i,
-            bolsasTotal: total,
+            bolsasTotal: bolsas,
           });
         }
       });
 
-      if (mounted.current) setRotulos(out);
+      if (mountedRef.current) setRotulos(final);
     } catch (e: any) {
-      setErr(e.message);
+      setErr(e?.message || 'Error cargando rótulos');
     } finally {
-      mounted.current && setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     fetchRotulos();
-  }, [nro, copies]);
+  }, [nroParam, copiesParam]);
 
   return (
-    <main>
-      <div className="controls print:hidden">
-        <button onClick={() => router.push('/base')}><ArrowLeft size={16}/> Volver</button>
-        <button onClick={fetchRotulos}><RefreshCw size={16}/> Actualizar</button>
-        <button onClick={() => window.print()}><Printer size={16}/> Imprimir</button>
+    <main className="bg-white text-black">
+      <div className="p-3 flex gap-3 print:hidden items-center">
+        <button onClick={() => router.push('/base')}>
+          <ArrowLeft size={16} /> Volver
+        </button>
+        <button onClick={fetchRotulos}>
+          <RefreshCw size={16} /> Actualizar
+        </button>
+        <button onClick={() => window.print()}>
+          <Printer size={16} /> Imprimir
+        </button>
       </div>
 
-      {err && <div className="error"><AlertTriangle size={16}/> {err}</div>}
-      {loading && <div>Cargando…</div>}
+      {err && (
+        <div className="p-3 text-red-600 flex gap-2">
+          <AlertTriangle size={16} /> {err}
+        </div>
+      )}
+
+      {loading && <div className="p-3">Cargando…</div>}
 
       <div className="print-root">
-        {rotulos.map((r, i) => <RotuloCard key={i} {...r} />)}
+        {rotulos.map((r, i) => (
+          <RotuloCard key={i} {...r} />
+        ))}
       </div>
 
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: A4;
-            margin: 0.5cm;
-          }
-        }
+          <style jsx global>{`
+            @media print {
+              @page {
+                size: A4;
+                margin: 0.5cm;
+              }
 
-        .controls {
-          padding: 12px;
-          display: flex;
-          gap: 12px;
-        }
+              body {
+                margin: 0;
+              }
+            }
 
-        .print-root {
-          width: 18cm;
-          margin: 0 auto;
-          display: grid;
-          grid-template-columns: repeat(2, 8.5cm);
-          grid-auto-rows: 3.5cm;
-          gap: 0.5cm;
-        }
-      `}</style>
+            .print-root {
+              width: 18cm;               /* 👈 CONTENEDOR REAL */
+              margin: 0 auto;            /* 👈 CENTRADO */
+              display: grid;
+              grid-template-columns: repeat(2, 8.5cm); /* 👈 MÁS AIRE */
+              grid-auto-rows: 3.5cm;
+              column-gap: 0.8cm;         /* 👈 MARGEN VISUAL */
+              row-gap: 0.4cm;
+              box-sizing: border-box;
+            }
+
+            .print-root > * {
+              box-sizing: border-box;
+            }
+          `}</style>
+
+
     </main>
   );
 }
 
 /* =========================
-   RÓTULO
+   TARJETA RÓTULO
 ========================= */
 
 function RotuloCard({ pedido, bolsaIndex, bolsasTotal }: RotuloConBolsa) {
-  const frac = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
+  const fraccion = bolsasTotal > 1 ? `${bolsaIndex}/${bolsasTotal}` : '';
 
   return (
-    <div className="rotulo">
-      <div className="top">
-        <img src="/logo.png" />
-        <div className="data">
-          <div className="name">{pedido.clienteNombre || 'SIN NOMBRE'}</div>
-          <div className="number">{pedido.nro}</div>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        border: '1px solid #6d28d9',
+        padding: '0.2cm',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+      }}
+    >
+      <div style={{ display: 'flex', gap: '0.3cm', alignItems: 'center' }}>
+        <img
+          src="/logo.png"
+          alt="Logo"
+          style={{ width: '3.2cm', height: '3.2cm' }}
+        />
+
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: '22px',
+              fontWeight: 900,
+              color: '#6d28d9',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {pedido.clienteNombre || 'SIN NOMBRE'}
+          </div>
+
+          <div
+            style={{
+              fontSize: '82px',
+              fontWeight: 900,
+              lineHeight: 0.88,
+              color: '#6d28d9',
+            }}
+          >
+            {pedido.nro}
+          </div>
         </div>
-        {frac && <div className="frac">{frac}</div>}
+
+        {fraccion && (
+          <div
+            style={{
+              fontSize: '46px',
+              fontWeight: 900,
+              color: '#6d28d9',
+            }}
+          >
+            {fraccion}
+          </div>
+        )}
       </div>
 
-      <div className="addr">{formatDireccion(pedido.direccion)}</div>
-
-      <style jsx>{`
-        .rotulo {
-          width: 100%;
-          height: 100%;
-          border: 1px solid #6d28d9;
-          padding: 0.3cm;
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-        }
-
-        .top {
-          display: flex;
-          align-items: center;
-          gap: 0.3cm;
-        }
-
-        img {
-          width: 3.2cm;
-          height: 3.2cm;
-        }
-
-        .data {
-          flex: 1;
-        }
-
-        .name {
-          font-size: 20px;
-          font-weight: 900;
-          color: #6d28d9;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .number {
-          font-size: 78px;
-          font-weight: 900;
-          line-height: 0.9;
-          color: #6d28d9;
-        }
-
-        .frac {
-          font-size: 42px;
-          font-weight: 900;
-          color: #6d28d9;
-        }
-
-        .addr {
-          text-align: right;
-          font-size: 18px;
-          font-weight: 800;
-          color: #6d28d9;
-        }
-      `}</style>
+      <div
+        style={{
+          fontSize: '20px',
+          fontWeight: 800,
+          color: '#6d28d9',
+          textAlign: 'right',
+        }}
+      >
+        {formatDireccionForRotulo(pedido.direccion)}
+      </div>
     </div>
   );
 }
