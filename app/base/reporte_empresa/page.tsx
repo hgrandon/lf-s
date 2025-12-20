@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { FileDown, ArrowLeft } from 'lucide-react';
+import { FileDown, ArrowLeft, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 /* =========================
    Tipos
@@ -17,6 +18,13 @@ type PedidoEmpresa = {
   empresa_nombre: string | null;
 };
 
+type PedidoLinea = {
+  pedido_nro: number;
+  articulo: string;
+  cantidad: number;
+  valor: number;
+};
+
 type FilaReporte = {
   fecha: string;
   empresa: string;
@@ -26,11 +34,17 @@ type FilaReporte = {
   valorTotal: number;
 };
 
+type ResumenProducto = {
+  articulo: string;
+  cantidad: number;
+  total: number;
+};
+
 /* =========================
    Utilidades
 ========================= */
 
-const IVA_PORCENTAJE = 0.19;
+const IVA = 0.19;
 
 function formatCLP(v: number) {
   return v.toLocaleString('es-CL');
@@ -40,8 +54,8 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-function formatFecha(fecha: string) {
-  return fecha.split('-').reverse().join('-');
+function formatFecha(f: string) {
+  return f.split('-').reverse().join('-');
 }
 
 /* =========================
@@ -52,6 +66,7 @@ export default function ReporteEmpresaPage() {
   const router = useRouter();
 
   const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
+  const [lineas, setLineas] = useState<PedidoLinea[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [empresaSel, setEmpresaSel] = useState<string>('TODAS');
@@ -63,33 +78,36 @@ export default function ReporteEmpresaPage() {
   const [hasta, setHasta] = useState<string>(() => toISODate(new Date()));
 
   /* =========================
-     Cargar pedidos
+     Cargar datos
   ========================= */
 
-  async function cargarPedidos() {
+  async function cargarDatos() {
     setLoading(true);
 
-    const { data, error } = await supabase
+    const { data: pedidosData } = await supabase
       .from('pedido')
       .select('nro, total, fecha_ingreso, es_empresa, empresa_nombre')
       .eq('es_empresa', true);
 
-    if (!error && data) {
-      setPedidos(data as PedidoEmpresa[]);
-    }
+    const { data: lineasData } = await supabase
+      .from('pedido_linea')
+      .select('pedido_nro, articulo, cantidad, valor');
+
+    if (pedidosData) setPedidos(pedidosData as PedidoEmpresa[]);
+    if (lineasData) setLineas(lineasData as PedidoLinea[]);
 
     setLoading(false);
   }
 
   useEffect(() => {
-    cargarPedidos();
+    cargarDatos();
   }, []);
 
   /* =========================
-     Empresas (fix TS)
+     Empresas
   ========================= */
 
-  const empresas = useMemo((): string[] => {
+  const empresas = useMemo<string[]>(() => {
     return Array.from(
       new Set(
         pedidos
@@ -100,7 +118,7 @@ export default function ReporteEmpresaPage() {
   }, [pedidos]);
 
   /* =========================
-     Filas del reporte
+     Filas reporte
   ========================= */
 
   const filas: FilaReporte[] = useMemo(() => {
@@ -120,22 +138,20 @@ export default function ReporteEmpresaPage() {
       })
       .map((p) => {
         const neto = p.total ?? 0;
-        const iva = Math.round(neto * IVA_PORCENTAJE);
-        const total = neto + iva;
-
+        const iva = Math.round(neto * IVA);
         return {
           fecha: formatFecha(p.fecha_ingreso!.slice(0, 10)),
           empresa: p.empresa_nombre || 'SIN EMPRESA',
           numeroServicio: p.nro,
           valorNeto: neto,
           iva,
-          valorTotal: total,
+          valorTotal: neto + iva,
         };
       });
   }, [pedidos, empresaSel, desde, hasta]);
 
   /* =========================
-     Totales
+     Resumen financiero
   ========================= */
 
   const totalNeto = useMemo(
@@ -150,6 +166,42 @@ export default function ReporteEmpresaPage() {
 
   const totalGeneral = totalNeto + totalIVA;
 
+  /* =========================
+     Resumen por producto
+  ========================= */
+
+  const resumenProductos = useMemo<ResumenProducto[]>(() => {
+    const map = new Map<string, ResumenProducto>();
+
+    lineas.forEach((l) => {
+      const actual = map.get(l.articulo) || {
+        articulo: l.articulo,
+        cantidad: 0,
+        total: 0,
+      };
+
+      actual.cantidad += l.cantidad;
+      actual.total += l.cantidad * l.valor;
+
+      map.set(l.articulo, actual);
+    });
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.articulo.localeCompare(b.articulo)
+    );
+  }, [lineas]);
+
+  /* =========================
+     Exportar Excel
+  ========================= */
+
+  function exportarExcel() {
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas');
+    XLSX.writeFile(wb, `reporte_empresas_${desde}_al_${hasta}.xlsx`);
+  }
+
   function exportarPDF() {
     window.print();
   }
@@ -159,12 +211,12 @@ export default function ReporteEmpresaPage() {
   ========================= */
 
   return (
-    <main className="min-h-screen p-6 bg-white text-black">
+    <main className="p-6 bg-white text-black">
       {/* HEADER */}
       <header className="flex items-center justify-between mb-6 print:hidden">
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-black"
+          className="flex items-center gap-2 text-sm font-semibold"
         >
           <ArrowLeft size={18} />
           Volver al menú
@@ -203,58 +255,91 @@ export default function ReporteEmpresaPage() {
         />
 
         <button
+          onClick={exportarExcel}
+          className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded"
+        >
+          <FileSpreadsheet size={16} />
+          Excel
+        </button>
+
+        <button
           onClick={exportarPDF}
           className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
         >
           <FileDown size={16} />
-          Generar PDF
+          PDF
         </button>
       </section>
 
       {/* RESUMEN */}
-      <section className="mb-6 text-sm">
-        <h2 className="font-bold text-lg mb-2">Resumen</h2>
+      <section className="mb-8">
+        <h2 className="font-bold text-lg mb-2">Resumen General</h2>
         <p>Total servicios: <b>{filas.length}</b></p>
         <p>Total neto: <b>${formatCLP(totalNeto)}</b></p>
         <p>IVA 19%: <b>${formatCLP(totalIVA)}</b></p>
-        <p className="text-base mt-1">
+        <p className="text-lg mt-1">
           Total general: <b>${formatCLP(totalGeneral)}</b>
         </p>
       </section>
 
-      {/* TABLA */}
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b">
-            <th className="text-left py-2">Fecha</th>
-            <th className="text-left py-2">Empresa</th>
-            <th className="text-right py-2">N° Servicio</th>
-            <th className="text-right py-2">Neto</th>
-            <th className="text-right py-2">IVA</th>
-            <th className="text-right py-2">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map((f, i) => (
-            <tr key={i} className="border-b">
-              <td className="py-1">{f.fecha}</td>
-              <td className="py-1">{f.empresa}</td>
-              <td className="py-1 text-right">{f.numeroServicio}</td>
-              <td className="py-1 text-right">${formatCLP(f.valorNeto)}</td>
-              <td className="py-1 text-right">${formatCLP(f.iva)}</td>
-              <td className="py-1 text-right">${formatCLP(f.valorTotal)}</td>
+      {/* RESUMEN PRODUCTOS */}
+      <section className="mb-10">
+        <h2 className="font-bold text-lg mb-2">Resumen por producto</h2>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2">Producto</th>
+              <th className="text-right py-2">Cantidad</th>
+              <th className="text-right py-2">Total</th>
             </tr>
-          ))}
+          </thead>
+          <tbody>
+            {resumenProductos.map((r, i) => (
+              <tr key={i} className="border-b">
+                <td className="py-1">{r.articulo}</td>
+                <td className="py-1 text-right">{r.cantidad}</td>
+                <td className="py-1 text-right">${formatCLP(r.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
-          {filas.length === 0 && !loading && (
-            <tr>
-              <td colSpan={6} className="text-center py-6 text-gray-500">
-                Sin datos para el rango seleccionado
-              </td>
+      {/* DETALLE */}
+      <section>
+        <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
+
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b">
+              <th>Fecha</th>
+              <th>Empresa</th>
+              <th className="text-right">Servicio</th>
+              <th className="text-right">Neto</th>
+              <th className="text-right">IVA</th>
+              <th className="text-right">Total</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filas.map((f, i) => (
+              <tr
+                key={i}
+                className="border-b cursor-pointer hover:bg-slate-100"
+                onClick={() =>
+                  router.push(`/servicio?nro=${f.numeroServicio}`)
+                }
+              >
+                <td>{f.fecha}</td>
+                <td>{f.empresa}</td>
+                <td className="text-right">{f.numeroServicio}</td>
+                <td className="text-right">${formatCLP(f.valorNeto)}</td>
+                <td className="text-right">${formatCLP(f.iva)}</td>
+                <td className="text-right">${formatCLP(f.valorTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       {/* PRINT */}
       <style jsx global>{`
