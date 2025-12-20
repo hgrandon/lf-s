@@ -1,165 +1,224 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
 type Row = {
-  pedido: number;
-  fecha: string;
-  empresa_nombre: string;
-  articulo: string;
-  cantidad: number;
-  valor_unitario: number;
-  neto: number;
-  iva: number;
-  total: number;
-};
+  pedido: number
+  fecha: string
+  empresa_nombre: string
+  articulo: string
+  cantidad: number
+  neto: number
+  iva: number
+  total: number
+}
 
-export default function ReporteEmpresaPage() {
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
-  const [data, setData] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(false);
+/* =========================
+   Utilidad fecha dd-mm-yyyy
+   ========================= */
+const formatearFecha = (fecha: string) => {
+  if (!fecha) return ''
+  const [y, m, d] = fecha.split('-')
+  return `${d}-${m}-${y}`
+}
 
-  const cargar = async () => {
-    if (!desde || !hasta) return;
+export default function ReporteEmpresasPage() {
+  const router = useRouter()
 
-    setLoading(true);
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
+  const [data, setData] = useState<Row[]>([])
+  const [loading, setLoading] = useState(false)
+
+  /* =========================
+     Cargar reporte
+     ========================= */
+  const cargarReporte = async () => {
+    if (!desde || !hasta) return
+
+    setLoading(true)
 
     const { data, error } = await supabase
       .from('vw_reporte_empresa')
       .select('*')
       .gte('fecha', desde)
       .lte('fecha', hasta)
-      .order('empresa_nombre')
-      .order('fecha');
+      .order('fecha', { ascending: true })
+      .order('pedido', { ascending: true })
 
     if (error) {
-      console.error(error);
-      alert('Error cargando reporte');
+      console.error(error)
+      setData([])
     } else {
-      setData(data || []);
+      setData(data || [])
     }
 
-    setLoading(false);
-  };
+    setLoading(false)
+  }
 
-  const totales = data.reduce(
-    (acc, r) => {
-      acc.neto += r.neto;
-      acc.iva += r.iva;
-      acc.total += r.total;
-      return acc;
-    },
-    { neto: 0, iva: 0, total: 0 }
-  );
+  /* =========================
+     Resumen por empresa
+     ========================= */
+  const resumen = data.reduce((acc: any, row) => {
+    const key = row.empresa_nombre
+    if (!acc[key]) acc[key] = { neto: 0, iva: 0, total: 0 }
+    acc[key].neto += Number(row.neto)
+    acc[key].iva += Number(row.iva)
+    acc[key].total += Number(row.total)
+    return acc
+  }, {})
 
-  /* ================= PDF ================= */
-  const exportarPDF = () => {
-    const doc = new jsPDF('l');
-    doc.text('Reporte Empresas', 14, 10);
-    doc.text(`Desde ${desde} hasta ${hasta}`, 14, 18);
+  /* =========================
+     Exportar PDF
+     ========================= */
+  const exportarPDF = async () => {
+    const jsPDF = (await import('jspdf')).default
+    const autoTable = (await import('jspdf-autotable')).default
+
+    const doc = new jsPDF('l')
+
+    doc.text('Reporte Empresas', 14, 12)
+    doc.text(`Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`, 14, 20)
 
     autoTable(doc, {
-      startY: 25,
+      startY: 28,
       head: [[
-        'Empresa', 'Pedido', 'Fecha', 'Artículo',
-        'Cant', 'Valor', 'Neto', 'IVA', 'Total'
+        'Fecha',
+        'Pedido',
+        'Empresa',
+        'Artículo',
+        'Cant.',
+        'Neto',
+        'IVA',
+        'Total'
       ]],
       body: data.map(r => [
-        r.empresa_nombre,
+        formatearFecha(r.fecha),
         r.pedido,
-        r.fecha,
+        r.empresa_nombre,
         r.articulo,
         r.cantidad,
-        r.valor_unitario,
-        r.neto,
-        r.iva,
-        r.total
+        r.neto.toLocaleString(),
+        r.iva.toLocaleString(),
+        r.total.toLocaleString()
       ]),
       styles: { fontSize: 8 }
-    });
+    })
 
-    doc.text(
-      `TOTAL NETO: $${totales.neto.toLocaleString()}   IVA: $${totales.iva.toLocaleString()}   TOTAL: $${totales.total.toLocaleString()}`,
-      14,
-      doc.lastAutoTable.finalY + 10
-    );
+    doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
+  }
 
-    doc.save(`reporte_empresas_${desde}_${hasta}.pdf`);
-  };
+  /* =========================
+     Exportar Excel
+     ========================= */
+  const exportarExcel = async () => {
+    const XLSX = await import('xlsx')
 
-  /* ================= EXCEL ================= */
-  const exportarExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-    XLSX.writeFile(wb, `reporte_empresas_${desde}_${hasta}.xlsx`);
-  };
+    const ws = XLSX.utils.json_to_sheet(
+      data.map(r => ({
+        Fecha: formatearFecha(r.fecha),
+        Pedido: r.pedido,
+        Empresa: r.empresa_nombre,
+        Artículo: r.articulo,
+        Cantidad: r.cantidad,
+        Neto: r.neto,
+        IVA: r.iva,
+        Total: r.total
+      }))
+    )
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas')
+
+    XLSX.writeFile(wb, `reporte_empresas_${desde}_${hasta}.xlsx`)
+  }
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Reporte Empresas</h1>
+      {/* Encabezado */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">📊 Reporte Empresas</h1>
 
-      <div className="flex gap-4 items-end">
+        <button
+          onClick={() => router.push('/base')}
+          className="bg-gray-700 text-white px-4 py-2 rounded"
+        >
+          ⬅ Volver a base
+        </button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-4 items-end">
         <div>
-          <label>Desde</label>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="border px-2 py-1" />
-        </div>
-        <div>
-          <label>Hasta</label>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="border px-2 py-1" />
+          <label className="block text-sm">Desde</label>
+          <input
+            type="date"
+            value={desde}
+            onChange={e => setDesde(e.target.value)}
+            className="border p-2 rounded"
+          />
         </div>
 
-        <button onClick={cargar} className="bg-blue-600 text-white px-4 py-2 rounded">
+        <div>
+          <label className="block text-sm">Hasta</label>
+          <input
+            type="date"
+            value={hasta}
+            onChange={e => setHasta(e.target.value)}
+            className="border p-2 rounded"
+          />
+        </div>
+
+        <button
+          onClick={cargarReporte}
+          className="bg-purple-600 text-white px-4 py-2 rounded"
+        >
           Buscar
         </button>
 
         {data.length > 0 && (
           <>
-            <button onClick={exportarPDF} className="bg-red-600 text-white px-4 py-2 rounded">
+            <button
+              onClick={exportarPDF}
+              className="bg-red-600 text-white px-4 py-2 rounded"
+            >
               PDF
             </button>
-            <button onClick={exportarExcel} className="bg-green-600 text-white px-4 py-2 rounded">
+
+            <button
+              onClick={exportarExcel}
+              className="bg-green-600 text-white px-4 py-2 rounded"
+            >
               Excel
             </button>
           </>
         )}
       </div>
 
-      {loading && <p>Cargando...</p>}
-
-      {data.length > 0 && (
-        <div className="overflow-auto border">
+      {/* Resumen */}
+      {Object.keys(resumen).length > 0 && (
+        <div className="border rounded p-4">
+          <h2 className="font-semibold mb-2">Resumen por Empresa</h2>
           <table className="w-full text-sm border-collapse">
             <thead className="bg-gray-100">
               <tr>
-                <th>Empresa</th>
-                <th>Pedido</th>
-                <th>Fecha</th>
-                <th>Artículo</th>
-                <th>Cant</th>
-                <th>Valor</th>
-                <th>Neto</th>
-                <th>IVA</th>
-                <th>Total</th>
+                <th className="border p-2">Empresa</th>
+                <th className="border p-2">Neto</th>
+                <th className="border p-2">IVA</th>
+                <th className="border p-2">Total</th>
               </tr>
             </thead>
             <tbody>
-              {data.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.empresa_nombre}</td>
-                  <td>{r.pedido}</td>
-                  <td>{r.fecha}</td>
-                  <td>{r.articulo}</td>
-                  <td className="text-center">{r.cantidad}</td>
-                  <td className="text-right">${r.valor_unitario.toLocaleString()}</td>
-                  <td className="text-right">${r.neto.toLocaleString()}</td>
-                  <td className="text-right">${r.iva.toLocaleString()}</td>
-                  <td className="text-right font-bold">${r.total.toLocaleString()}</td>
+              {Object.entries(resumen).map(([empresa, t]: any) => (
+                <tr key={empresa}>
+                  <td className="border p-2">{empresa}</td>
+                  <td className="border p-2">${t.neto.toLocaleString()}</td>
+                  <td className="border p-2">${t.iva.toLocaleString()}</td>
+                  <td className="border p-2 font-semibold">
+                    ${t.total.toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -167,11 +226,43 @@ export default function ReporteEmpresaPage() {
         </div>
       )}
 
-      {data.length > 0 && (
-        <div className="text-right font-bold">
-          Neto: ${totales.neto.toLocaleString()} | IVA: ${totales.iva.toLocaleString()} | TOTAL: ${totales.total.toLocaleString()}
-        </div>
-      )}
+      {/* Tabla Detalle */}
+      <div className="border rounded overflow-auto">
+        {loading ? (
+          <p className="p-4">Cargando...</p>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border p-2">Fecha</th>
+                <th className="border p-2">Pedido</th>
+                <th className="border p-2">Empresa</th>
+                <th className="border p-2">Artículo</th>
+                <th className="border p-2">Cant.</th>
+                <th className="border p-2">Neto</th>
+                <th className="border p-2">IVA</th>
+                <th className="border p-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((r, i) => (
+                <tr key={i}>
+                  <td className="border p-2">{formatearFecha(r.fecha)}</td>
+                  <td className="border p-2">{r.pedido}</td>
+                  <td className="border p-2">{r.empresa_nombre}</td>
+                  <td className="border p-2">{r.articulo}</td>
+                  <td className="border p-2 text-center">{r.cantidad}</td>
+                  <td className="border p-2">${r.neto.toLocaleString()}</td>
+                  <td className="border p-2">${r.iva.toLocaleString()}</td>
+                  <td className="border p-2 font-semibold">
+                    ${r.total.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
-  );
+  )
 }
