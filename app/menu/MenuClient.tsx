@@ -15,6 +15,7 @@ import {
   Database,
   Building2,
   LogOut,
+  FileDown,
 } from 'lucide-react';
 
 /* =========================
@@ -64,21 +65,29 @@ type TileConfig = {
 };
 
 const tiles: TileConfig[] = [
-  { href: '/pedido',      title: 'Pedido',        icon: <ClipboardList size={22} /> },
-  { href: '/clientes',    title: 'Cliente',       icon: <User size={22} /> },
-  { href: '/base',        title: 'Base',          icon: <Database size={22} /> },
-  { href: '/empresa',     title: 'Empresa',       icon: <Building2 size={22} /> },
-  { href: '/finanzas',    title: 'Finanzas',      icon: <PiggyBank size={22} /> }, // Solo admin
-  { href: '/guardar',     title: 'Guardar',       icon: <Save size={22} />,       disabled: true },
-  { href: '/entregar',    title: 'Entregar',      icon: <PackageCheck size={22} />, disabled: true },
-  { href: '/ruta',        title: 'Ruta',          icon: <RouteIcon size={22} />,  disabled: true },
-  { href: '/domicilio',   title: 'Domicilio',     icon: <Home size={22} />,       disabled: true },
+  { href: '/pedido', title: 'Pedido', icon: <ClipboardList size={22} /> },
+  { href: '/clientes', title: 'Cliente', icon: <User size={22} /> },
+  { href: '/base', title: 'Base', icon: <Database size={22} /> },
 
-  // 🔥 ARREGLO AQUÍ: ruta correcta
+  // ✅ REPORTE EMPRESA (ruta correcta)
+  {
+    href: '/base/reporte_empresa',
+    title: 'Reporte Empresa',
+    icon: <FileDown size={22} />,
+  },
+
+  { href: '/empresa', title: 'Empresa', icon: <Building2 size={22} /> },
+  { href: '/finanzas', title: 'Finanzas', icon: <PiggyBank size={22} /> }, // Solo admin
+
+  { href: '/guardar', title: 'Guardar', icon: <Save size={22} />, disabled: true },
+  { href: '/entregar', title: 'Entregar', icon: <PackageCheck size={22} />, disabled: true },
+  { href: '/ruta', title: 'Ruta', icon: <RouteIcon size={22} />, disabled: true },
+  { href: '/domicilio', title: 'Domicilio', icon: <Home size={22} />, disabled: true },
+
   { href: '/configuracion', title: 'Configuración', icon: <Settings size={22} /> },
 
-  { href: '/articulos',   title: 'Artículos',     icon: <Tag size={22} />,        disabled: true },
-  { href: '/logout',      title: 'Salir',         icon: <LogOut size={22} /> },
+  { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />, disabled: true },
+  { href: '/logout', title: 'Salir', icon: <LogOut size={22} /> },
 ];
 
 /* =========================
@@ -97,13 +106,18 @@ export default function MenuClient() {
     return (
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.href} className="h-24 rounded-2xl bg-white/10 animate-pulse" />
+          <div
+            key={t.href}
+            className="h-24 rounded-2xl bg-white/10 animate-pulse"
+          />
         ))}
       </div>
     );
   }
 
-  const visibleTiles = tiles.filter((t) => !(t.title === 'Finanzas' && !isAdmin));
+  const visibleTiles = tiles.filter(
+    (t) => !(t.title === 'Finanzas' && !isAdmin)
+  );
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
