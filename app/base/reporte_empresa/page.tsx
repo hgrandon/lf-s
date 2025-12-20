@@ -91,49 +91,82 @@ export default function ReporteEmpresasPage() {
     return acc
   }, {})
 
+/* =========================
+   Exportar PDF (con resumen por pedido)
+   ========================= */
+const exportarPDF = async () => {
+  const jsPDF = (await import('jspdf')).default
+  const autoTable = (await import('jspdf-autotable')).default
+
+  const doc = new jsPDF('l')
+
+  /* Encabezado */
+  doc.text('Reporte Empresas', 14, 12)
+  doc.text(
+    `Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`,
+    14,
+    20
+  )
+
   /* =========================
-     Exportar PDF
+     Resumen por Pedido
      ========================= */
-  const exportarPDF = async () => {
-    const jsPDF = (await import('jspdf')).default
-    const autoTable = (await import('jspdf-autotable')).default
+  const resumenPedidoArr = Object.values(resumenPedido) as any[]
 
-    const doc = new jsPDF('l')
+  autoTable(doc, {
+    startY: 28,
+    head: [[
+      'Fecha',
+      'Pedido',
+      'Empresa',
+      'Neto',
+      'IVA',
+      'Total'
+    ]],
+    body: resumenPedidoArr.map(r => [
+      formatearFecha(r.fecha),
+      r.pedido,
+      r.empresa,
+      r.neto.toLocaleString(),
+      r.iva.toLocaleString(),
+      r.total.toLocaleString()
+    ]),
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [230, 230, 230] }
+  })
 
-    doc.text('Reporte Empresas', 14, 12)
-    doc.text(
-      `Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`,
-      14,
-      20
-    )
+  /* =========================
+     Detalle
+     ========================= */
+  const finalY = (doc as any).lastAutoTable.finalY + 10
 
-    autoTable(doc, {
-      startY: 28,
-      head: [[
-        'Fecha',
-        'Pedido',
-        'Empresa',
-        'Artículo',
-        'Cant.',
-        'Neto',
-        'IVA',
-        'Total'
-      ]],
-      body: data.map(r => [
-        formatearFecha(r.fecha),
-        r.pedido,
-        r.empresa_nombre,
-        r.articulo,
-        r.cantidad,
-        r.neto.toLocaleString(),
-        r.iva.toLocaleString(),
-        r.total.toLocaleString()
-      ]),
-      styles: { fontSize: 8 }
-    })
+  autoTable(doc, {
+    startY: finalY,
+    head: [[
+      'Fecha',
+      'Pedido',
+      'Empresa',
+      'Artículo',
+      'Cant.',
+      'Neto',
+      'IVA',
+      'Total'
+    ]],
+    body: data.map(r => [
+      formatearFecha(r.fecha),
+      r.pedido,
+      r.empresa_nombre,
+      r.articulo,
+      r.cantidad,
+      r.neto.toLocaleString(),
+      r.iva.toLocaleString(),
+      r.total.toLocaleString()
+    ]),
+    styles: { fontSize: 8 }
+  })
 
-    doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
-  }
+  doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
+}
 
   /* =========================
      Exportar Excel
