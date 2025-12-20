@@ -91,6 +91,75 @@ export default function ReporteEmpresasPage() {
     return acc
   }, {})
 
+  /* =========================
+     Exportar PDF
+     ========================= */
+  const exportarPDF = async () => {
+    const jsPDF = (await import('jspdf')).default
+    const autoTable = (await import('jspdf-autotable')).default
+
+    const doc = new jsPDF('l')
+
+    doc.text('Reporte Empresas', 14, 12)
+    doc.text(
+      `Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`,
+      14,
+      20
+    )
+
+    autoTable(doc, {
+      startY: 28,
+      head: [[
+        'Fecha',
+        'Pedido',
+        'Empresa',
+        'Artículo',
+        'Cant.',
+        'Neto',
+        'IVA',
+        'Total'
+      ]],
+      body: data.map(r => [
+        formatearFecha(r.fecha),
+        r.pedido,
+        r.empresa_nombre,
+        r.articulo,
+        r.cantidad,
+        r.neto.toLocaleString(),
+        r.iva.toLocaleString(),
+        r.total.toLocaleString()
+      ]),
+      styles: { fontSize: 8 }
+    })
+
+    doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
+  }
+
+  /* =========================
+     Exportar Excel
+     ========================= */
+  const exportarExcel = async () => {
+    const XLSX = await import('xlsx')
+
+    const ws = XLSX.utils.json_to_sheet(
+      data.map(r => ({
+        Fecha: formatearFecha(r.fecha),
+        Pedido: r.pedido,
+        Empresa: r.empresa_nombre,
+        Artículo: r.articulo,
+        Cantidad: r.cantidad,
+        Neto: r.neto,
+        IVA: r.iva,
+        Total: r.total
+      }))
+    )
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas')
+
+    XLSX.writeFile(wb, `reporte_empresas_${desde}_${hasta}.xlsx`)
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Encabezado */}
@@ -133,6 +202,24 @@ export default function ReporteEmpresasPage() {
         >
           Buscar
         </button>
+
+        {data.length > 0 && (
+          <>
+            <button
+              onClick={exportarPDF}
+              className="bg-red-600 text-white px-4 py-2 rounded"
+            >
+              PDF
+            </button>
+
+            <button
+              onClick={exportarExcel}
+              className="bg-green-600 text-white px-4 py-2 rounded"
+            >
+              Excel
+            </button>
+          </>
+        )}
       </div>
 
       {/* =========================
