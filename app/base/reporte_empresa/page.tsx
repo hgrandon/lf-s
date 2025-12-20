@@ -91,82 +91,175 @@ export default function ReporteEmpresasPage() {
     return acc
   }, {})
 
-/* =========================
-   Exportar PDF (con resumen por pedido)
-   ========================= */
-const exportarPDF = async () => {
-  const jsPDF = (await import('jspdf')).default
-  const autoTable = (await import('jspdf-autotable')).default
+    /* =========================
+      Exportar PDF PRO CLIENTE
+      ========================= */
+    const exportarPDF = async () => {
+      const jsPDF = (await import('jspdf')).default
+      const autoTable = (await import('jspdf-autotable')).default
 
-  const doc = new jsPDF('l')
+      const doc = new jsPDF('l')
 
-  /* Encabezado */
-  doc.text('Reporte Empresas', 14, 12)
-  doc.text(
-    `Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`,
-    14,
-    20
-  )
+      const COLOR_PRINCIPAL: [number, number, number] = [88, 28, 135] // morado
+      const COLOR_HEADER: [number, number, number] = [245, 243, 255]
 
-  /* =========================
-     Resumen por Pedido
-     ========================= */
-  const resumenPedidoArr = Object.values(resumenPedido) as any[]
+      /* =========================
+        PORTADA / ENCABEZADO
+        ========================= */
+      doc.setFillColor(...COLOR_PRINCIPAL)
+      doc.rect(0, 0, 297, 28, 'F')
 
-  autoTable(doc, {
-    startY: 28,
-    head: [[
-      'Fecha',
-      'Pedido',
-      'Empresa',
-      'Neto',
-      'IVA',
-      'Total'
-    ]],
-    body: resumenPedidoArr.map(r => [
-      formatearFecha(r.fecha),
-      r.pedido,
-      r.empresa,
-      r.neto.toLocaleString(),
-      r.iva.toLocaleString(),
-      r.total.toLocaleString()
-    ]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [230, 230, 230] }
-  })
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(18)
+      doc.text('Reporte Empresas', 14, 18)
 
-  /* =========================
-     Detalle
-     ========================= */
-  const finalY = (doc as any).lastAutoTable.finalY + 10
+      doc.setFontSize(11)
+      doc.text(
+        `Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`,
+        14,
+        25
+      )
 
-  autoTable(doc, {
-    startY: finalY,
-    head: [[
-      'Fecha',
-      'Pedido',
-      'Empresa',
-      'Artículo',
-      'Cant.',
-      'Neto',
-      'IVA',
-      'Total'
-    ]],
-    body: data.map(r => [
-      formatearFecha(r.fecha),
-      r.pedido,
-      r.empresa_nombre,
-      r.articulo,
-      r.cantidad,
-      r.neto.toLocaleString(),
-      r.iva.toLocaleString(),
-      r.total.toLocaleString()
-    ]),
-    styles: { fontSize: 8 }
-  })
+      doc.setTextColor(0, 0, 0)
 
-  doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
-}
+      let cursorY = 38
+
+      /* =========================
+        TÍTULO RESUMEN POR PEDIDO
+        ========================= */
+      doc.setFontSize(14)
+      doc.setTextColor(...COLOR_PRINCIPAL)
+      doc.text('Resumen por Pedido', 14, cursorY)
+
+      cursorY += 6
+
+      const resumenPedidoArr = Object.values(resumenPedido) as any[]
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['Fecha', 'Pedido', 'Empresa', 'Neto', 'IVA', 'Total']],
+        body: resumenPedidoArr.map(r => [
+          formatearFecha(r.fecha),
+          r.pedido,
+          r.empresa,
+          `$${r.neto.toLocaleString()}`,
+          `$${r.iva.toLocaleString()}`,
+          `$${r.total.toLocaleString()}`
+        ]),
+        styles: {
+          fontSize: 9,
+          cellPadding: 3
+        },
+        headStyles: {
+          fillColor: COLOR_PRINCIPAL,
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: COLOR_HEADER
+        }
+      })
+
+      cursorY = (doc as any).lastAutoTable.finalY + 12
+
+      /* =========================
+        TÍTULO RESUMEN POR EMPRESA
+        ========================= */
+      doc.setFontSize(14)
+      doc.setTextColor(...COLOR_PRINCIPAL)
+      doc.text('Resumen por Empresa', 14, cursorY)
+
+      cursorY += 6
+
+      const resumenEmpresaArr = Object.entries(resumenEmpresa).map(
+        ([empresa, t]: any) => ({
+          empresa,
+          ...t
+        })
+      )
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['Empresa', 'Neto', 'IVA', 'Total']],
+        body: resumenEmpresaArr.map(r => [
+          r.empresa,
+          `$${r.neto.toLocaleString()}`,
+          `$${r.iva.toLocaleString()}`,
+          `$${r.total.toLocaleString()}`
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: {
+          fillColor: COLOR_PRINCIPAL,
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: COLOR_HEADER
+        }
+      })
+
+      /* =========================
+        NUEVA PÁGINA – DESGLOSE
+        ========================= */
+      doc.addPage('l')
+
+      doc.setFillColor(...COLOR_PRINCIPAL)
+      doc.rect(0, 0, 297, 24, 'F')
+
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(16)
+      doc.text('Desglose por Pedido', 14, 16)
+
+      doc.setFontSize(10)
+      doc.text(
+        `Periodo: ${formatearFecha(desde)} al ${formatearFecha(hasta)}`,
+        14,
+        22
+      )
+
+      doc.setTextColor(0, 0, 0)
+
+      autoTable(doc, {
+        startY: 32,
+        head: [
+          [
+            'Fecha',
+            'Pedido',
+            'Empresa',
+            'Artículo',
+            'Cant.',
+            'Neto',
+            'IVA',
+            'Total'
+          ]
+        ],
+        body: data.map(r => [
+          formatearFecha(r.fecha),
+          r.pedido,
+          r.empresa_nombre,
+          r.articulo,
+          r.cantidad,
+          `$${r.neto.toLocaleString()}`,
+          `$${r.iva.toLocaleString()}`,
+          `$${r.total.toLocaleString()}`
+        ]),
+        styles: {
+          fontSize: 8,
+          cellPadding: 2
+        },
+        headStyles: {
+          fillColor: COLOR_PRINCIPAL,
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        alternateRowStyles: {
+          fillColor: COLOR_HEADER
+        }
+      })
+
+      doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
+    }
+
 
   /* =========================
      Exportar Excel
