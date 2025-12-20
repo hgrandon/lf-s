@@ -62,6 +62,7 @@ export default function ReporteEmpresaPage() {
   const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
   const [lineas, setLineas] = useState<PedidoLinea[]>([]);
   const [loading, setLoading] = useState(false);
+  const [verDesglose, setVerDesglose] = useState(false);
 
   const [empresaSel, setEmpresaSel] = useState('TODAS');
   const [desde, setDesde] = useState(() => {
@@ -264,6 +265,25 @@ export default function ReporteEmpresaPage() {
         </p>
       </section>
 
+          {/* BOTÓN DESGLOSE */}
+          <div className="mb-8 print:hidden">
+            <button
+              onClick={() => setVerDesglose(v => !v)}
+              className="px-4 py-2 bg-slate-800 text-white rounded text-sm"
+            >
+              {verDesglose ? 'Ocultar desglose por pedido' : 'Ver desglose por pedido'}
+            </button>
+          </div>
+
+          {verDesglose && (
+              <section className="mb-12 border-t pt-6">
+                <iframe
+                  src={`/base/reporte_empresa/desglose?desde=${desde}&hasta=${hasta}&empresa=${empresaSel}`}
+                  className="w-full h-[900px] border"
+                />
+              </section>
+            )}
+
       {/* =========================
           RESUMEN POR PRODUCTO
       ========================= */}
@@ -333,6 +353,7 @@ export default function ReporteEmpresaPage() {
           </tbody>
         </table>
       </section>
+
 
       <style jsx global>{`
         @media print {
