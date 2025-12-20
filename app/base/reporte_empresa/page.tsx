@@ -140,7 +140,9 @@ export default function ReporteEmpresaPage() {
       const neto = p.total ?? 0;
       const iva = Math.round(neto * IVA);
       return {
-        fecha: formatFecha(p.fecha_ingreso!.slice(0, 10)),
+        fecha: p.fecha_ingreso
+          ? formatFecha(p.fecha_ingreso.slice(0, 10))
+          : '',
         empresa: p.empresa_nombre || 'SIN EMPRESA',
         numeroServicio: p.nro,
         valorNeto: neto,
@@ -159,7 +161,7 @@ export default function ReporteEmpresaPage() {
   const totalGeneral = totalNeto + totalIVA;
 
   /* =========================
-     Resumen por producto (FIX)
+     Resumen por producto
   ========================= */
 
   const resumenProductos = useMemo<ResumenProducto[]>(() => {
@@ -186,7 +188,7 @@ export default function ReporteEmpresaPage() {
   }, [lineas, pedidosFiltrados]);
 
   /* =========================
-     Exportar Excel
+     Exportar
   ========================= */
 
   async function exportarExcel() {
@@ -252,9 +254,7 @@ export default function ReporteEmpresaPage() {
         </button>
       </section>
 
-      {/* =========================
-          RESUMEN GENERAL
-      ========================= */}
+      {/* RESUMEN GENERAL */}
       <section className="mb-8">
         <h2 className="font-bold text-lg mb-2">Resumen General</h2>
         <p>Total servicios: <b>{filas.length}</b></p>
@@ -265,28 +265,26 @@ export default function ReporteEmpresaPage() {
         </p>
       </section>
 
-          {/* BOTÓN DESGLOSE */}
-          <div className="mb-8 print:hidden">
-            <button
-              onClick={() => setVerDesglose(v => !v)}
-              className="px-4 py-2 bg-slate-800 text-white rounded text-sm"
-            >
-              {verDesglose ? 'Ocultar desglose por pedido' : 'Ver desglose por pedido'}
-            </button>
-          </div>
+      {/* BOTÓN DESGLOSE */}
+      <div className="mb-8 print:hidden">
+        <button
+          onClick={() => setVerDesglose(v => !v)}
+          className="px-4 py-2 bg-slate-800 text-white rounded text-sm"
+        >
+          {verDesglose ? 'Ocultar desglose por pedido' : 'Ver desglose por pedido'}
+        </button>
+      </div>
 
-          {verDesglose && (
-              <section className="mb-12 border-t pt-6">
-                <iframe
-                  src={`/base/reporte_empresa/desglose?desde=${desde}&hasta=${hasta}&empresa=${empresaSel}`}
-                  className="w-full h-[900px] border"
-                />
-              </section>
-            )}
+      {verDesglose && (
+        <section className="mb-12 border-t pt-6">
+          <iframe
+            src={`/base/reporte_empresa/desglose?desde=${desde}&hasta=${hasta}&empresa=${encodeURIComponent(empresaSel)}`}
+            className="w-full h-[900px] border"
+          />
+        </section>
+      )}
 
-      {/* =========================
-          RESUMEN POR PRODUCTO
-      ========================= */}
+      {/* RESUMEN POR PRODUCTO */}
       <section className="mb-10">
         <h2 className="font-bold text-lg mb-2">Resumen por producto</h2>
         <table className="w-full text-sm border-collapse">
@@ -309,51 +307,50 @@ export default function ReporteEmpresaPage() {
         </table>
       </section>
 
-      {/* =========================
-          DETALLE DE SERVICIOS
-      ========================= */}
+      {/* DETALLE */}
       <section>
         <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b">
-              <th>Fecha</th>
-              <th>Empresa</th>
-              <th className="text-right">Servicio</th>
-              <th className="text-right">Neto</th>
-              <th className="text-right">IVA</th>
-              <th className="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((f, i) => (
-              <tr
-                key={i}
-                className="border-b hover:bg-slate-100 cursor-pointer"
-                onClick={() =>
-                  router.push(`/servicio?nro=${f.numeroServicio}`)
-                }
-              >
-                <td>{f.fecha}</td>
-                <td>{f.empresa}</td>
-                <td className="text-right">{f.numeroServicio}</td>
-                <td className="text-right">{clp(f.valorNeto)}</td>
-                <td className="text-right">{clp(f.iva)}</td>
-                <td className="text-right">{clp(f.valorTotal)}</td>
+        {loading ? (
+          <p className="text-gray-500">Cargando…</p>
+        ) : (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b">
+                <th>Fecha</th>
+                <th>Empresa</th>
+                <th className="text-right">Servicio</th>
+                <th className="text-right">Neto</th>
+                <th className="text-right">IVA</th>
+                <th className="text-right">Total</th>
               </tr>
-            ))}
+            </thead>
+            <tbody>
+              {filas.map((f, i) => (
+                <tr
+                  key={i}
+                  className="border-b hover:bg-slate-100 cursor-pointer"
+                  onClick={() => router.push(`/servicio?nro=${f.numeroServicio}`)}
+                >
+                  <td>{f.fecha}</td>
+                  <td>{f.empresa}</td>
+                  <td className="text-right">{f.numeroServicio}</td>
+                  <td className="text-right">{clp(f.valorNeto)}</td>
+                  <td className="text-right">{clp(f.iva)}</td>
+                  <td className="text-right">{clp(f.valorTotal)}</td>
+                </tr>
+              ))}
 
-            {filas.length === 0 && !loading && (
-              <tr>
-                <td colSpan={6} className="text-center py-6 text-gray-500">
-                  Sin datos
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              {filas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center py-6 text-gray-500">
+                    Sin datos
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </section>
-
 
       <style jsx global>{`
         @media print {
