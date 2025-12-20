@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { FileDown } from 'lucide-react';
+import { FileDown, ArrowLeft } from 'lucide-react';
 
 /* =========================
    Tipos
@@ -39,11 +40,17 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatFecha(fecha: string) {
+  return fecha.split('-').reverse().join('-');
+}
+
 /* =========================
    Página
 ========================= */
 
 export default function ReporteEmpresaPage() {
+  const router = useRouter();
+
   const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -79,7 +86,7 @@ export default function ReporteEmpresaPage() {
   }, []);
 
   /* =========================
-     Empresas (FIX TS)
+     Empresas (fix TS)
   ========================= */
 
   const empresas = useMemo((): string[] => {
@@ -117,11 +124,7 @@ export default function ReporteEmpresaPage() {
         const total = neto + iva;
 
         return {
-          fecha: p.fecha_ingreso!
-            .slice(0, 10)
-            .split('-')
-            .reverse()
-            .join('-'),
+          fecha: formatFecha(p.fecha_ingreso!.slice(0, 10)),
           empresa: p.empresa_nombre || 'SIN EMPRESA',
           numeroServicio: p.nro,
           valorNeto: neto,
@@ -156,7 +159,20 @@ export default function ReporteEmpresaPage() {
   ========================= */
 
   return (
-    <main className="p-6 bg-white text-black">
+    <main className="min-h-screen p-6 bg-white text-black">
+      {/* HEADER */}
+      <header className="flex items-center justify-between mb-6 print:hidden">
+        <button
+          onClick={() => router.push('/')}
+          className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-black"
+        >
+          <ArrowLeft size={18} />
+          Volver al menú
+        </button>
+
+        <h1 className="text-xl font-bold">Reporte Empresas</h1>
+      </header>
+
       {/* CONTROLES */}
       <section className="flex flex-wrap gap-3 mb-6 print:hidden">
         <select
