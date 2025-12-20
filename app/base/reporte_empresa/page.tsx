@@ -59,11 +59,20 @@ export default function ReporteEmpresasPage() {
   }
 
   /* =========================
-     Resumen por empresa
+     Resumen por pedido
      ========================= */
-  const resumen = data.reduce((acc: any, row) => {
-    const key = row.empresa_nombre
-    if (!acc[key]) acc[key] = { neto: 0, iva: 0, total: 0 }
+  const resumenPedido = data.reduce((acc: any, row) => {
+    const key = row.pedido
+    if (!acc[key]) {
+      acc[key] = {
+        pedido: row.pedido,
+        fecha: row.fecha,
+        empresa: row.empresa_nombre,
+        neto: 0,
+        iva: 0,
+        total: 0
+      }
+    }
     acc[key].neto += Number(row.neto)
     acc[key].iva += Number(row.iva)
     acc[key].total += Number(row.total)
@@ -71,69 +80,16 @@ export default function ReporteEmpresasPage() {
   }, {})
 
   /* =========================
-     Exportar PDF
+     Resumen por empresa
      ========================= */
-  const exportarPDF = async () => {
-    const jsPDF = (await import('jspdf')).default
-    const autoTable = (await import('jspdf-autotable')).default
-
-    const doc = new jsPDF('l')
-
-    doc.text('Reporte Empresas', 14, 12)
-    doc.text(`Desde ${formatearFecha(desde)} hasta ${formatearFecha(hasta)}`, 14, 20)
-
-    autoTable(doc, {
-      startY: 28,
-      head: [[
-        'Fecha',
-        'Pedido',
-        'Empresa',
-        'Artículo',
-        'Cant.',
-        'Neto',
-        'IVA',
-        'Total'
-      ]],
-      body: data.map(r => [
-        formatearFecha(r.fecha),
-        r.pedido,
-        r.empresa_nombre,
-        r.articulo,
-        r.cantidad,
-        r.neto.toLocaleString(),
-        r.iva.toLocaleString(),
-        r.total.toLocaleString()
-      ]),
-      styles: { fontSize: 8 }
-    })
-
-    doc.save(`reporte_empresas_${desde}_${hasta}.pdf`)
-  }
-
-  /* =========================
-     Exportar Excel
-     ========================= */
-  const exportarExcel = async () => {
-    const XLSX = await import('xlsx')
-
-    const ws = XLSX.utils.json_to_sheet(
-      data.map(r => ({
-        Fecha: formatearFecha(r.fecha),
-        Pedido: r.pedido,
-        Empresa: r.empresa_nombre,
-        Artículo: r.articulo,
-        Cantidad: r.cantidad,
-        Neto: r.neto,
-        IVA: r.iva,
-        Total: r.total
-      }))
-    )
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas')
-
-    XLSX.writeFile(wb, `reporte_empresas_${desde}_${hasta}.xlsx`)
-  }
+  const resumenEmpresa = data.reduce((acc: any, row) => {
+    const key = row.empresa_nombre
+    if (!acc[key]) acc[key] = { neto: 0, iva: 0, total: 0 }
+    acc[key].neto += Number(row.neto)
+    acc[key].iva += Number(row.iva)
+    acc[key].total += Number(row.total)
+    return acc
+  }, {})
 
   return (
     <div className="p-6 space-y-6">
@@ -177,28 +133,47 @@ export default function ReporteEmpresasPage() {
         >
           Buscar
         </button>
-
-        {data.length > 0 && (
-          <>
-            <button
-              onClick={exportarPDF}
-              className="bg-red-600 text-white px-4 py-2 rounded"
-            >
-              PDF
-            </button>
-
-            <button
-              onClick={exportarExcel}
-              className="bg-green-600 text-white px-4 py-2 rounded"
-            >
-              Excel
-            </button>
-          </>
-        )}
       </div>
 
-      {/* Resumen */}
-      {Object.keys(resumen).length > 0 && (
+      {/* =========================
+          Resumen por Pedido
+         ========================= */}
+      {Object.keys(resumenPedido).length > 0 && (
+        <div className="border rounded p-4">
+          <h2 className="font-semibold mb-2">Resumen por Pedido</h2>
+          <table className="w-full text-sm border-collapse">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border p-2">Fecha</th>
+                <th className="border p-2">Pedido</th>
+                <th className="border p-2">Empresa</th>
+                <th className="border p-2">Neto</th>
+                <th className="border p-2">IVA</th>
+                <th className="border p-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(resumenPedido).map((r: any) => (
+                <tr key={r.pedido}>
+                  <td className="border p-2">{formatearFecha(r.fecha)}</td>
+                  <td className="border p-2">{r.pedido}</td>
+                  <td className="border p-2">{r.empresa}</td>
+                  <td className="border p-2">${r.neto.toLocaleString()}</td>
+                  <td className="border p-2">${r.iva.toLocaleString()}</td>
+                  <td className="border p-2 font-semibold">
+                    ${r.total.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* =========================
+          Resumen por Empresa
+         ========================= */}
+      {Object.keys(resumenEmpresa).length > 0 && (
         <div className="border rounded p-4">
           <h2 className="font-semibold mb-2">Resumen por Empresa</h2>
           <table className="w-full text-sm border-collapse">
@@ -211,7 +186,7 @@ export default function ReporteEmpresasPage() {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(resumen).map(([empresa, t]: any) => (
+              {Object.entries(resumenEmpresa).map(([empresa, t]: any) => (
                 <tr key={empresa}>
                   <td className="border p-2">{empresa}</td>
                   <td className="border p-2">${t.neto.toLocaleString()}</td>
@@ -226,7 +201,9 @@ export default function ReporteEmpresasPage() {
         </div>
       )}
 
-      {/* Tabla Detalle */}
+      {/* =========================
+          Tabla Detalle
+         ========================= */}
       <div className="border rounded overflow-auto">
         {loading ? (
           <p className="p-4">Cargando...</p>
