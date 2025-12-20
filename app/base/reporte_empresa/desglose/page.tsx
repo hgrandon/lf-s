@@ -13,7 +13,6 @@ type Pedido = {
   nro: number;
   fecha_ingreso: string;
   empresa_nombre: string | null;
-  total: number | null;
 };
 
 type LineaPedido = {
@@ -26,6 +25,8 @@ type LineaPedido = {
 /* =========================
    Utils
 ========================= */
+
+const IVA = 0.19;
 
 const clp = (v: number) => '$' + v.toLocaleString('es-CL');
 
@@ -49,19 +50,22 @@ export default function DesgloseReporteEmpresaPage() {
   const [loading, setLoading] = useState(true);
 
   /* =========================
-     Cargar datos filtrados
+     Cargar datos
   ========================= */
 
   useEffect(() => {
+    if (!desde || !hasta) return;
+
     async function cargar() {
       setLoading(true);
 
       let query = supabase
         .from('pedido')
-        .select('nro, fecha_ingreso, empresa_nombre, total')
+        .select('nro, fecha_ingreso, empresa_nombre')
         .eq('es_empresa', true)
-        .gte('fecha_ingreso', desde!)
-        .lte('fecha_ingreso', hasta!);
+        .gte('fecha_ingreso', desde)
+        .lte('fecha_ingreso', hasta)
+        .order('fecha_ingreso', { ascending: true });
 
       if (empresa && empresa !== 'TODAS') {
         query = query.eq('empresa_nombre', empresa);
@@ -78,11 +82,11 @@ export default function DesgloseReporteEmpresaPage() {
       setLoading(false);
     }
 
-    if (desde && hasta) cargar();
+    cargar();
   }, [desde, hasta, empresa]);
 
   /* =========================
-     Lineas por pedido
+     Lineas agrupadas
   ========================= */
 
   const lineasPorPedido = useMemo(() => {
@@ -117,63 +121,106 @@ export default function DesgloseReporteEmpresaPage() {
         <h1 className="text-xl font-bold">Desglose por pedido</h1>
       </header>
 
-      {loading && <p>Cargando...</p>}
+      {/* VALIDACIÓN */}
+      {!desde || !hasta ? (
+        <p className="text-red-600">
+          Falta rango de fechas para mostrar el desglose.
+        </p>
+      ) : loading ? (
+        <p className="text-gray-500">Cargando desglose…</p>
+      ) : pedidos.length === 0 ? (
+        <p className="text-gray-500">
+          No hay pedidos para el rango seleccionado.
+        </p>
+      ) : (
+        pedidos.map(pedido => {
+          const detalle = lineasPorPedido.get(pedido.nro) ?? [];
 
-      {!loading && pedidos.length === 0 && (
-        <p className="text-gray-500">Sin pedidos para el rango seleccionado</p>
-      )}
+          const neto = detalle.reduce(
+            (a, b) => a + b.cantidad * b.valor,
+            0
+          );
+          const iva = Math.round(neto * IVA);
+          const total = neto + iva;
 
-      {/* =========================
-          DESGLOSE
-      ========================= */}
-      {pedidos.map(pedido => {
-        const detalle = lineasPorPedido.get(pedido.nro) ?? [];
-        const totalPedido = detalle.reduce(
-          (a, b) => a + b.cantidad * b.valor,
-          0
-        );
+          return (
+            <section
+              key={pedido.nro}
+              className="mb-10 border rounded p-4"
+            >
+              {/* ENCABEZADO PEDIDO */}
+              <div className="flex justify-between mb-3">
+                <div>
+                  <p className="font-bold">
+                    Pedido Nº {pedido.nro}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {formatFecha(pedido.fecha_ingreso)} ·{' '}
+                    {pedido.empresa_nombre ?? 'SIN EMPRESA'}
+                  </p>
+                </div>
 
-        return (
-          <section key={pedido.nro} className="mb-10">
-            <h2 className="font-bold mb-2">
-              Pedido Nº {pedido.nro} — {formatFecha(pedido.fecha_ingreso)} —{' '}
-              {pedido.empresa_nombre}
-            </h2>
+                <div className="text-right">
+                  <p className="text-sm">Total</p>
+                  <p className="font-bold text-lg">
+                    {clp(total)}
+                  </p>
+                </div>
+              </div>
 
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left">Producto</th>
-                  <th className="text-right">Cantidad</th>
-                  <th className="text-right">Precio unitario</th>
-                  <th className="text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.map((l, i) => (
-                  <tr key={i} className="border-b">
-                    <td>{l.articulo}</td>
-                    <td className="text-right">{l.cantidad}</td>
-                    <td className="text-right">{clp(l.valor)}</td>
-                    <td className="text-right">
-                      {clp(l.cantidad * l.valor)}
+              {/* TABLA DETALLE */}
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-1">Producto</th>
+                    <th className="text-right py-1">Cantidad</th>
+                    <th className="text-right py-1">Precio</th>
+                    <th className="text-right py-1">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detalle.map((l, i) => (
+                    <tr key={i} className="border-b">
+                      <td>{l.articulo}</td>
+                      <td className="text-right">{l.cantidad}</td>
+                      <td className="text-right">{clp(l.valor)}</td>
+                      <td className="text-right">
+                        {clp(l.cantidad * l.valor)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* TOTALES */}
+                  <tr className="font-semibold">
+                    <td colSpan={3} className="text-right pt-2">
+                      Neto
+                    </td>
+                    <td className="text-right pt-2">
+                      {clp(neto)}
                     </td>
                   </tr>
-                ))}
-
-                <tr className="font-bold">
-                  <td colSpan={3} className="text-right pt-2">
-                    Total pedido
-                  </td>
-                  <td className="text-right pt-2">
-                    {clp(totalPedido)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-        );
-      })}
+                  <tr className="font-semibold">
+                    <td colSpan={3} className="text-right">
+                      IVA 19%
+                    </td>
+                    <td className="text-right">
+                      {clp(iva)}
+                    </td>
+                  </tr>
+                  <tr className="font-bold">
+                    <td colSpan={3} className="text-right">
+                      Total pedido
+                    </td>
+                    <td className="text-right">
+                      {clp(total)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          );
+        })
+      )}
 
       <style jsx global>{`
         @media print {
