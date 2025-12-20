@@ -3,28 +3,38 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileDown, FileSpreadsheet } from 'lucide-react';
 
 /* =========================
    Tipos
 ========================= */
 
-type Pedido = {
+type PedidoEmpresa = {
   nro: number;
   total: number | null;
   fecha_ingreso: string | null;
+  es_empresa: boolean | null;
   empresa_nombre: string | null;
 };
 
 type PedidoLinea = {
   pedido_nro: number;
-  descripcion: string;
+  articulo: string;
   cantidad: number;
-  subtotal: number;
+  valor: number;
+};
+
+type FilaReporte = {
+  fecha: string;
+  empresa: string;
+  numeroServicio: number;
+  valorNeto: number;
+  iva: number;
+  valorTotal: number;
 };
 
 type ResumenProducto = {
-  producto: string;
+  articulo: string;
   cantidad: number;
   total: number;
 };
@@ -35,10 +45,11 @@ type ResumenProducto = {
 
 const IVA = 0.19;
 
-const clp = (v: number) =>
-  '$' + v.toLocaleString('es-CL');
+const clp = (v: number) => '$' + v.toLocaleString('es-CL');
 
-const fechaCL = (f: string) =>
+const toISODate = (d: Date) => d.toISOString().slice(0, 10);
+
+const formatFecha = (f: string) =>
   f.split('-').reverse().join('-');
 
 /* =========================
@@ -48,12 +59,17 @@ const fechaCL = (f: string) =>
 export default function ReporteEmpresaPage() {
   const router = useRouter();
 
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
   const [lineas, setLineas] = useState<PedidoLinea[]>([]);
-  const [empresaSel, setEmpresaSel] = useState('TODAS');
-  const [desde, setDesde] = useState('2025-01-01');
-  const [hasta, setHasta] = useState('2025-12-31');
   const [loading, setLoading] = useState(false);
+
+  const [empresaSel, setEmpresaSel] = useState('TODAS');
+  const [desde, setDesde] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return toISODate(d);
+  });
+  const [hasta, setHasta] = useState(() => toISODate(new Date()));
 
   /* =========================
      Cargar datos
@@ -62,17 +78,17 @@ export default function ReporteEmpresaPage() {
   async function cargarDatos() {
     setLoading(true);
 
-    const { data: p } = await supabase
+    const { data: pedidosData } = await supabase
       .from('pedido')
-      .select('nro, total, fecha_ingreso, empresa_nombre')
+      .select('nro, total, fecha_ingreso, es_empresa, empresa_nombre')
       .eq('es_empresa', true);
 
-    const { data: l } = await supabase
+    const { data: lineasData } = await supabase
       .from('pedido_linea')
-      .select('pedido_nro, descripcion, cantidad, subtotal');
+      .select('pedido_nro, articulo, cantidad, valor');
 
-    setPedidos(p ?? []);
-    setLineas(l ?? []);
+    setPedidos(pedidosData ?? []);
+    setLineas(lineasData ?? []);
     setLoading(false);
   }
 
@@ -84,73 +100,105 @@ export default function ReporteEmpresaPage() {
      Empresas
   ========================= */
 
-  const empresas = useMemo(() => {
+  const empresas = useMemo<string[]>(() => {
     return Array.from(
       new Set(
         pedidos
           .map(p => p.empresa_nombre)
           .filter((e): e is string => Boolean(e))
       )
-    );
+    ).sort();
   }, [pedidos]);
 
   /* =========================
-     Filtro pedidos
+     Pedidos filtrados
   ========================= */
 
   const pedidosFiltrados = useMemo(() => {
+    const dDesde = new Date(desde);
+    const dHasta = new Date(hasta);
+    dDesde.setHours(0, 0, 0, 0);
+    dHasta.setHours(23, 59, 59, 999);
+
     return pedidos.filter(p => {
       if (!p.fecha_ingreso) return false;
-
       const f = new Date(p.fecha_ingreso);
-      if (f < new Date(desde) || f > new Date(hasta)) return false;
+      if (f < dDesde || f > dHasta) return false;
       if (empresaSel !== 'TODAS' && p.empresa_nombre !== empresaSel)
         return false;
-
       return true;
     });
   }, [pedidos, empresaSel, desde, hasta]);
 
   /* =========================
+     Filas del detalle
+  ========================= */
+
+  const filas: FilaReporte[] = useMemo(() => {
+    return pedidosFiltrados.map(p => {
+      const neto = p.total ?? 0;
+      const iva = Math.round(neto * IVA);
+      return {
+        fecha: formatFecha(p.fecha_ingreso!.slice(0, 10)),
+        empresa: p.empresa_nombre || 'SIN EMPRESA',
+        numeroServicio: p.nro,
+        valorNeto: neto,
+        iva,
+        valorTotal: neto + iva,
+      };
+    });
+  }, [pedidosFiltrados]);
+
+  /* =========================
      Resumen financiero
   ========================= */
 
-  const totalNeto = pedidosFiltrados.reduce(
-    (a, p) => a + (p.total ?? 0),
-    0
-  );
-
-  const totalIVA = Math.round(totalNeto * IVA);
+  const totalNeto = filas.reduce((a, b) => a + b.valorNeto, 0);
+  const totalIVA = filas.reduce((a, b) => a + b.iva, 0);
   const totalGeneral = totalNeto + totalIVA;
 
   /* =========================
-     Resumen por producto
+     Resumen por producto (FIX)
   ========================= */
 
-  const resumenProductos: ResumenProducto[] = useMemo(() => {
+  const resumenProductos = useMemo<ResumenProducto[]>(() => {
     const map = new Map<string, ResumenProducto>();
+    const pedidosSet = new Set(pedidosFiltrados.map(p => p.nro));
 
     lineas.forEach(l => {
-      const pedido = pedidosFiltrados.find(
-        p => p.nro === l.pedido_nro
-      );
-      if (!pedido) return;
+      if (!pedidosSet.has(l.pedido_nro)) return;
 
-      if (!map.has(l.descripcion)) {
-        map.set(l.descripcion, {
-          producto: l.descripcion,
-          cantidad: 0,
-          total: 0,
-        });
-      }
+      const actual = map.get(l.articulo) ?? {
+        articulo: l.articulo,
+        cantidad: 0,
+        total: 0,
+      };
 
-      const r = map.get(l.descripcion)!;
-      r.cantidad += l.cantidad;
-      r.total += l.subtotal;
+      actual.cantidad += l.cantidad;
+      actual.total += l.cantidad * l.valor;
+      map.set(l.articulo, actual);
     });
 
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) =>
+      a.articulo.localeCompare(b.articulo)
+    );
   }, [lineas, pedidosFiltrados]);
+
+  /* =========================
+     Exportar Excel
+  ========================= */
+
+  async function exportarExcel() {
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas');
+    XLSX.writeFile(wb, `reporte_empresas_${desde}_al_${hasta}.xlsx`);
+  }
+
+  function exportarPDF() {
+    window.print();
+  }
 
   /* =========================
      Render
@@ -159,23 +207,23 @@ export default function ReporteEmpresaPage() {
   return (
     <main className="p-6 bg-white text-black min-h-screen">
       {/* HEADER */}
-      <header className="flex justify-between items-center mb-6">
+      <header className="flex items-center justify-between mb-6 print:hidden">
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-sm"
+          className="flex items-center gap-2 text-sm font-semibold"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={18} />
           Volver al menú
         </button>
         <h1 className="text-xl font-bold">Reporte Empresas</h1>
       </header>
 
       {/* FILTROS */}
-      <section className="flex gap-3 mb-6">
+      <section className="flex flex-wrap gap-3 mb-6 print:hidden">
         <select
           value={empresaSel}
           onChange={e => setEmpresaSel(e.target.value)}
-          className="border px-2 py-1"
+          className="border rounded px-3 py-2"
         >
           <option value="TODAS">Todas las empresas</option>
           {empresas.map(e => (
@@ -185,6 +233,22 @@ export default function ReporteEmpresaPage() {
 
         <input type="date" value={desde} onChange={e => setDesde(e.target.value)} />
         <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
+
+        <button
+          onClick={exportarExcel}
+          className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded"
+        >
+          <FileSpreadsheet size={16} />
+          Excel
+        </button>
+
+        <button
+          onClick={exportarPDF}
+          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
+        >
+          <FileDown size={16} />
+          PDF
+        </button>
       </section>
 
       {/* =========================
@@ -192,7 +256,7 @@ export default function ReporteEmpresaPage() {
       ========================= */}
       <section className="mb-8">
         <h2 className="font-bold text-lg mb-2">Resumen General</h2>
-        <p>Total servicios: <b>{pedidosFiltrados.length}</b></p>
+        <p>Total servicios: <b>{filas.length}</b></p>
         <p>Total neto: <b>{clp(totalNeto)}</b></p>
         <p>IVA 19%: <b>{clp(totalIVA)}</b></p>
         <p className="text-lg mt-1">
@@ -205,31 +269,22 @@ export default function ReporteEmpresaPage() {
       ========================= */}
       <section className="mb-10">
         <h2 className="font-bold text-lg mb-2">Resumen por producto</h2>
-
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b">
-              <th className="text-left py-1">Producto</th>
-              <th className="text-right py-1">Cantidad</th>
-              <th className="text-right py-1">Total</th>
+              <th className="text-left py-2">Producto</th>
+              <th className="text-right py-2">Cantidad</th>
+              <th className="text-right py-2">Total</th>
             </tr>
           </thead>
           <tbody>
             {resumenProductos.map((r, i) => (
               <tr key={i} className="border-b">
-                <td>{r.producto}</td>
+                <td>{r.articulo}</td>
                 <td className="text-right">{r.cantidad}</td>
                 <td className="text-right">{clp(r.total)}</td>
               </tr>
             ))}
-
-            {resumenProductos.length === 0 && (
-              <tr>
-                <td colSpan={3} className="text-center py-4 text-gray-500">
-                  Sin productos
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </section>
@@ -239,37 +294,36 @@ export default function ReporteEmpresaPage() {
       ========================= */}
       <section>
         <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
-
-        <table className="w-full text-sm border-collapse">
+        <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b">
               <th>Fecha</th>
               <th>Empresa</th>
-              <th>Servicio</th>
+              <th className="text-right">Servicio</th>
               <th className="text-right">Neto</th>
               <th className="text-right">IVA</th>
               <th className="text-right">Total</th>
             </tr>
           </thead>
           <tbody>
-            {pedidosFiltrados.map(p => {
-              const neto = p.total ?? 0;
-              const iva = Math.round(neto * IVA);
-              const total = neto + iva;
+            {filas.map((f, i) => (
+              <tr
+                key={i}
+                className="border-b hover:bg-slate-100 cursor-pointer"
+                onClick={() =>
+                  router.push(`/servicio?nro=${f.numeroServicio}`)
+                }
+              >
+                <td>{f.fecha}</td>
+                <td>{f.empresa}</td>
+                <td className="text-right">{f.numeroServicio}</td>
+                <td className="text-right">{clp(f.valorNeto)}</td>
+                <td className="text-right">{clp(f.iva)}</td>
+                <td className="text-right">{clp(f.valorTotal)}</td>
+              </tr>
+            ))}
 
-              return (
-                <tr key={p.nro} className="border-b">
-                  <td>{p.fecha_ingreso ? fechaCL(p.fecha_ingreso.slice(0, 10)) : '-'}</td>
-                  <td>{p.empresa_nombre}</td>
-                  <td className="text-center">{p.nro}</td>
-                  <td className="text-right">{clp(neto)}</td>
-                  <td className="text-right">{clp(iva)}</td>
-                  <td className="text-right">{clp(total)}</td>
-                </tr>
-              );
-            })}
-
-            {pedidosFiltrados.length === 0 && !loading && (
+            {filas.length === 0 && !loading && (
               <tr>
                 <td colSpan={6} className="text-center py-6 text-gray-500">
                   Sin datos
@@ -279,6 +333,14 @@ export default function ReporteEmpresaPage() {
           </tbody>
         </table>
       </section>
+
+      <style jsx global>{`
+        @media print {
+          @page {
+            margin: 1cm;
+          }
+        }
+      `}</style>
     </main>
   );
 }
