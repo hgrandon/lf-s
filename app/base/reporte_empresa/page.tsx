@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { FileDown, ArrowLeft, FileSpreadsheet } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import {
+  FileDown,
+  ArrowLeft,
+  FileSpreadsheet,
+} from 'lucide-react';
 
 /* =========================
    Tipos
@@ -69,13 +72,13 @@ export default function ReporteEmpresaPage() {
   const [lineas, setLineas] = useState<PedidoLinea[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [empresaSel, setEmpresaSel] = useState<string>('TODAS');
-  const [desde, setDesde] = useState<string>(() => {
+  const [empresaSel, setEmpresaSel] = useState('TODAS');
+  const [desde, setDesde] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     return toISODate(d);
   });
-  const [hasta, setHasta] = useState<string>(() => toISODate(new Date()));
+  const [hasta, setHasta] = useState(() => toISODate(new Date()));
 
   /* =========================
      Cargar datos
@@ -93,8 +96,8 @@ export default function ReporteEmpresaPage() {
       .from('pedido_linea')
       .select('pedido_nro, articulo, cantidad, valor');
 
-    if (pedidosData) setPedidos(pedidosData as PedidoEmpresa[]);
-    if (lineasData) setLineas(lineasData as PedidoLinea[]);
+    if (pedidosData) setPedidos(pedidosData);
+    if (lineasData) setLineas(lineasData);
 
     setLoading(false);
   }
@@ -192,14 +195,19 @@ export default function ReporteEmpresaPage() {
   }, [lineas]);
 
   /* =========================
-     Exportar Excel
+     Exportar Excel (IMPORT DINÁMICO)
   ========================= */
 
-  function exportarExcel() {
+  async function exportarExcel() {
+    const XLSX = await import('xlsx');
+
     const ws = XLSX.utils.json_to_sheet(filas);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Reporte Empresas');
-    XLSX.writeFile(wb, `reporte_empresas_${desde}_al_${hasta}.xlsx`);
+    XLSX.writeFile(
+      wb,
+      `reporte_empresas_${desde}_al_${hasta}.xlsx`
+    );
   }
 
   function exportarPDF() {
@@ -296,9 +304,9 @@ export default function ReporteEmpresaPage() {
           <tbody>
             {resumenProductos.map((r, i) => (
               <tr key={i} className="border-b">
-                <td className="py-1">{r.articulo}</td>
-                <td className="py-1 text-right">{r.cantidad}</td>
-                <td className="py-1 text-right">${formatCLP(r.total)}</td>
+                <td>{r.articulo}</td>
+                <td className="text-right">{r.cantidad}</td>
+                <td className="text-right">${formatCLP(r.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -308,7 +316,6 @@ export default function ReporteEmpresaPage() {
       {/* DETALLE */}
       <section>
         <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
-
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b">
@@ -341,7 +348,6 @@ export default function ReporteEmpresaPage() {
         </table>
       </section>
 
-      {/* PRINT */}
       <style jsx global>{`
         @media print {
           @page {
