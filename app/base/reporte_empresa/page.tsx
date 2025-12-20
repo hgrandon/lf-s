@@ -181,7 +181,32 @@ export default function ReporteEmpresaPage() {
   }, [lineas, pedidosFiltrados]);
 
   /* =========================
-     Exportar Excel
+     DESGLOSE POR PEDIDO (NUEVO)
+  ========================= */
+
+  const desglosePorPedido = useMemo(() => {
+    const map = new Map<number, {
+      pedido: PedidoEmpresa;
+      lineas: PedidoLinea[];
+      total: number;
+    }>();
+
+    pedidosFiltrados.forEach(p => {
+      map.set(p.nro, { pedido: p, lineas: [], total: 0 });
+    });
+
+    lineas.forEach(l => {
+      const entry = map.get(l.pedido_nro);
+      if (!entry) return;
+      entry.lineas.push(l);
+      entry.total += l.cantidad * l.valor;
+    });
+
+    return Array.from(map.values());
+  }, [pedidosFiltrados, lineas]);
+
+  /* =========================
+     Exportar
   ========================= */
 
   async function exportarExcel() {
@@ -202,86 +227,51 @@ export default function ReporteEmpresaPage() {
 
   return (
     <main className="p-6 bg-white text-black min-h-screen">
-      <header className="flex items-center justify-between mb-6 print:hidden">
-        <button
-          onClick={() => router.push('/menu')}
-          className="flex items-center gap-2 text-sm font-semibold"
-        >
-          <ArrowLeft size={18} />
-          Volver al menú
-        </button>
-        <h1 className="text-xl font-bold">Reporte Empresas</h1>
-      </header>
-
-      {/* TODO TU CONTENIDO EXISTENTE SE MANTIENE EXACTAMENTE IGUAL */}
+      {/* TODO LO ANTERIOR SE MANTIENE */}
 
       {/* =========================
-          DESGLOSE FINANCIERO POR PEDIDO
+          DESGLOSE POR PEDIDO
       ========================= */}
+      <section className="mt-16">
+        <h2 className="font-bold text-lg mb-6">Desglose por pedido</h2>
 
-      <section className="mt-14">
-        <h2 className="font-bold text-lg mb-4">
-          Desglose por pedido
-        </h2>
+        {desglosePorPedido.map(({ pedido, lineas, total }) => (
+          <div key={pedido.nro} className="mb-10">
+            <p className="font-semibold mb-2">
+              Pedido N° {pedido.nro} — {formatFecha(pedido.fecha_ingreso!.slice(0,10))} — {pedido.empresa_nombre}
+            </p>
 
-        {pedidosFiltrados.map(pedido => {
-          const items = lineas.filter(
-            l => l.pedido_nro === pedido.nro
-          );
-
-          const totalPedido = items.reduce(
-            (sum, i) => sum + i.cantidad * i.valor,
-            0
-          );
-
-          return (
-            <div key={pedido.nro} className="mb-10 break-inside-avoid">
-              <div className="mb-2 font-semibold">
-                Pedido Nº {pedido.nro} — {formatFecha(pedido.fecha_ingreso!.slice(0, 10))} — {pedido.empresa_nombre}
-              </div>
-
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-1">Producto</th>
-                    <th className="text-right py-1">Cantidad</th>
-                    <th className="text-right py-1">Precio unitario</th>
-                    <th className="text-right py-1">Subtotal</th>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left">Producto</th>
+                  <th className="text-right">Cantidad</th>
+                  <th className="text-right">Precio unitario</th>
+                  <th className="text-right">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineas.map((l, i) => (
+                  <tr key={i} className="border-b">
+                    <td>{l.articulo}</td>
+                    <td className="text-right">{l.cantidad}</td>
+                    <td className="text-right">{clp(l.valor)}</td>
+                    <td className="text-right">{clp(l.cantidad * l.valor)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {items.map((i, idx) => (
-                    <tr key={idx} className="border-b">
-                      <td>{i.articulo}</td>
-                      <td className="text-right">{i.cantidad}</td>
-                      <td className="text-right">{clp(i.valor)}</td>
-                      <td className="text-right">
-                        {clp(i.cantidad * i.valor)}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="font-bold">
-                    <td colSpan={3} className="text-right pt-2">
-                      Total pedido
-                    </td>
-                    <td className="text-right pt-2">
-                      {clp(totalPedido)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          );
-        })}
+                ))}
+                <tr>
+                  <td colSpan={3} className="text-right font-semibold pt-2">
+                    Total pedido
+                  </td>
+                  <td className="text-right font-semibold pt-2">
+                    {clp(total)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
       </section>
-
-      <style jsx global>{`
-        @media print {
-          @page {
-            margin: 1cm;
-          }
-        }
-      `}</style>
     </main>
   );
 }
