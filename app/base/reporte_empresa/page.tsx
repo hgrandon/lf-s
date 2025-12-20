@@ -20,14 +20,16 @@ type FilaReporte = {
   fecha: string;
   empresa: string;
   numeroServicio: number;
-  neto: number;
+  valorNeto: number;
   iva: number;
-  total: number;
+  valorTotal: number;
 };
 
 /* =========================
    Utilidades
 ========================= */
+
+const IVA_PORCENTAJE = 0.19;
 
 function formatCLP(v: number) {
   return v.toLocaleString('es-CL');
@@ -37,8 +39,6 @@ function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-const IVA = 0.19;
-
 /* =========================
    Página
 ========================= */
@@ -47,27 +47,29 @@ export default function ReporteEmpresaPage() {
   const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [empresaSel, setEmpresaSel] = useState('TODAS');
-  const [desde, setDesde] = useState(() => {
+  const [empresaSel, setEmpresaSel] = useState<string>('TODAS');
+  const [desde, setDesde] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     return toISODate(d);
   });
-  const [hasta, setHasta] = useState(() => toISODate(new Date()));
+  const [hasta, setHasta] = useState<string>(() => toISODate(new Date()));
 
   /* =========================
-     Cargar datos
+     Cargar pedidos
   ========================= */
 
   async function cargarPedidos() {
     setLoading(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('pedido')
       .select('nro, total, fecha_ingreso, es_empresa, empresa_nombre')
       .eq('es_empresa', true);
 
-    if (data) setPedidos(data);
+    if (!error && data) {
+      setPedidos(data as PedidoEmpresa[]);
+    }
 
     setLoading(false);
   }
@@ -77,12 +79,16 @@ export default function ReporteEmpresaPage() {
   }, []);
 
   /* =========================
-     Empresas
+     Empresas (FIX TS)
   ========================= */
 
-  const empresas = useMemo(() => {
+  const empresas = useMemo((): string[] => {
     return Array.from(
-      new Set(pedidos.map((p) => p.empresa_nombre).filter(Boolean)),
+      new Set(
+        pedidos
+          .map((p) => p.empresa_nombre)
+          .filter((e): e is string => Boolean(e))
+      )
     ).sort();
   }, [pedidos]);
 
@@ -106,9 +112,9 @@ export default function ReporteEmpresaPage() {
         return true;
       })
       .map((p) => {
-        const total = p.total ?? 0;
-        const neto = Math.round(total / (1 + IVA));
-        const iva = total - neto;
+        const neto = p.total ?? 0;
+        const iva = Math.round(neto * IVA_PORCENTAJE);
+        const total = neto + iva;
 
         return {
           fecha: p.fecha_ingreso!
@@ -118,9 +124,9 @@ export default function ReporteEmpresaPage() {
             .join('-'),
           empresa: p.empresa_nombre || 'SIN EMPRESA',
           numeroServicio: p.nro,
-          neto,
+          valorNeto: neto,
           iva,
-          total,
+          valorTotal: total,
         };
       });
   }, [pedidos, empresaSel, desde, hasta]);
@@ -129,9 +135,17 @@ export default function ReporteEmpresaPage() {
      Totales
   ========================= */
 
-  const totalNeto = filas.reduce((a, b) => a + b.neto, 0);
-  const totalIva = filas.reduce((a, b) => a + b.iva, 0);
-  const totalGeneral = filas.reduce((a, b) => a + b.total, 0);
+  const totalNeto = useMemo(
+    () => filas.reduce((a, b) => a + b.valorNeto, 0),
+    [filas]
+  );
+
+  const totalIVA = useMemo(
+    () => filas.reduce((a, b) => a + b.iva, 0),
+    [filas]
+  );
+
+  const totalGeneral = totalNeto + totalIVA;
 
   function exportarPDF() {
     window.print();
@@ -142,22 +156,13 @@ export default function ReporteEmpresaPage() {
   ========================= */
 
   return (
-    <main className="bg-white text-black p-8 max-w-[1000px] mx-auto">
-      {/* HEADER */}
-      <header className="mb-6 border-b pb-4">
-        <h1 className="text-2xl font-bold">Resumen de Servicios</h1>
-        <p className="text-sm text-gray-600">
-          Desde {desde.split('-').reverse().join('-')} hasta{' '}
-          {hasta.split('-').reverse().join('-')}
-        </p>
-      </header>
-
+    <main className="p-6 bg-white text-black">
       {/* CONTROLES */}
-      <section className="flex gap-3 mb-6 print:hidden">
+      <section className="flex flex-wrap gap-3 mb-6 print:hidden">
         <select
           value={empresaSel}
           onChange={(e) => setEmpresaSel(e.target.value)}
-          className="border px-3 py-2 rounded"
+          className="border rounded px-3 py-2"
         >
           <option value="TODAS">Todas las empresas</option>
           {empresas.map((e) => (
@@ -171,14 +176,14 @@ export default function ReporteEmpresaPage() {
           type="date"
           value={desde}
           onChange={(e) => setDesde(e.target.value)}
-          className="border px-3 py-2 rounded"
+          className="border rounded px-3 py-2"
         />
 
         <input
           type="date"
           value={hasta}
           onChange={(e) => setHasta(e.target.value)}
-          className="border px-3 py-2 rounded"
+          className="border rounded px-3 py-2"
         />
 
         <button
@@ -190,6 +195,17 @@ export default function ReporteEmpresaPage() {
         </button>
       </section>
 
+      {/* RESUMEN */}
+      <section className="mb-6 text-sm">
+        <h2 className="font-bold text-lg mb-2">Resumen</h2>
+        <p>Total servicios: <b>{filas.length}</b></p>
+        <p>Total neto: <b>${formatCLP(totalNeto)}</b></p>
+        <p>IVA 19%: <b>${formatCLP(totalIVA)}</b></p>
+        <p className="text-base mt-1">
+          Total general: <b>${formatCLP(totalGeneral)}</b>
+        </p>
+      </section>
+
       {/* TABLA */}
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -198,7 +214,7 @@ export default function ReporteEmpresaPage() {
             <th className="text-left py-2">Empresa</th>
             <th className="text-right py-2">N° Servicio</th>
             <th className="text-right py-2">Neto</th>
-            <th className="text-right py-2">IVA 19%</th>
+            <th className="text-right py-2">IVA</th>
             <th className="text-right py-2">Total</th>
           </tr>
         </thead>
@@ -208,39 +224,27 @@ export default function ReporteEmpresaPage() {
               <td className="py-1">{f.fecha}</td>
               <td className="py-1">{f.empresa}</td>
               <td className="py-1 text-right">{f.numeroServicio}</td>
-              <td className="py-1 text-right">${formatCLP(f.neto)}</td>
+              <td className="py-1 text-right">${formatCLP(f.valorNeto)}</td>
               <td className="py-1 text-right">${formatCLP(f.iva)}</td>
-              <td className="py-1 text-right font-semibold">
-                ${formatCLP(f.total)}
-              </td>
+              <td className="py-1 text-right">${formatCLP(f.valorTotal)}</td>
             </tr>
           ))}
+
+          {filas.length === 0 && !loading && (
+            <tr>
+              <td colSpan={6} className="text-center py-6 text-gray-500">
+                Sin datos para el rango seleccionado
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
-
-      {/* RESUMEN FINAL */}
-      <section className="mt-6 flex justify-end">
-        <div className="w-64 text-sm space-y-1">
-          <div className="flex justify-between">
-            <span>Neto</span>
-            <span>${formatCLP(totalNeto)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>IVA 19%</span>
-            <span>${formatCLP(totalIva)}</span>
-          </div>
-          <div className="flex justify-between font-bold border-t pt-1">
-            <span>Total</span>
-            <span>${formatCLP(totalGeneral)}</span>
-          </div>
-        </div>
-      </section>
 
       {/* PRINT */}
       <style jsx global>{`
         @media print {
           @page {
-            margin: 1.5cm;
+            margin: 1cm;
           }
         }
       `}</style>
