@@ -158,7 +158,7 @@ export default function ReporteEmpresaPage() {
   const totalGeneral = totalNeto + totalIVA;
 
   /* =========================
-     Resumen por producto
+     Resumen por producto (FIX)
   ========================= */
 
   const resumenProductos = useMemo<ResumenProducto[]>(() => {
@@ -185,27 +185,7 @@ export default function ReporteEmpresaPage() {
   }, [lineas, pedidosFiltrados]);
 
   /* =========================
-     DESGLOSE POR PEDIDO
-  ========================= */
-
-  const desglosePedidos = useMemo(() => {
-    return pedidosFiltrados.map(p => {
-      const items = lineas.filter(l => l.pedido_nro === p.nro);
-      const totalPedido = items.reduce(
-        (acc, i) => acc + i.cantidad * i.valor,
-        0
-      );
-
-      return {
-        pedido: p,
-        items,
-        totalPedido,
-      };
-    });
-  }, [pedidosFiltrados, lineas]);
-
-  /* =========================
-     Exportar
+     Exportar Excel
   ========================= */
 
   async function exportarExcel() {
@@ -271,50 +251,87 @@ export default function ReporteEmpresaPage() {
         </button>
       </section>
 
-      {/* TODO lo anterior queda igual */}
+      {/* =========================
+          RESUMEN GENERAL
+      ========================= */}
+      <section className="mb-8">
+        <h2 className="font-bold text-lg mb-2">Resumen General</h2>
+        <p>Total servicios: <b>{filas.length}</b></p>
+        <p>Total neto: <b>{clp(totalNeto)}</b></p>
+        <p>IVA 19%: <b>{clp(totalIVA)}</b></p>
+        <p className="text-lg mt-1">
+          Total general: <b>{clp(totalGeneral)}</b>
+        </p>
+      </section>
 
       {/* =========================
-          DESGLOSE POR PEDIDO
+          RESUMEN POR PRODUCTO
       ========================= */}
-      <section className="mt-14">
-        <h2 className="font-bold text-lg mb-6">Desglose por pedido</h2>
+      <section className="mb-10">
+        <h2 className="font-bold text-lg mb-2">Resumen por producto</h2>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2">Producto</th>
+              <th className="text-right py-2">Cantidad</th>
+              <th className="text-right py-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumenProductos.map((r, i) => (
+              <tr key={i} className="border-b">
+                <td>{r.articulo}</td>
+                <td className="text-right">{r.cantidad}</td>
+                <td className="text-right">{clp(r.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
-        {desglosePedidos.map(d => (
-          <div key={d.pedido.nro} className="mb-8">
-            <h3 className="font-semibold mb-2">
-              Pedido Nº {d.pedido.nro} — {formatFecha(d.pedido.fecha_ingreso!.slice(0,10))} — {d.pedido.empresa_nombre}
-            </h3>
+      {/* =========================
+          DETALLE DE SERVICIOS
+      ========================= */}
+      <section>
+        <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b">
+              <th>Fecha</th>
+              <th>Empresa</th>
+              <th className="text-right">Servicio</th>
+              <th className="text-right">Neto</th>
+              <th className="text-right">IVA</th>
+              <th className="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f, i) => (
+              <tr
+                key={i}
+                className="border-b hover:bg-slate-100 cursor-pointer"
+                onClick={() =>
+                  router.push(`/servicio?nro=${f.numeroServicio}`)
+                }
+              >
+                <td>{f.fecha}</td>
+                <td>{f.empresa}</td>
+                <td className="text-right">{f.numeroServicio}</td>
+                <td className="text-right">{clp(f.valorNeto)}</td>
+                <td className="text-right">{clp(f.iva)}</td>
+                <td className="text-right">{clp(f.valorTotal)}</td>
+              </tr>
+            ))}
 
-            <table className="w-full text-sm border-collapse mb-2">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left">Producto</th>
-                  <th className="text-right">Cantidad</th>
-                  <th className="text-right">Precio unitario</th>
-                  <th className="text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.items.map((i, idx) => (
-                  <tr key={idx} className="border-b">
-                    <td>{i.articulo}</td>
-                    <td className="text-right">{i.cantidad}</td>
-                    <td className="text-right">{clp(i.valor)}</td>
-                    <td className="text-right">{clp(i.cantidad * i.valor)}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td colSpan={3} className="text-right font-semibold">
-                    Total pedido
-                  </td>
-                  <td className="text-right font-semibold">
-                    {clp(d.totalPedido)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        ))}
+            {filas.length === 0 && !loading && (
+              <tr>
+                <td colSpan={6} className="text-center py-6 text-gray-500">
+                  Sin datos
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </section>
 
       <style jsx global>{`
