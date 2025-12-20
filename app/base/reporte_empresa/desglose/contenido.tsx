@@ -34,7 +34,7 @@ const formatFecha = (f: string) =>
   f.slice(0, 10).split('-').reverse().join('-');
 
 /* =========================
-   Contenido real
+   Página
 ========================= */
 
 export default function DesgloseContenido() {
@@ -59,6 +59,7 @@ export default function DesgloseContenido() {
     async function cargar() {
       setLoading(true);
 
+      // 1️⃣ PEDIDOS FILTRADOS
       let query = supabase
         .from('pedido')
         .select('nro, fecha_ingreso, empresa_nombre')
@@ -73,11 +74,23 @@ export default function DesgloseContenido() {
 
       const { data: pedidosData } = await query;
 
+      const pedidosOk = pedidosData ?? [];
+      setPedidos(pedidosOk);
+
+      // 2️⃣ LINEAS SOLO DE ESOS PEDIDOS
+      const nros = pedidosOk.map(p => p.nro);
+
+      if (nros.length === 0) {
+        setLineas([]);
+        setLoading(false);
+        return;
+      }
+
       const { data: lineasData } = await supabase
         .from('pedido_linea')
-        .select('pedido_nro, articulo, cantidad, valor');
+        .select('pedido_nro, articulo, cantidad, valor')
+        .in('pedido_nro', nros);
 
-      setPedidos(pedidosData ?? []);
       setLineas(lineasData ?? []);
       setLoading(false);
     }
@@ -86,7 +99,7 @@ export default function DesgloseContenido() {
   }, [desde, hasta, empresa]);
 
   /* =========================
-     Agrupar líneas
+     Agrupar líneas por pedido
   ========================= */
 
   const lineasPorPedido = useMemo(() => {
@@ -107,7 +120,7 @@ export default function DesgloseContenido() {
   ========================= */
 
   if (!desde || !hasta) {
-    return <p className="p-6 text-red-600">Faltan fechas para el desglose.</p>;
+    return <p className="p-6 text-red-600">Faltan fechas.</p>;
   }
 
   return (
@@ -131,7 +144,11 @@ export default function DesgloseContenido() {
 
       {pedidos.map(p => {
         const detalle = lineasPorPedido.get(p.nro) ?? [];
-        const neto = detalle.reduce((a, b) => a + b.cantidad * b.valor, 0);
+
+        const neto = detalle.reduce(
+          (a, b) => a + b.cantidad * b.valor,
+          0
+        );
         const iva = Math.round(neto * IVA);
         const total = neto + iva;
 
@@ -167,6 +184,7 @@ export default function DesgloseContenido() {
                     </td>
                   </tr>
                 ))}
+
                 <tr className="font-bold">
                   <td colSpan={3} className="text-right">Total</td>
                   <td className="text-right">{clp(total)}</td>
