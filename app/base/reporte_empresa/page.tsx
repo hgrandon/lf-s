@@ -44,9 +44,13 @@ type ResumenProducto = {
 ========================= */
 
 const IVA = 0.19;
+
 const clp = (v: number) => '$' + v.toLocaleString('es-CL');
+
 const toISODate = (d: Date) => d.toISOString().slice(0, 10);
-const formatFecha = (f: string) => f.split('-').reverse().join('-');
+
+const formatFecha = (f: string) =>
+  f.split('-').reverse().join('-');
 
 /* =========================
    Página
@@ -96,7 +100,7 @@ export default function ReporteEmpresaPage() {
      Empresas
   ========================= */
 
-  const empresas = useMemo(() => {
+  const empresas = useMemo<string[]>(() => {
     return Array.from(
       new Set(
         pedidos
@@ -127,7 +131,7 @@ export default function ReporteEmpresaPage() {
   }, [pedidos, empresaSel, desde, hasta]);
 
   /* =========================
-     Filas resumen
+     Filas del detalle
   ========================= */
 
   const filas: FilaReporte[] = useMemo(() => {
@@ -154,7 +158,7 @@ export default function ReporteEmpresaPage() {
   const totalGeneral = totalNeto + totalIVA;
 
   /* =========================
-     Resumen por producto
+     Resumen por producto (FIX)
   ========================= */
 
   const resumenProductos = useMemo<ResumenProducto[]>(() => {
@@ -181,26 +185,7 @@ export default function ReporteEmpresaPage() {
   }, [lineas, pedidosFiltrados]);
 
   /* =========================
-     DESGLOSE POR PEDIDO (NUEVO)
-  ========================= */
-
-  const detallePedidos = useMemo(() => {
-    return pedidosFiltrados.map(pedido => {
-      const detalle = lineas.filter(
-        l => l.pedido_nro === pedido.nro
-      );
-
-      const totalPedido = detalle.reduce(
-        (a, l) => a + l.cantidad * l.valor,
-        0
-      );
-
-      return { pedido, detalle, totalPedido };
-    });
-  }, [pedidosFiltrados, lineas]);
-
-  /* =========================
-     Exportar
+     Exportar Excel
   ========================= */
 
   async function exportarExcel() {
@@ -224,7 +209,7 @@ export default function ReporteEmpresaPage() {
       {/* HEADER */}
       <header className="flex items-center justify-between mb-6 print:hidden">
         <button
-          onClick={() => router.push('/base')}
+          onClick={() => router.push('/')}
           className="flex items-center gap-2 text-sm font-semibold"
         >
           <ArrowLeft size={18} />
@@ -249,65 +234,113 @@ export default function ReporteEmpresaPage() {
         <input type="date" value={desde} onChange={e => setDesde(e.target.value)} />
         <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
 
-        <button onClick={exportarExcel} className="bg-emerald-600 text-white px-4 py-2 rounded">
-          <FileSpreadsheet size={16} /> Excel
+        <button
+          onClick={exportarExcel}
+          className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded"
+        >
+          <FileSpreadsheet size={16} />
+          Excel
         </button>
 
-        <button onClick={exportarPDF} className="bg-black text-white px-4 py-2 rounded">
-          <FileDown size={16} /> PDF
+        <button
+          onClick={exportarPDF}
+          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
+        >
+          <FileDown size={16} />
+          PDF
         </button>
       </section>
 
-      {/* RESUMEN */}
+      {/* =========================
+          RESUMEN GENERAL
+      ========================= */}
       <section className="mb-8">
         <h2 className="font-bold text-lg mb-2">Resumen General</h2>
         <p>Total servicios: <b>{filas.length}</b></p>
         <p>Total neto: <b>{clp(totalNeto)}</b></p>
         <p>IVA 19%: <b>{clp(totalIVA)}</b></p>
-        <p className="text-lg">
+        <p className="text-lg mt-1">
           Total general: <b>{clp(totalGeneral)}</b>
         </p>
       </section>
 
-      {/* DESGLOSE POR PEDIDO */}
+      {/* =========================
+          RESUMEN POR PRODUCTO
+      ========================= */}
       <section className="mb-10">
-        <h2 className="font-bold text-lg mb-4">Desglose por pedido</h2>
-
-        {detallePedidos.map(({ pedido, detalle, totalPedido }) => (
-          <div key={pedido.nro} className="mb-6 border-b pb-4">
-            <p className="font-semibold mb-2">
-              Pedido #{pedido.nro} — {formatFecha(pedido.fecha_ingreso!.slice(0,10))}
-            </p>
-
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th>Producto</th>
-                  <th className="text-right">Cantidad</th>
-                  <th className="text-right">Unitario</th>
-                  <th className="text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.map((l, i) => (
-                  <tr key={i}>
-                    <td>{l.articulo}</td>
-                    <td className="text-right">{l.cantidad}</td>
-                    <td className="text-right">{clp(l.valor)}</td>
-                    <td className="text-right">{clp(l.cantidad * l.valor)}</td>
-                  </tr>
-                ))}
-                <tr className="font-bold border-t">
-                  <td colSpan={3} className="text-right">Total pedido</td>
-                  <td className="text-right">{clp(totalPedido)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        ))}
+        <h2 className="font-bold text-lg mb-2">Resumen por producto</h2>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2">Producto</th>
+              <th className="text-right py-2">Cantidad</th>
+              <th className="text-right py-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumenProductos.map((r, i) => (
+              <tr key={i} className="border-b">
+                <td>{r.articulo}</td>
+                <td className="text-right">{r.cantidad}</td>
+                <td className="text-right">{clp(r.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
-      {/* (todo lo demás sigue igual, no se borró nada) */}
+      {/* =========================
+          DETALLE DE SERVICIOS
+      ========================= */}
+      <section>
+        <h2 className="font-bold text-lg mb-2">Detalle de servicios</h2>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b">
+              <th>Fecha</th>
+              <th>Empresa</th>
+              <th className="text-right">Servicio</th>
+              <th className="text-right">Neto</th>
+              <th className="text-right">IVA</th>
+              <th className="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f, i) => (
+              <tr
+                key={i}
+                className="border-b hover:bg-slate-100 cursor-pointer"
+                onClick={() =>
+                  router.push(`/servicio?nro=${f.numeroServicio}`)
+                }
+              >
+                <td>{f.fecha}</td>
+                <td>{f.empresa}</td>
+                <td className="text-right">{f.numeroServicio}</td>
+                <td className="text-right">{clp(f.valorNeto)}</td>
+                <td className="text-right">{clp(f.iva)}</td>
+                <td className="text-right">{clp(f.valorTotal)}</td>
+              </tr>
+            ))}
+
+            {filas.length === 0 && !loading && (
+              <tr>
+                <td colSpan={6} className="text-center py-6 text-gray-500">
+                  Sin datos
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <style jsx global>{`
+        @media print {
+          @page {
+            margin: 1cm;
+          }
+        }
+      `}</style>
     </main>
   );
 }
