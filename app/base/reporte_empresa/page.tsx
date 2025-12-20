@@ -44,9 +44,13 @@ type ResumenProducto = {
 ========================= */
 
 const IVA = 0.19;
+
 const clp = (v: number) => '$' + v.toLocaleString('es-CL');
+
 const toISODate = (d: Date) => d.toISOString().slice(0, 10);
-const formatFecha = (f: string) => f.split('-').reverse().join('-');
+
+const formatFecha = (f: string) =>
+  f.split('-').reverse().join('-');
 
 /* =========================
    Página
@@ -181,28 +185,23 @@ export default function ReporteEmpresaPage() {
   }, [lineas, pedidosFiltrados]);
 
   /* =========================
-     DESGLOSE POR PEDIDO (NUEVO)
+     DESGLOSE POR PEDIDO
   ========================= */
 
-  const desglosePorPedido = useMemo(() => {
-    const map = new Map<number, {
-      pedido: PedidoEmpresa;
-      lineas: PedidoLinea[];
-      total: number;
-    }>();
+  const desglosePedidos = useMemo(() => {
+    return pedidosFiltrados.map(p => {
+      const items = lineas.filter(l => l.pedido_nro === p.nro);
+      const totalPedido = items.reduce(
+        (acc, i) => acc + i.cantidad * i.valor,
+        0
+      );
 
-    pedidosFiltrados.forEach(p => {
-      map.set(p.nro, { pedido: p, lineas: [], total: 0 });
+      return {
+        pedido: p,
+        items,
+        totalPedido,
+      };
     });
-
-    lineas.forEach(l => {
-      const entry = map.get(l.pedido_nro);
-      if (!entry) return;
-      entry.lineas.push(l);
-      entry.total += l.cantidad * l.valor;
-    });
-
-    return Array.from(map.values());
   }, [pedidosFiltrados, lineas]);
 
   /* =========================
@@ -227,21 +226,66 @@ export default function ReporteEmpresaPage() {
 
   return (
     <main className="p-6 bg-white text-black min-h-screen">
-      {/* TODO LO ANTERIOR SE MANTIENE */}
+      {/* HEADER */}
+      <header className="flex items-center justify-between mb-6 print:hidden">
+        <button
+          onClick={() => router.push('/')}
+          className="flex items-center gap-2 text-sm font-semibold"
+        >
+          <ArrowLeft size={18} />
+          Volver al menú
+        </button>
+        <h1 className="text-xl font-bold">Reporte Empresas</h1>
+      </header>
+
+      {/* FILTROS */}
+      <section className="flex flex-wrap gap-3 mb-6 print:hidden">
+        <select
+          value={empresaSel}
+          onChange={e => setEmpresaSel(e.target.value)}
+          className="border rounded px-3 py-2"
+        >
+          <option value="TODAS">Todas las empresas</option>
+          {empresas.map(e => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+
+        <input type="date" value={desde} onChange={e => setDesde(e.target.value)} />
+        <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
+
+        <button
+          onClick={exportarExcel}
+          className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded"
+        >
+          <FileSpreadsheet size={16} />
+          Excel
+        </button>
+
+        <button
+          onClick={exportarPDF}
+          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded"
+        >
+          <FileDown size={16} />
+          PDF
+        </button>
+      </section>
+
+      {/* TODO lo anterior queda igual */}
 
       {/* =========================
           DESGLOSE POR PEDIDO
       ========================= */}
-      <section className="mt-16">
+      <section className="mt-14">
         <h2 className="font-bold text-lg mb-6">Desglose por pedido</h2>
 
-        {desglosePorPedido.map(({ pedido, lineas, total }) => (
-          <div key={pedido.nro} className="mb-10">
-            <p className="font-semibold mb-2">
-              Pedido N° {pedido.nro} — {formatFecha(pedido.fecha_ingreso!.slice(0,10))} — {pedido.empresa_nombre}
-            </p>
+        {desglosePedidos.map(d => (
+          <div key={d.pedido.nro} className="mb-8">
+            <h3 className="font-semibold mb-2">
+              Pedido Nº {d.pedido.nro} — {formatFecha(d.pedido.fecha_ingreso!.slice(0,10))} — {d.pedido.empresa_nombre}
+            </h3>
 
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full text-sm border-collapse mb-2">
               <thead>
                 <tr className="border-b">
                   <th className="text-left">Producto</th>
@@ -251,20 +295,20 @@ export default function ReporteEmpresaPage() {
                 </tr>
               </thead>
               <tbody>
-                {lineas.map((l, i) => (
-                  <tr key={i} className="border-b">
-                    <td>{l.articulo}</td>
-                    <td className="text-right">{l.cantidad}</td>
-                    <td className="text-right">{clp(l.valor)}</td>
-                    <td className="text-right">{clp(l.cantidad * l.valor)}</td>
+                {d.items.map((i, idx) => (
+                  <tr key={idx} className="border-b">
+                    <td>{i.articulo}</td>
+                    <td className="text-right">{i.cantidad}</td>
+                    <td className="text-right">{clp(i.valor)}</td>
+                    <td className="text-right">{clp(i.cantidad * i.valor)}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td colSpan={3} className="text-right font-semibold pt-2">
+                  <td colSpan={3} className="text-right font-semibold">
                     Total pedido
                   </td>
-                  <td className="text-right font-semibold pt-2">
-                    {clp(total)}
+                  <td className="text-right font-semibold">
+                    {clp(d.totalPedido)}
                   </td>
                 </tr>
               </tbody>
@@ -272,6 +316,14 @@ export default function ReporteEmpresaPage() {
           </div>
         ))}
       </section>
+
+      <style jsx global>{`
+        @media print {
+          @page {
+            margin: 1cm;
+          }
+        }
+      `}</style>
     </main>
   );
 }
