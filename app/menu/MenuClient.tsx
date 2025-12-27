@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import MenuTile from '@/app/components/MenuTile';
 import {
   ClipboardList,
@@ -62,6 +62,7 @@ type TileConfig = {
   title: string;
   icon: React.ReactNode;
   disabled?: boolean;
+  adminOnly?: boolean;
 };
 
 const tiles: TileConfig[] = [
@@ -77,16 +78,23 @@ const tiles: TileConfig[] = [
   },
 
   { href: '/empresa', title: 'Empresa', icon: <Building2 size={22} /> },
-  { href: '/finanzas', title: 'Finanzas', icon: <PiggyBank size={22} /> }, // Solo admin
 
+  // ✅ FINANZAS SOLO ADMIN (más limpio que filtrar por title)
+  { href: '/finanzas', title: 'Finanzas', icon: <PiggyBank size={22} />, adminOnly: true },
+
+  // Próximamente
   { href: '/guardar', title: 'Guardar', icon: <Save size={22} />, disabled: true },
   { href: '/entregar', title: 'Entregar', icon: <PackageCheck size={22} />, disabled: true },
-  { href: '/ruta', title: 'Ruta', icon: <RouteIcon size={22} />, disabled: true },
+
+  // ✅ RUTA ACTIVADA (ya NO disabled)
+  { href: '/ruta', title: 'Ruta', icon: <RouteIcon size={22} /> },
+
   { href: '/domicilio', title: 'Domicilio', icon: <Home size={22} />, disabled: true },
 
   { href: '/configuracion', title: 'Configuración', icon: <Settings size={22} /> },
 
   { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />, disabled: true },
+
   { href: '/logout', title: 'Salir', icon: <LogOut size={22} /> },
 ];
 
@@ -102,22 +110,20 @@ export default function MenuClient() {
     setIsAdmin(isAdminRole(role));
   }, []);
 
+  const visibleTiles = useMemo(() => {
+    if (isAdmin === null) return tiles;
+    return tiles.filter((t) => !(t.adminOnly && !isAdmin));
+  }, [isAdmin]);
+
   if (isAdmin === null) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
         {tiles.map((t) => (
-          <div
-            key={t.href}
-            className="h-24 rounded-2xl bg-white/10 animate-pulse"
-          />
+          <div key={t.href} className="h-24 rounded-2xl bg-white/10 animate-pulse" />
         ))}
       </div>
     );
   }
-
-  const visibleTiles = tiles.filter(
-    (t) => !(t.title === 'Finanzas' && !isAdmin)
-  );
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
