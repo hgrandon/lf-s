@@ -25,32 +25,7 @@ type Fila = PedidoDB & {
   direccion?: string | null;
 };
 
-/** ✅ Líneas para resumen (SIN CANTIDAD) */
-type LineaDB = {
-  pedido_nro: number;
-  articulo: string;
-  neto: number;
-  iva: number;
-  total: number;
-};
-
-type ResumenItem = {
-  articulo: string;
-  neto: number;
-  iva: number;
-  total: number;
-};
-
 const CLP = new Intl.NumberFormat('es-CL');
-
-function normArticulo(s: string) {
-  return (s || '')
-    .toUpperCase()
-    .trim()
-    .replace(/\s+/g, ' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, ''); // quita acentos
-}
 
 export default function ReportePage() {
   const router = useRouter();
@@ -59,9 +34,6 @@ export default function ReportePage() {
   const [selNro, setSelNro] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
-
-  /** ✅ líneas para armar resumen */
-  const [lineas, setLineas] = useState<LineaDB[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -92,22 +64,6 @@ export default function ReportePage() {
           direccion: clientesMap.get(p.telefono)?.direccion ?? null,
         }));
         setFilas(out);
-
-        /** ✅ Cargar líneas (detalle) para construir el RESUMEN TOTAL
-         *  ⚠️ Cambia 'pedido_detalle' si tu tabla se llama distinto.
-         */
-        const nros = Array.from(new Set((pedidos ?? []).map(p => p.nro))).filter(Boolean);
-        if (nros.length) {
-          const { data: det, error: e3 } = await supabase
-            .from('pedido_detalle') // 👈 AJUSTA SOLO ESTE NOMBRE SI TU TABLA ES OTRA
-            .select('pedido_nro, articulo, neto, iva, total')
-            .in('pedido_nro', nros);
-
-          if (e3) throw e3;
-          setLineas((det ?? []) as LineaDB[]);
-        } else {
-          setLineas([]);
-        }
       } catch (e: any) {
         console.error(e);
         setError(e?.message || 'Error cargando reporte');
@@ -126,36 +82,6 @@ export default function ReportePage() {
       (p.nombre || '').toLowerCase().includes(q)
     );
   }, [filas, buscar]);
-
-  /** ✅ RESUMEN TOTAL (SIN CANTIDAD): agrupa por ARTICULO y suma NETO/IVA/TOTAL */
-  const resumen = useMemo<ResumenItem[]>(() => {
-    const map = new Map<string, ResumenItem>();
-
-    for (const l of lineas) {
-      const art = normArticulo(l.articulo || '');
-      if (!art) continue;
-
-      const acc = map.get(art) || { articulo: art, neto: 0, iva: 0, total: 0 };
-      acc.neto += Number(l.neto || 0);
-      acc.iva += Number(l.iva || 0);
-      acc.total += Number(l.total || 0);
-      map.set(art, acc);
-    }
-
-    return Array.from(map.values()).sort((a, b) => a.articulo.localeCompare(b.articulo));
-  }, [lineas]);
-
-  const totalResumen = useMemo(() => {
-    return resumen.reduce(
-      (a, b) => {
-        a.neto += b.neto;
-        a.iva += b.iva;
-        a.total += b.total;
-        return a;
-      },
-      { neto: 0, iva: 0, total: 0 }
-    );
-  }, [resumen]);
 
   const abrirDetalle = () => {
     if (!selNro) return;
@@ -246,9 +172,7 @@ export default function ReportePage() {
                     <tr
                       key={p.nro}
                       onClick={() => setSelNro(p.nro)}
-                      className={`border-t cursor-pointer hover:bg-violet-50 ${
-                        active ? 'bg-violet-50 ring-2 ring-violet-300' : ''
-                      }`}
+                      className={`border-t cursor-pointer hover:bg-violet-50 ${active ? 'bg-violet-50 ring-2 ring-violet-300' : ''}`}
                     >
                       <td className="px-2 py-2 font-semibold text-violet-700">{p.nro}</td>
                       <td className="px-2 py-2">{CLP.format(p.total || 0)}</td>
@@ -272,57 +196,6 @@ export default function ReportePage() {
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* ✅ RESUMEN TOTAL (SIN CANTIDAD) */}
-        <div className="mt-6 rounded-lg border border-yellow-300 bg-yellow-100 p-3">
-          <div className="text-center font-bold text-slate-800 mb-2">RESUMEN TOTAL</div>
-
-          <div className="overflow-auto rounded-lg border border-yellow-300 bg-white">
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-yellow-200 text-slate-800">
-                <tr>
-                  <th className="px-2 py-2 text-left">Artículo</th>
-                  <th className="px-2 py-2 text-right">Neto</th>
-                  <th className="px-2 py-2 text-right">IVA</th>
-                  <th className="px-2 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resumen.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                      Sin líneas para resumir.
-                    </td>
-                  </tr>
-                ) : (
-                  resumen.map((r) => (
-                    <tr key={r.articulo} className="border-t">
-                      <td className="px-2 py-2 font-semibold">{r.articulo}</td>
-                      <td className="px-2 py-2 text-right">{CLP.format(r.neto)}</td>
-                      <td className="px-2 py-2 text-right">{CLP.format(r.iva)}</td>
-                      <td className="px-2 py-2 text-right font-bold">{CLP.format(r.total)}</td>
-                    </tr>
-                  ))
-                )}
-
-                {resumen.length > 0 && (
-                  <tr className="border-t bg-yellow-50">
-                    <td className="px-2 py-2 font-bold text-right">TOTAL</td>
-                    <td className="px-2 py-2 text-right font-bold">{CLP.format(totalResumen.neto)}</td>
-                    <td className="px-2 py-2 text-right font-bold">{CLP.format(totalResumen.iva)}</td>
-                    <td className="px-2 py-2 text-right font-bold">{CLP.format(totalResumen.total)}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Nota corta por si la tabla detalle no existe */}
-          <div className="mt-2 text-xs text-slate-700">
-            * El resumen se calcula desde la tabla <b>pedido_detalle</b>. Si tu tabla tiene otro nombre,
-            cambia solo ese nombre en el código.
-          </div>
         </div>
       </div>
     </main>
