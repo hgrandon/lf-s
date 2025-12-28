@@ -417,28 +417,34 @@ export default function RutaPage() {
   }
 
   // ✅ ELIMINAR seleccionado
-  async function eliminarSeleccionado() {
-    if (!seleccionado) return alert('Selecciona un cliente para eliminar.');
-    const ok = confirm(
-      `¿Eliminar de RUTA a ${seleccionado.nombre || ''} (${seleccionado.telefono})?`
-    );
-    if (!ok) return;
+    async function eliminarSeleccionado() {
+        if (!seleccionado) {
+            alert('Selecciona un cliente para eliminar.');
+            return;
+        }
 
-    setCargando(true);
-    setError(null);
-    try {
-      const { error: eDel } = await supabase.from('ruta_retiro').delete().eq('id', seleccionado.id);
-      if (eDel) throw eDel;
+        setCargando(true);
+        setError(null);
 
-      await cargarLista();
-      setSelId(null);
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message || 'No se pudo eliminar');
-    } finally {
-      setCargando(false);
+        try {
+            const { error: eDel } = await supabase
+            .from('ruta_retiro')
+            .delete()
+            .eq('id', seleccionado.id);
+
+            if (eDel) throw eDel;
+
+            // refrescar UI
+            setSelId(null);
+            await cargarLista();
+        } catch (e: any) {
+            console.error(e);
+            setError(e?.message || 'No se pudo eliminar');
+        } finally {
+            setCargando(false);
+        }
     }
-  }
+
 
   function IconBtn({
     onClick,
