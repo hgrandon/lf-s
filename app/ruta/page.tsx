@@ -123,7 +123,7 @@ export default function RutaPage() {
   // ✅ Solo un input visible: teléfono
   const [telefono, setTelefono] = useState('');
 
-  // Datos del cliente (NO inputs visibles si existe)
+  // Datos del cliente
   const [clienteExiste, setClienteExiste] = useState(false);
   const [checkingCliente, setCheckingCliente] = useState(false);
   const [cliente, setCliente] = useState<ClienteDB | null>(null);
@@ -137,7 +137,6 @@ export default function RutaPage() {
   const [lista, setLista] = useState<RutaDB[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
 
-  const [editMode, setEditMode] = useState(false); // editar seleccionado (abre modal)
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
@@ -208,9 +207,8 @@ export default function RutaPage() {
   /* ====== Buscar cliente por teléfono ====== */
   useEffect(() => {
     const t = onlyDigitsPhone(telefono);
-    setTelefono(t);
+    if (t !== telefono) setTelefono(t);
 
-    // reset visual
     setClienteExiste(false);
     setCliente(null);
 
@@ -235,12 +233,10 @@ export default function RutaPage() {
             nombre: data.nombre ?? '',
             direccion: data.direccion ?? '',
           });
-          setOpenNuevo(false); // por si estaba abierto
+          setOpenNuevo(false);
         } else {
           setClienteExiste(false);
           setCliente(null);
-
-          // ✅ si NO existe → abrir modal para agregar
           setNuevoNombre('');
           setNuevaDireccion('');
           setOpenNuevo(true);
@@ -263,7 +259,6 @@ export default function RutaPage() {
     setOpenNuevo(false);
     setNuevoNombre('');
     setNuevaDireccion('');
-    setEditMode(false);
     setSelId(null);
     setError(null);
   }
@@ -280,11 +275,23 @@ export default function RutaPage() {
     if (e) throw e;
   }
 
+  // ✅ 1) NO permitir el mismo teléfono dos veces (PENDIENTE)
+  async function telefonoYaEnRutaPendiente(tel: string): Promise<boolean> {
+    const { data, error: e } = await supabase
+      .from('ruta_retiro')
+      .select('id')
+      .eq('estado', 'PENDIENTE')
+      .eq('telefono', tel)
+      .limit(1);
+
+    if (e) throw e;
+    return (data ?? []).length > 0;
+  }
+
   async function agregarARuta() {
     const tel = onlyDigitsPhone(telefono);
     if (!tel) return alert('Ingresa un teléfono válido.');
 
-    // Si cliente no existe, se agrega desde modal
     if (!clienteExiste || !cliente?.nombre || !cliente?.direccion) {
       alert('Falta registrar el cliente.');
       return;
@@ -293,6 +300,13 @@ export default function RutaPage() {
     setCargando(true);
     setError(null);
     try {
+      // ✅ bloqueo duplicado
+      const ya = await telefonoYaEnRutaPendiente(tel);
+      if (ya) {
+        alert('⚠️ Ese teléfono ya está en RUTA (PENDIENTE).');
+        return;
+      }
+
       const creado_por = readDisplay();
 
       const { error: eIns } = await supabase.from('ruta_retiro').insert({
@@ -350,7 +364,6 @@ export default function RutaPage() {
     setEditNombre((seleccionado.nombre || '').toString());
     setEditDireccion((seleccionado.direccion || '').toString());
     setOpenEditar(true);
-    setEditMode(true);
   }
 
   async function guardarEdicionSeleccionado() {
@@ -364,10 +377,8 @@ export default function RutaPage() {
     setCargando(true);
     setError(null);
     try {
-      // actualizar clientes
       await asegurarCliente(tel, editNombre, editDireccion);
 
-      // actualizar ruta_retiro
       const { error: eUp } = await supabase
         .from('ruta_retiro')
         .update({
@@ -379,7 +390,6 @@ export default function RutaPage() {
       if (eUp) throw eUp;
 
       setOpenEditar(false);
-      setEditMode(false);
       await cargarLista();
     } catch (e: any) {
       console.error(e);
@@ -396,7 +406,6 @@ export default function RutaPage() {
     setError(null);
 
     try {
-      // 1) obtener último nro
       const { data: row, error: eLast } = await supabase
         .from('pedido')
         .select('nro')
@@ -408,7 +417,6 @@ export default function RutaPage() {
       const last = Number(row?.nro || 0);
       const nro = last + 1;
 
-      // 2) insertar pedido mínimo
       const hoy = new Date();
       const payloadPedido: any = {
         nro,
@@ -429,7 +437,6 @@ export default function RutaPage() {
       const { error: eInsP } = await supabase.from('pedido').insert(payloadPedido);
       if (eInsP) throw eInsP;
 
-      // 3) marcar retiro como RETIRADO
       const { error: eUp } = await supabase
         .from('ruta_retiro')
         .update({
@@ -444,8 +451,6 @@ export default function RutaPage() {
 
       await cargarLista();
       limpiarFormulario();
-
-      // 4) abrir editor
       router.push(`/editar?nro=${nro}`);
     } catch (e: any) {
       console.error(e);
@@ -455,10 +460,43 @@ export default function RutaPage() {
     }
   }
 
+  // ✅ Botón estilo “solo icono”
+  function IconBtn({
+    onClick,
+    disabled,
+    title,
+    children,
+    variant = 'ghost',
+  }: {
+    onClick: () => void;
+    disabled?: boolean;
+    title: string;
+    children: React.ReactNode;
+    variant?: 'solid' | 'ghost';
+  }) {
+    const base =
+      'inline-flex items-center justify-center rounded-xl p-2 transition disabled:opacity-40';
+    const style =
+      variant === 'solid'
+        ? 'bg-violet-600 text-white hover:bg-violet-700'
+        : 'bg-slate-100 text-slate-800 hover:bg-slate-200';
+    return (
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className={`${base} ${style}`}
+        title={title}
+        aria-label={title}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-700 via-fuchsia-700 to-indigo-800 p-4">
       <div className="bg-white rounded-xl shadow-xl p-4 max-w-7xl mx-auto">
-        {/* Header */}
+        {/* Header (✅ sin GPS/Actualizar aquí) */}
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -474,26 +512,9 @@ export default function RutaPage() {
             </div>
           </div>
 
+          {/* ✅ 2) Se elimina GPS y Actualizar arriba derecha */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={pedirGPSyAbrirMaps}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-100 text-violet-800 hover:bg-violet-200"
-              title="Abrir Maps con mi GPS"
-              disabled={cargando}
-            >
-              <Navigation className="w-4 h-4" />
-              <span>GPS</span>
-            </button>
-
-            <button
-              onClick={cargarLista}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800"
-              title="Actualizar"
-              disabled={cargando}
-            >
-              <RefreshCcw className="w-4 h-4" />
-              <span>Actualizar</span>
-            </button>
+            {/* Si igual quieres mantenerlos, los dejamos ocultos */}
           </div>
         </div>
 
@@ -518,7 +539,7 @@ export default function RutaPage() {
           </div>
         </div>
 
-        {/* ✅ SI EXISTE: SOLO VISUAL (sin inputs) */}
+        {/* SI EXISTE: VISUAL */}
         {clienteExiste && cliente && (
           <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3">
             <div className="text-xs font-semibold text-violet-900 mb-2">CLIENTE</div>
@@ -532,70 +553,56 @@ export default function RutaPage() {
                 <div className="font-semibold text-slate-800">{cliente.direccion || '-'}</div>
               </div>
             </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={() => abrirMapsConDireccion(cliente.direccion || '')}
-                disabled={!cliente.direccion}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border hover:bg-slate-50 disabled:opacity-50"
-                title="Abrir dirección en Google Maps"
-              >
-                <MapPin className="w-4 h-4 text-violet-700" />
-                <span className="text-slate-800">Maps</span>
-              </button>
-            </div>
           </div>
         )}
 
-        {/* Acciones */}
+        {/* ✅ 3) Botones SOLO ICONOS (sin texto) */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
-          <button
+          <IconBtn
             onClick={agregarARuta}
             disabled={cargando || !clienteExiste}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-            title={!clienteExiste ? 'Registra el cliente para poder agregar a ruta' : 'Agregar a Ruta'}
+            title={!clienteExiste ? 'Registra el cliente para agregar a ruta' : 'Agregar a Ruta'}
+            variant="solid"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>Agregar a Ruta</span>
-          </button>
+            <PlusCircle className="w-5 h-5" />
+          </IconBtn>
 
-          <button
-            onClick={limpiarFormulario}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800"
-            disabled={cargando}
-          >
-            <X className="w-4 h-4" />
-            <span>Limpiar</span>
-          </button>
+          <IconBtn onClick={limpiarFormulario} disabled={cargando} title="Limpiar">
+            <X className="w-5 h-5" />
+          </IconBtn>
 
-          <button
+          <IconBtn
             onClick={marcarRetiradoCrearPedido}
             disabled={!seleccionado || cargando}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-            title={!seleccionado ? 'Selecciona un cliente en la lista' : 'Crear pedido y marcar retirado'}
+            title={!seleccionado ? 'Selecciona un cliente' : 'Retirado → Crear Pedido'}
+            variant="solid"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Retirado → Crear Pedido</span>
-          </button>
+            <CheckCircle2 className="w-5 h-5" />
+          </IconBtn>
 
-          <button
+          <IconBtn
             onClick={abrirModalEditarSeleccionado}
             disabled={!seleccionado || cargando}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-100 text-violet-800 hover:bg-violet-200 disabled:opacity-50"
+            title="Editar Seleccionado"
           >
-            <Pencil className="w-4 h-4" />
-            <span>Editar Seleccionado</span>
-          </button>
+            <Pencil className="w-5 h-5" />
+          </IconBtn>
 
-          <button
+          <IconBtn
             onClick={() => seleccionado?.direccion && abrirMapsConDireccion(seleccionado.direccion)}
             disabled={!seleccionado?.direccion || cargando}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border hover:bg-slate-50 disabled:opacity-50"
-            title="Abrir dirección del seleccionado en Maps"
+            title="Maps Seleccionado"
           >
-            <MapPin className="w-4 h-4 text-violet-700" />
-            <span className="text-slate-800">Maps Seleccionado</span>
-          </button>
+            <MapPin className="w-5 h-5" />
+          </IconBtn>
+
+          <IconBtn onClick={pedirGPSyAbrirMaps} disabled={cargando} title="GPS (Maps)">
+            <Navigation className="w-5 h-5" />
+          </IconBtn>
+
+          <IconBtn onClick={cargarLista} disabled={cargando} title="Actualizar lista">
+            <RefreshCcw className="w-5 h-5" />
+          </IconBtn>
         </div>
 
         {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
@@ -641,6 +648,10 @@ export default function RutaPage() {
             </tbody>
           </table>
         </div>
+
+        <div className="mt-3 text-xs text-slate-500">
+          Tip: Selecciona un cliente → icono lápiz (editar) o check (crear pedido).
+        </div>
       </div>
 
       {/* Modal cliente nuevo */}
@@ -684,20 +695,13 @@ export default function RutaPage() {
           </button>
 
           <div className="text-xs text-slate-500">
-            Luego podrás presionar <b>“Agregar a Ruta”</b>.
+            Luego podrás presionar el icono <b>+</b> para agregar a ruta.
           </div>
         </div>
       </Modal>
 
       {/* Modal editar seleccionado */}
-      <Modal
-        open={openEditar}
-        title="Editar Cliente en Ruta"
-        onClose={() => {
-          setOpenEditar(false);
-          setEditMode(false);
-        }}
-      >
+      <Modal open={openEditar} title="Editar Cliente en Ruta" onClose={() => setOpenEditar(false)}>
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
             Teléfono: <span className="font-semibold">{seleccionado?.telefono || '-'}</span>
