@@ -111,20 +111,16 @@ function Modal({
 export default function RutaPage() {
   const router = useRouter();
 
-  // ✅ Solo un input visible: teléfono
   const [telefono, setTelefono] = useState('');
 
-  // Datos del cliente
   const [clienteExiste, setClienteExiste] = useState(false);
   const [checkingCliente, setCheckingCliente] = useState(false);
   const [cliente, setCliente] = useState<ClienteDB | null>(null);
 
-  // Modal para cliente nuevo
   const [openNuevo, setOpenNuevo] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevaDireccion, setNuevaDireccion] = useState('');
 
-  // Lista
   const [lista, setLista] = useState<RutaDB[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
 
@@ -142,7 +138,6 @@ export default function RutaPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  /* ====== Cargar lista ====== */
   async function cargarLista() {
     setCargando(true);
     setError(null);
@@ -172,7 +167,6 @@ export default function RutaPage() {
     cargarLista();
   }, []);
 
-  /* ====== Buscar cliente por teléfono ====== */
   useEffect(() => {
     const t = onlyDigitsPhone(telefono);
     if (t !== telefono) setTelefono(t);
@@ -241,7 +235,6 @@ export default function RutaPage() {
     if (e) throw e;
   }
 
-  // ✅ NO permitir el mismo teléfono dos veces (PENDIENTE)
   async function telefonoYaEnRutaPendiente(tel: string): Promise<boolean> {
     const { data, error: e } = await supabase
       .from('ruta_retiro')
@@ -293,7 +286,6 @@ export default function RutaPage() {
     }
   }
 
-  /* ====== Guardar cliente nuevo desde modal ====== */
   async function guardarClienteNuevo() {
     const tel = onlyDigitsPhone(telefono);
     if (!tel) return alert('Teléfono inválido.');
@@ -319,7 +311,6 @@ export default function RutaPage() {
     }
   }
 
-  /* ====== Editar cliente seleccionado (modal) ====== */
   const [openEditar, setOpenEditar] = useState(false);
   const [editNombre, setEditNombre] = useState('');
   const [editDireccion, setEditDireccion] = useState('');
@@ -425,7 +416,7 @@ export default function RutaPage() {
     }
   }
 
-  // ✅ 3) ELIMINAR seleccionado (funciona al seleccionar fila)
+  // ✅ ELIMINAR seleccionado
   async function eliminarSeleccionado() {
     if (!seleccionado) return alert('Selecciona un cliente para eliminar.');
     const ok = confirm(
@@ -436,11 +427,7 @@ export default function RutaPage() {
     setCargando(true);
     setError(null);
     try {
-      const { error: eDel } = await supabase
-        .from('ruta_retiro')
-        .delete()
-        .eq('id', seleccionado.id);
-
+      const { error: eDel } = await supabase.from('ruta_retiro').delete().eq('id', seleccionado.id);
       if (eDel) throw eDel;
 
       await cargarLista();
@@ -453,7 +440,6 @@ export default function RutaPage() {
     }
   }
 
-  // ✅ Botón solo icono, TODOS morados como el +
   function IconBtn({
     onClick,
     disabled,
@@ -467,8 +453,7 @@ export default function RutaPage() {
     children: React.ReactNode;
     variant?: 'solid' | 'soft';
   }) {
-    const base =
-      'inline-flex items-center justify-center rounded-xl p-2 transition disabled:opacity-40';
+    const base = 'inline-flex items-center justify-center rounded-xl p-2 transition disabled:opacity-40';
     const style =
       variant === 'soft'
         ? 'bg-violet-100 text-violet-800 hover:bg-violet-200'
@@ -489,7 +474,6 @@ export default function RutaPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-700 via-fuchsia-700 to-indigo-800 p-4">
       <div className="bg-white rounded-xl shadow-xl p-4 max-w-7xl mx-auto">
-        {/* Header (✅ sin GPS/Actualizar) */}
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -506,7 +490,6 @@ export default function RutaPage() {
           </div>
         </div>
 
-        {/* ✅ SOLO TELÉFONO */}
         <div className="mb-4">
           <label className="text-xs font-semibold text-slate-600">TELÉFONO</label>
           <input
@@ -527,7 +510,6 @@ export default function RutaPage() {
           </div>
         </div>
 
-        {/* SI EXISTE: VISUAL */}
         {clienteExiste && cliente && (
           <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3">
             <div className="text-xs font-semibold text-violet-900 mb-2">CLIENTE</div>
@@ -544,7 +526,7 @@ export default function RutaPage() {
           </div>
         )}
 
-        {/* ✅ Botones SOLO iconos y TODOS morados */}
+        {/* ✅ CAMBIO: el botón X (Limpiar) ahora elimina el seleccionado */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <IconBtn
             onClick={agregarARuta}
@@ -555,7 +537,13 @@ export default function RutaPage() {
             <PlusCircle className="w-5 h-5" />
           </IconBtn>
 
-          <IconBtn onClick={limpiarFormulario} disabled={cargando} title="Limpiar" variant="soft">
+          {/* Antes: limpiarFormulario. Ahora: eliminarSeleccionado */}
+          <IconBtn
+            onClick={eliminarSeleccionado}
+            disabled={!seleccionado || cargando}
+            title={!seleccionado ? 'Selecciona un cliente para eliminar' : 'Eliminar seleccionado'}
+            variant="soft"
+          >
             <X className="w-5 h-5" />
           </IconBtn>
 
@@ -578,15 +566,6 @@ export default function RutaPage() {
           </IconBtn>
 
           <IconBtn
-            onClick={eliminarSeleccionado}
-            disabled={!seleccionado || cargando}
-            title="Eliminar Seleccionado"
-            variant="soft"
-          >
-            <X className="w-5 h-5" />
-          </IconBtn>
-
-          <IconBtn
             onClick={() => seleccionado?.direccion && abrirMapsConDireccion(seleccionado.direccion)}
             disabled={!seleccionado?.direccion || cargando}
             title="Maps Seleccionado"
@@ -599,7 +578,6 @@ export default function RutaPage() {
         {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
         {cargando && <div className="mb-3 text-sm text-slate-500">Procesando…</div>}
 
-        {/* Lista */}
         <div className="overflow-auto rounded-lg border border-violet-200">
           <table className="w-full text-sm border-collapse">
             <thead className="bg-violet-100 text-violet-800">
@@ -641,7 +619,6 @@ export default function RutaPage() {
         </div>
       </div>
 
-      {/* Modal cliente nuevo */}
       <Modal open={openNuevo} title="Cliente no existe - Registrar" onClose={() => setOpenNuevo(false)}>
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
@@ -679,7 +656,6 @@ export default function RutaPage() {
         </div>
       </Modal>
 
-      {/* Modal editar seleccionado */}
       <Modal open={openEditar} title="Editar Cliente en Ruta" onClose={() => setOpenEditar(false)}>
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
