@@ -641,10 +641,6 @@ export default function RutaPage() {
             </tbody>
           </table>
         </div>
-
-        <div className="mt-3 text-xs text-slate-500">
-          Tip: Selecciona un cliente → “Editar Seleccionado” o “Retirado → Crear Pedido”.
-        </div>
       </div>
 
       {/* Modal cliente nuevo */}
