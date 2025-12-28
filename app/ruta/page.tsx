@@ -10,6 +10,8 @@ import {
   Pencil,
   X,
   RefreshCcw,
+  MapPin,
+  Navigation,
 } from 'lucide-react';
 
 type ClienteDB = {
@@ -74,20 +76,68 @@ function addBusinessDays(start: Date, businessDays: number): Date {
   return d;
 }
 
+/* =========================
+   Modal simple (sin libs)
+========================= */
+
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="font-semibold text-slate-800">{title}</div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-slate-100"
+            aria-label="Cerrar"
+            title="Cerrar"
+          >
+            <X className="w-5 h-5 text-slate-700" />
+          </button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Página Ruta
+========================= */
+
 export default function RutaPage() {
   const router = useRouter();
 
+  // ✅ Solo un input visible: teléfono
   const [telefono, setTelefono] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [direccion, setDireccion] = useState('');
 
+  // Datos del cliente (NO inputs visibles si existe)
   const [clienteExiste, setClienteExiste] = useState(false);
   const [checkingCliente, setCheckingCliente] = useState(false);
+  const [cliente, setCliente] = useState<ClienteDB | null>(null);
 
+  // Modal para cliente nuevo
+  const [openNuevo, setOpenNuevo] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevaDireccion, setNuevaDireccion] = useState('');
+
+  // Lista
   const [lista, setLista] = useState<RutaDB[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
 
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(false); // editar seleccionado (abre modal)
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
@@ -96,6 +146,36 @@ export default function RutaPage() {
     [lista, selId]
   );
 
+  /* ====== Maps / GPS ====== */
+  function abrirMapsConDireccion(dir: string) {
+    const q = encodeURIComponent(dir);
+    const url = `https://www.google.com/maps/search/?api=1&query=${q}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  function abrirMapsConGPS(lat: number, lng: number) {
+    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  function pedirGPSyAbrirMaps() {
+    if (!('geolocation' in navigator)) {
+      alert('Tu dispositivo no soporta GPS en el navegador.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        abrirMapsConGPS(latitude, longitude);
+      },
+      () => {
+        alert('No se pudo obtener GPS. Revisa permisos de ubicación.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+
+  /* ====== Cargar lista ====== */
   async function cargarLista() {
     setCargando(true);
     setError(null);
@@ -125,13 +205,16 @@ export default function RutaPage() {
     cargarLista();
   }, []);
 
-  // Buscar cliente por teléfono
+  /* ====== Buscar cliente por teléfono ====== */
   useEffect(() => {
     const t = onlyDigitsPhone(telefono);
-    if (!t || t.length < 6) {
-      setClienteExiste(false);
-      return;
-    }
+    setTelefono(t);
+
+    // reset visual
+    setClienteExiste(false);
+    setCliente(null);
+
+    if (!t || t.length < 6) return;
 
     const timer = window.setTimeout(async () => {
       setCheckingCliente(true);
@@ -147,10 +230,20 @@ export default function RutaPage() {
 
         if (data?.telefono) {
           setClienteExiste(true);
-          setNombre(String(data.nombre || ''));
-          setDireccion(String(data.direccion || ''));
+          setCliente({
+            telefono: data.telefono,
+            nombre: data.nombre ?? '',
+            direccion: data.direccion ?? '',
+          });
+          setOpenNuevo(false); // por si estaba abierto
         } else {
           setClienteExiste(false);
+          setCliente(null);
+
+          // ✅ si NO existe → abrir modal para agregar
+          setNuevoNombre('');
+          setNuevaDireccion('');
+          setOpenNuevo(true);
         }
       } catch (e: any) {
         console.error(e);
@@ -165,19 +258,21 @@ export default function RutaPage() {
 
   function limpiarFormulario() {
     setTelefono('');
-    setNombre('');
-    setDireccion('');
     setClienteExiste(false);
+    setCliente(null);
+    setOpenNuevo(false);
+    setNuevoNombre('');
+    setNuevaDireccion('');
     setEditMode(false);
     setSelId(null);
     setError(null);
   }
 
-  async function asegurarCliente(telefonoDigits: string) {
+  async function asegurarCliente(telefonoDigits: string, nom: string, dir: string) {
     const payload = {
       telefono: telefonoDigits,
-      nombre: (nombre || '').toUpperCase(),
-      direccion: (direccion || '').toUpperCase(),
+      nombre: (nom || '').toUpperCase(),
+      direccion: (dir || '').toUpperCase(),
     };
     const { error: e } = await supabase
       .from('clientes')
@@ -188,20 +283,22 @@ export default function RutaPage() {
   async function agregarARuta() {
     const tel = onlyDigitsPhone(telefono);
     if (!tel) return alert('Ingresa un teléfono válido.');
-    if (!nombre.trim()) return alert('Ingresa el nombre.');
-    if (!direccion.trim()) return alert('Ingresa la dirección.');
+
+    // Si cliente no existe, se agrega desde modal
+    if (!clienteExiste || !cliente?.nombre || !cliente?.direccion) {
+      alert('Falta registrar el cliente.');
+      return;
+    }
 
     setCargando(true);
     setError(null);
     try {
-      await asegurarCliente(tel);
-
       const creado_por = readDisplay();
 
       const { error: eIns } = await supabase.from('ruta_retiro').insert({
         telefono: tel,
-        nombre: (nombre || '').toUpperCase(),
-        direccion: (direccion || '').toUpperCase(),
+        nombre: (cliente.nombre || '').toUpperCase(),
+        direccion: (cliente.direccion || '').toUpperCase(),
         estado: 'PENDIENTE',
         creado_por,
       });
@@ -217,38 +314,71 @@ export default function RutaPage() {
     }
   }
 
-  function cargarSeleccionadoParaEditar() {
+  /* ====== Guardar cliente nuevo desde modal ====== */
+  async function guardarClienteNuevo() {
+    const tel = onlyDigitsPhone(telefono);
+    if (!tel) return alert('Teléfono inválido.');
+    if (!nuevoNombre.trim()) return alert('Ingresa el nombre.');
+    if (!nuevaDireccion.trim()) return alert('Ingresa la dirección.');
+
+    setCargando(true);
+    setError(null);
+    try {
+      await asegurarCliente(tel, nuevoNombre, nuevaDireccion);
+      setClienteExiste(true);
+      setCliente({
+        telefono: tel,
+        nombre: nuevoNombre.toUpperCase(),
+        direccion: nuevaDireccion.toUpperCase(),
+      });
+      setOpenNuevo(false);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || 'No se pudo guardar el cliente');
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  /* ====== Editar cliente seleccionado (modal) ====== */
+  const [openEditar, setOpenEditar] = useState(false);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDireccion, setEditDireccion] = useState('');
+
+  function abrirModalEditarSeleccionado() {
     if (!seleccionado) return;
-    setTelefono(seleccionado.telefono);
-    setNombre(seleccionado.nombre || '');
-    setDireccion(seleccionado.direccion || '');
+    setEditNombre((seleccionado.nombre || '').toString());
+    setEditDireccion((seleccionado.direccion || '').toString());
+    setOpenEditar(true);
     setEditMode(true);
   }
 
-  async function guardarEdicion() {
+  async function guardarEdicionSeleccionado() {
     if (!seleccionado) return;
 
-    const tel = onlyDigitsPhone(telefono);
+    const tel = onlyDigitsPhone(seleccionado.telefono);
     if (!tel) return alert('Teléfono inválido.');
-    if (!nombre.trim() || !direccion.trim())
+    if (!editNombre.trim() || !editDireccion.trim())
       return alert('Nombre y dirección son obligatorios.');
 
     setCargando(true);
     setError(null);
     try {
-      await asegurarCliente(tel);
+      // actualizar clientes
+      await asegurarCliente(tel, editNombre, editDireccion);
 
+      // actualizar ruta_retiro
       const { error: eUp } = await supabase
         .from('ruta_retiro')
         .update({
-          telefono: tel,
-          nombre: (nombre || '').toUpperCase(),
-          direccion: (direccion || '').toUpperCase(),
+          nombre: editNombre.toUpperCase(),
+          direccion: editDireccion.toUpperCase(),
         })
         .eq('id', seleccionado.id);
 
       if (eUp) throw eUp;
 
+      setOpenEditar(false);
       setEditMode(false);
       await cargarLista();
     } catch (e: any) {
@@ -315,7 +445,7 @@ export default function RutaPage() {
       await cargarLista();
       limpiarFormulario();
 
-      // 4) abrir editor (ajusta si tu editor es otra ruta)
+      // 4) abrir editor
       router.push(`/editar?nro=${nro}`);
     } catch (e: any) {
       console.error(e);
@@ -342,84 +472,95 @@ export default function RutaPage() {
             <div>
               <h1 className="text-lg font-semibold text-slate-800">RUTA (RETIROS)</h1>
               <div className="text-xs text-slate-500">
-                Agrega clientes a retirar y conviértelos en pedido al marcar RETIRADO.
+                Ingresa un teléfono. Si existe, verás nombre y dirección. Si no, se abrirá un modal para registrarlo.
               </div>
             </div>
           </div>
 
-          <button
-            onClick={cargarLista}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800"
-            title="Actualizar"
-            disabled={cargando}
-          >
-            <RefreshCcw className="w-4 h-4" />
-            <span>Actualizar</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={pedirGPSyAbrirMaps}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-100 text-violet-800 hover:bg-violet-200"
+              title="Abrir Maps con mi GPS"
+              disabled={cargando}
+            >
+              <Navigation className="w-4 h-4" />
+              <span>GPS</span>
+            </button>
+
+            <button
+              onClick={cargarLista}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800"
+              title="Actualizar"
+              disabled={cargando}
+            >
+              <RefreshCcw className="w-4 h-4" />
+              <span>Actualizar</span>
+            </button>
+          </div>
         </div>
 
-        {/* Formulario */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-600">TELÉFONO</label>
-            <input
-              value={telefono}
-              onChange={(e) => setTelefono(onlyDigitsPhone(e.target.value))}
-              placeholder="Ej: 991234567"
-              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
-              inputMode="numeric"
-            />
-            <div className="mt-1 text-[11px] text-slate-500">
-              {checkingCliente
-                ? 'Buscando cliente…'
-                : clienteExiste
-                ? 'Cliente encontrado ✅'
-                : 'Cliente nuevo'}
+        {/* ✅ SOLO TELÉFONO */}
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-slate-600">TELÉFONO</label>
+          <input
+            value={telefono}
+            onChange={(e) => setTelefono(onlyDigitsPhone(e.target.value))}
+            placeholder="Ej: 991234567"
+            className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+            inputMode="numeric"
+          />
+          <div className="mt-1 text-[11px] text-slate-500">
+            {checkingCliente
+              ? 'Buscando cliente…'
+              : clienteExiste
+              ? 'Cliente encontrado ✅'
+              : telefono.length >= 6
+              ? 'Cliente no existe → registrar'
+              : 'Ingresa el teléfono'}
+          </div>
+        </div>
+
+        {/* ✅ SI EXISTE: SOLO VISUAL (sin inputs) */}
+        {clienteExiste && cliente && (
+          <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3">
+            <div className="text-xs font-semibold text-violet-900 mb-2">CLIENTE</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="bg-white rounded-lg p-2 border">
+                <div className="text-[11px] text-slate-500">NOMBRE</div>
+                <div className="font-semibold text-slate-800">{cliente.nombre || '-'}</div>
+              </div>
+              <div className="bg-white rounded-lg p-2 border md:col-span-2">
+                <div className="text-[11px] text-slate-500">DIRECCIÓN</div>
+                <div className="font-semibold text-slate-800">{cliente.direccion || '-'}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => abrirMapsConDireccion(cliente.direccion || '')}
+                disabled={!cliente.direccion}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border hover:bg-slate-50 disabled:opacity-50"
+                title="Abrir dirección en Google Maps"
+              >
+                <MapPin className="w-4 h-4 text-violet-700" />
+                <span className="text-slate-800">Maps</span>
+              </button>
             </div>
           </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-600">NOMBRE</label>
-            <input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value.toUpperCase())}
-              placeholder="Nombre cliente"
-              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-600">DIRECCIÓN</label>
-            <input
-              value={direccion}
-              onChange={(e) => setDireccion(e.target.value.toUpperCase())}
-              placeholder="Dirección"
-              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
-            />
-          </div>
-        </div>
+        )}
 
         {/* Acciones */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
-          {!editMode ? (
-            <button
-              onClick={agregarARuta}
-              disabled={cargando}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Agregar a Ruta</span>
-            </button>
-          ) : (
-            <button
-              onClick={guardarEdicion}
-              disabled={cargando || !seleccionado}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <Pencil className="w-4 h-4" />
-              <span>Guardar Edición</span>
-            </button>
-          )}
+          <button
+            onClick={agregarARuta}
+            disabled={cargando || !clienteExiste}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+            title={!clienteExiste ? 'Registra el cliente para poder agregar a ruta' : 'Agregar a Ruta'}
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Agregar a Ruta</span>
+          </button>
 
           <button
             onClick={limpiarFormulario}
@@ -441,12 +582,22 @@ export default function RutaPage() {
           </button>
 
           <button
-            onClick={cargarSeleccionadoParaEditar}
+            onClick={abrirModalEditarSeleccionado}
             disabled={!seleccionado || cargando}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-100 text-violet-800 hover:bg-violet-200 disabled:opacity-50"
           >
             <Pencil className="w-4 h-4" />
             <span>Editar Seleccionado</span>
+          </button>
+
+          <button
+            onClick={() => seleccionado?.direccion && abrirMapsConDireccion(seleccionado.direccion)}
+            disabled={!seleccionado?.direccion || cargando}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border hover:bg-slate-50 disabled:opacity-50"
+            title="Abrir dirección del seleccionado en Maps"
+          >
+            <MapPin className="w-4 h-4 text-violet-700" />
+            <span className="text-slate-800">Maps Seleccionado</span>
           </button>
         </div>
 
@@ -495,9 +646,98 @@ export default function RutaPage() {
         </div>
 
         <div className="mt-3 text-xs text-slate-500">
-          Tip: Selecciona un cliente en la lista → “Editar Seleccionado” o “Retirado → Crear Pedido”.
+          Tip: Selecciona un cliente → “Editar Seleccionado” o “Retirado → Crear Pedido”.
         </div>
       </div>
+
+      {/* Modal cliente nuevo */}
+      <Modal
+        open={openNuevo}
+        title="Cliente no existe - Registrar"
+        onClose={() => setOpenNuevo(false)}
+      >
+        <div className="space-y-3">
+          <div className="text-sm text-slate-700">
+            Teléfono: <span className="font-semibold">{onlyDigitsPhone(telefono) || '-'}</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-600">NOMBRE</label>
+            <input
+              value={nuevoNombre}
+              onChange={(e) => setNuevoNombre(e.target.value.toUpperCase())}
+              placeholder="Nombre"
+              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-600">DIRECCIÓN</label>
+            <input
+              value={nuevaDireccion}
+              onChange={(e) => setNuevaDireccion(e.target.value.toUpperCase())}
+              placeholder="Dirección"
+              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+
+          <button
+            onClick={guardarClienteNuevo}
+            disabled={cargando}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Guardar Cliente</span>
+          </button>
+
+          <div className="text-xs text-slate-500">
+            Luego podrás presionar <b>“Agregar a Ruta”</b>.
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal editar seleccionado */}
+      <Modal
+        open={openEditar}
+        title="Editar Cliente en Ruta"
+        onClose={() => {
+          setOpenEditar(false);
+          setEditMode(false);
+        }}
+      >
+        <div className="space-y-3">
+          <div className="text-sm text-slate-700">
+            Teléfono: <span className="font-semibold">{seleccionado?.telefono || '-'}</span>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-600">NOMBRE</label>
+            <input
+              value={editNombre}
+              onChange={(e) => setEditNombre(e.target.value.toUpperCase())}
+              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-600">DIRECCIÓN</label>
+            <input
+              value={editDireccion}
+              onChange={(e) => setEditDireccion(e.target.value.toUpperCase())}
+              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+
+          <button
+            onClick={guardarEdicionSeleccionado}
+            disabled={cargando || !seleccionado}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <Pencil className="w-4 h-4" />
+            <span>Guardar Cambios</span>
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }
