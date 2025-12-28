@@ -471,9 +471,6 @@ export default function RutaPage() {
             </button>
             <div>
               <h1 className="text-lg font-semibold text-slate-800">RUTA (RETIROS)</h1>
-              <div className="text-xs text-slate-500">
-                Ingresa un teléfono. Si existe, verás nombre y dirección. Si no, se abrirá un modal para registrarlo.
-              </div>
             </div>
           </div>
 
