@@ -3,16 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  ArrowLeft,
-  PlusCircle,
-  CheckCircle2,
-  Pencil,
-  X,
-  RefreshCcw,
-  MapPin,
-  Navigation,
-} from 'lucide-react';
+import { ArrowLeft, PlusCircle, CheckCircle2, Pencil, X, MapPin } from 'lucide-react';
 
 type ClienteDB = {
   telefono: string;
@@ -145,33 +136,10 @@ export default function RutaPage() {
     [lista, selId]
   );
 
-  /* ====== Maps / GPS ====== */
   function abrirMapsConDireccion(dir: string) {
     const q = encodeURIComponent(dir);
     const url = `https://www.google.com/maps/search/?api=1&query=${q}`;
     window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
-  function abrirMapsConGPS(lat: number, lng: number) {
-    const url = `https://www.google.com/maps?q=${lat},${lng}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
-  function pedirGPSyAbrirMaps() {
-    if (!('geolocation' in navigator)) {
-      alert('Tu dispositivo no soporta GPS en el navegador.');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        abrirMapsConGPS(latitude, longitude);
-      },
-      () => {
-        alert('No se pudo obtener GPS. Revisa permisos de ubicación.');
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
   }
 
   /* ====== Cargar lista ====== */
@@ -269,13 +237,11 @@ export default function RutaPage() {
       nombre: (nom || '').toUpperCase(),
       direccion: (dir || '').toUpperCase(),
     };
-    const { error: e } = await supabase
-      .from('clientes')
-      .upsert(payload, { onConflict: 'telefono' });
+    const { error: e } = await supabase.from('clientes').upsert(payload, { onConflict: 'telefono' });
     if (e) throw e;
   }
 
-  // ✅ 1) NO permitir el mismo teléfono dos veces (PENDIENTE)
+  // ✅ NO permitir el mismo teléfono dos veces (PENDIENTE)
   async function telefonoYaEnRutaPendiente(tel: string): Promise<boolean> {
     const { data, error: e } = await supabase
       .from('ruta_retiro')
@@ -300,7 +266,6 @@ export default function RutaPage() {
     setCargando(true);
     setError(null);
     try {
-      // ✅ bloqueo duplicado
       const ya = await telefonoYaEnRutaPendiente(tel);
       if (ya) {
         alert('⚠️ Ese teléfono ya está en RUTA (PENDIENTE).');
@@ -460,26 +425,54 @@ export default function RutaPage() {
     }
   }
 
-  // ✅ Botón estilo “solo icono”
+  // ✅ 3) ELIMINAR seleccionado (funciona al seleccionar fila)
+  async function eliminarSeleccionado() {
+    if (!seleccionado) return alert('Selecciona un cliente para eliminar.');
+    const ok = confirm(
+      `¿Eliminar de RUTA a ${seleccionado.nombre || ''} (${seleccionado.telefono})?`
+    );
+    if (!ok) return;
+
+    setCargando(true);
+    setError(null);
+    try {
+      const { error: eDel } = await supabase
+        .from('ruta_retiro')
+        .delete()
+        .eq('id', seleccionado.id);
+
+      if (eDel) throw eDel;
+
+      await cargarLista();
+      setSelId(null);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || 'No se pudo eliminar');
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // ✅ Botón solo icono, TODOS morados como el +
   function IconBtn({
     onClick,
     disabled,
     title,
     children,
-    variant = 'ghost',
+    variant = 'solid',
   }: {
     onClick: () => void;
     disabled?: boolean;
     title: string;
     children: React.ReactNode;
-    variant?: 'solid' | 'ghost';
+    variant?: 'solid' | 'soft';
   }) {
     const base =
       'inline-flex items-center justify-center rounded-xl p-2 transition disabled:opacity-40';
     const style =
-      variant === 'solid'
-        ? 'bg-violet-600 text-white hover:bg-violet-700'
-        : 'bg-slate-100 text-slate-800 hover:bg-slate-200';
+      variant === 'soft'
+        ? 'bg-violet-100 text-violet-800 hover:bg-violet-200'
+        : 'bg-violet-600 text-white hover:bg-violet-700';
     return (
       <button
         onClick={onClick}
@@ -496,7 +489,7 @@ export default function RutaPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-violet-700 via-fuchsia-700 to-indigo-800 p-4">
       <div className="bg-white rounded-xl shadow-xl p-4 max-w-7xl mx-auto">
-        {/* Header (✅ sin GPS/Actualizar aquí) */}
+        {/* Header (✅ sin GPS/Actualizar) */}
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -510,11 +503,6 @@ export default function RutaPage() {
             <div>
               <h1 className="text-lg font-semibold text-slate-800">RUTA (RETIROS)</h1>
             </div>
-          </div>
-
-          {/* ✅ 2) Se elimina GPS y Actualizar arriba derecha */}
-          <div className="flex items-center gap-2">
-            {/* Si igual quieres mantenerlos, los dejamos ocultos */}
           </div>
         </div>
 
@@ -556,7 +544,7 @@ export default function RutaPage() {
           </div>
         )}
 
-        {/* ✅ 3) Botones SOLO ICONOS (sin texto) */}
+        {/* ✅ Botones SOLO iconos y TODOS morados */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <IconBtn
             onClick={agregarARuta}
@@ -567,7 +555,7 @@ export default function RutaPage() {
             <PlusCircle className="w-5 h-5" />
           </IconBtn>
 
-          <IconBtn onClick={limpiarFormulario} disabled={cargando} title="Limpiar">
+          <IconBtn onClick={limpiarFormulario} disabled={cargando} title="Limpiar" variant="soft">
             <X className="w-5 h-5" />
           </IconBtn>
 
@@ -584,24 +572,27 @@ export default function RutaPage() {
             onClick={abrirModalEditarSeleccionado}
             disabled={!seleccionado || cargando}
             title="Editar Seleccionado"
+            variant="soft"
           >
             <Pencil className="w-5 h-5" />
+          </IconBtn>
+
+          <IconBtn
+            onClick={eliminarSeleccionado}
+            disabled={!seleccionado || cargando}
+            title="Eliminar Seleccionado"
+            variant="soft"
+          >
+            <X className="w-5 h-5" />
           </IconBtn>
 
           <IconBtn
             onClick={() => seleccionado?.direccion && abrirMapsConDireccion(seleccionado.direccion)}
             disabled={!seleccionado?.direccion || cargando}
             title="Maps Seleccionado"
+            variant="soft"
           >
             <MapPin className="w-5 h-5" />
-          </IconBtn>
-
-          <IconBtn onClick={pedirGPSyAbrirMaps} disabled={cargando} title="GPS (Maps)">
-            <Navigation className="w-5 h-5" />
-          </IconBtn>
-
-          <IconBtn onClick={cargarLista} disabled={cargando} title="Actualizar lista">
-            <RefreshCcw className="w-5 h-5" />
           </IconBtn>
         </div>
 
@@ -648,18 +639,10 @@ export default function RutaPage() {
             </tbody>
           </table>
         </div>
-
-        <div className="mt-3 text-xs text-slate-500">
-          Tip: Selecciona un cliente → icono lápiz (editar) o check (crear pedido).
-        </div>
       </div>
 
       {/* Modal cliente nuevo */}
-      <Modal
-        open={openNuevo}
-        title="Cliente no existe - Registrar"
-        onClose={() => setOpenNuevo(false)}
-      >
+      <Modal open={openNuevo} title="Cliente no existe - Registrar" onClose={() => setOpenNuevo(false)}>
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
             Teléfono: <span className="font-semibold">{onlyDigitsPhone(telefono) || '-'}</span>
@@ -693,10 +676,6 @@ export default function RutaPage() {
             <PlusCircle className="w-4 h-4" />
             <span>Guardar Cliente</span>
           </button>
-
-          <div className="text-xs text-slate-500">
-            Luego podrás presionar el icono <b>+</b> para agregar a ruta.
-          </div>
         </div>
       </Modal>
 
