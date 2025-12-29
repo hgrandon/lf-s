@@ -7,13 +7,11 @@ import { ArrowLeft, Search as SearchIcon, Pencil } from 'lucide-react';
 
 type PedidoDB = {
   nro: number;
-  fecha: string; // o fecha_entrega / fecha_ingreso según tu DB
+  fecha: string;
   telefono: string;
   total?: number | null;
   tipo_entrega?: string | null;
   estado_pago?: string | null;
-
-  // si existe en tu tabla pedido:
   empresa_nombre?: string | null;
   es_empresa?: boolean | null;
 };
@@ -28,7 +26,7 @@ type LineaDB = {
   pedido_nro: number;
   articulo: string;
   qty: number;
-  valor: number; // precio unitario
+  valor: number;
 };
 
 type FilaPedido = PedidoDB & {
@@ -45,6 +43,7 @@ type FilaDesglose = {
   pedido_nro: number;
   empresa: string;
   articulo: string;
+  articulo_resumen: string;
   qty: number;
   neto: number;
   iva: number;
@@ -54,17 +53,40 @@ type FilaDesglose = {
 const CLP = new Intl.NumberFormat('es-CL');
 const IVA_RATE = 0.19;
 
-// calcula neto/iva/total desde un total final
 function splitIVA(totalFinal: number) {
   const neto = Math.round(totalFinal / (1 + IVA_RATE));
   const iva = totalFinal - neto;
   return { neto, iva, total: totalFinal };
 }
 
-// calcula neto/iva/total desde neto
 function addIVA(neto: number) {
   const iva = Math.round(neto * IVA_RATE);
   return { neto, iva, total: neto + iva };
+}
+
+function norm(s: string) {
+  return (s || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+// ✅ aquí “resumimos” artículos como tu ejemplo
+function resumirArticulo(art: string) {
+  const a = norm(art);
+
+  if (a.includes('RETIRO') || a.includes('ENTREGA')) return 'RETIRO Y ENTREGA';
+  if (a.includes('SABAN')) return 'SÁBANAS';
+  if (a.includes('TOALL')) return 'TOALLAS';
+  if (a.includes('COBERTOR')) return 'COBERTOR';
+  if (a.includes('FRAZAD')) return 'FRAZADAS';
+  if (a.includes('INDIVIDUAL')) return 'INDIVIDUALES';
+  if (a.includes('FUNDA') && a.includes('COJ')) return 'FUNDAS COJIN';
+  if (a.includes('PAÑO') || a.includes('PANO') || a.includes('COCINA')) return 'PAÑOS DE COCINA';
+
+  // si no calza, lo dejamos tal cual pero bonito
+  return (art || '').toUpperCase().trim();
 }
 
 export default function ReporteEmpresasPage() {
@@ -76,24 +98,21 @@ export default function ReporteEmpresasPage() {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
-  // Carga inicial
   useEffect(() => {
     (async () => {
       setCargando(true);
       setError(null);
       try {
-        // 1) pedidos
         const { data: pedidosRaw, error: e1 } = await supabase
           .from('pedido')
           .select('nro, fecha, tipo_entrega, estado_pago, telefono, total, empresa_nombre, es_empresa')
           .order('nro', { ascending: false })
-          .limit(300);
+          .limit(500);
 
         if (e1) throw e1;
 
         const pedidosList = (pedidosRaw ?? []) as PedidoDB[];
 
-        // 2) clientes (para nombre/direccion)
         const tels = Array.from(new Set(pedidosList.map(p => p.telefono))).filter(Boolean);
         const clientesMap = new Map<string, ClienteDB>();
 
@@ -107,19 +126,20 @@ export default function ReporteEmpresasPage() {
           (clientes ?? []).forEach(c => clientesMap.set(c.telefono, c as ClienteDB));
         }
 
-        // 3) construir filas “Resumen por Pedido” (Neto/IVA/Total)
         const outPedidos: FilaPedido[] = pedidosList.map(p => {
           const totalFinal = Number(p.total || 0);
           const { neto, iva, total } = splitIVA(totalFinal);
-
           const cli = clientesMap.get(p.telefono);
-          const empresa = (p.empresa_nombre || (p.es_empresa ? 'EMPRESA' : null)) ?? null;
+
+          const empresa =
+            (p.empresa_nombre && p.empresa_nombre.trim()) ||
+            (p.es_empresa ? 'EMPRESA' : null);
 
           return {
             ...p,
             nombre: cli?.nombre ?? null,
             direccion: cli?.direccion ?? null,
-            empresa,
+            empresa: empresa ?? null,
             neto,
             iva,
             total_calc: total,
@@ -128,8 +148,6 @@ export default function ReporteEmpresasPage() {
 
         setPedidos(outPedidos);
 
-        // 4) desglose por pedido (si existe pedido_linea)
-        //    (si tu tabla tiene otro nombre/campos, ajustamos)
         const nros = outPedidos.map(p => p.nro);
         if (nros.length) {
           const { data: lineasRaw, error: e3 } = await supabase
@@ -137,10 +155,8 @@ export default function ReporteEmpresasPage() {
             .select('pedido_nro, articulo, qty, valor')
             .in('pedido_nro', nros);
 
-          // Si no existe la tabla, no rompas la vista
           if (!e3) {
             const lineas = (lineasRaw ?? []) as LineaDB[];
-
             const pedidoMap = new Map<number, FilaPedido>();
             outPedidos.forEach(p => pedidoMap.set(p.nro, p));
 
@@ -152,8 +168,9 @@ export default function ReporteEmpresasPage() {
               return {
                 fecha: p?.fecha || '',
                 pedido_nro: l.pedido_nro,
-                empresa: (p?.empresa || '') as string,
+                empresa: (p?.empresa || 'SIN EMPRESA') as string,
                 articulo: (l.articulo || '').toString(),
+                articulo_resumen: resumirArticulo((l.articulo || '').toString()),
                 qty: Number(l.qty || 0),
                 neto,
                 iva,
@@ -163,7 +180,6 @@ export default function ReporteEmpresasPage() {
 
             setDesglose(outDesglose);
           } else {
-            // opcional: deja vacío y no muestres error
             setDesglose([]);
           }
         }
@@ -176,7 +192,6 @@ export default function ReporteEmpresasPage() {
     })();
   }, []);
 
-  // filtros
   const pedidosFiltrados = useMemo(() => {
     const q = (buscar || '').trim().toLowerCase();
     if (!q) return pedidos;
@@ -194,11 +209,11 @@ export default function ReporteEmpresasPage() {
     return desglose.filter(d =>
       String(d.pedido_nro).includes(q) ||
       (d.articulo || '').toLowerCase().includes(q) ||
+      (d.articulo_resumen || '').toLowerCase().includes(q) ||
       (d.empresa || '').toLowerCase().includes(q)
     );
   }, [desglose, buscar]);
 
-  // resumen por empresa (como tu PDF)
   const resumenEmpresa = useMemo(() => {
     const map = new Map<string, { empresa: string; neto: number; iva: number; total: number }>();
     for (const p of pedidosFiltrados) {
@@ -211,6 +226,35 @@ export default function ReporteEmpresasPage() {
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [pedidosFiltrados]);
+
+  const totalEmpresa = useMemo(() => {
+    return resumenEmpresa.reduce(
+      (acc, r) => {
+        acc.neto += r.neto;
+        acc.iva += r.iva;
+        acc.total += r.total;
+        return acc;
+      },
+      { neto: 0, iva: 0, total: 0 }
+    );
+  }, [resumenEmpresa]);
+
+  // ✅ NUEVO: resumen de artículos (como tu ejemplo)
+  const resumenArticulos = useMemo(() => {
+    const map = new Map<string, { articulo: string; qty: number; neto: number; iva: number; total: number }>();
+
+    for (const d of desgloseFiltrado) {
+      const key = d.articulo_resumen || 'OTROS';
+      const cur = map.get(key) || { articulo: key, qty: 0, neto: 0, iva: 0, total: 0 };
+      cur.qty += d.qty || 0;
+      cur.neto += d.neto || 0;
+      cur.iva += d.iva || 0;
+      cur.total += d.total || 0;
+      map.set(key, cur);
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [desgloseFiltrado]);
 
   const abrirDetalle = () => {
     if (!selNro) return;
@@ -237,10 +281,8 @@ export default function ReporteEmpresasPage() {
               <ArrowLeft className="w-5 h-5 text-slate-700" />
             </button>
             <div>
-              <div className="text-lg font-semibold text-slate-800">INFORME DE PEDIDOS</div>
-              <div className="text-xs text-slate-500">
-                Vista tipo PDF: Resumen por Pedido / Empresa / Desglose
-              </div>
+              <div className="text-lg font-semibold text-slate-800">REPORTE EMPRESAS</div>
+              <div className="text-xs text-slate-500">Resumen por Pedido / Empresa / Desglose / Artículos</div>
             </div>
           </div>
 
@@ -269,16 +311,16 @@ export default function ReporteEmpresasPage() {
         <input
           value={buscar}
           onChange={(e) => setBuscar(e.target.value)}
-          placeholder="BUSCAR N° / TELÉFONO / NOMBRE / EMPRESA"
+          placeholder="BUSCAR N° / TELÉFONO / NOMBRE / EMPRESA / ARTÍCULO"
           className="w-full mb-3 px-3 py-2 border rounded-lg text-sm"
         />
 
         {cargando && <div className="mb-3 text-sm text-slate-500">Cargando…</div>}
         {error && <div className="mb-3 text-sm text-red-600">Error: {error}</div>}
 
-        {/* ===== Resumen por Pedido (igual al PDF) ===== */}
-        <div className="mb-3">
-          <div className="font-semibold text-slate-800 mb-2">Resumen por Pedido</div>
+        {/* ===== 1) Resumen por Pedido ===== */}
+        <div className="mb-4">
+          <div className="font-semibold text-slate-800 mb-2">1) Resumen por Pedido</div>
           <div className="overflow-auto rounded-lg border border-violet-200">
             <table className="w-full text-sm border-collapse">
               <thead className="bg-violet-100 text-violet-800">
@@ -295,9 +337,7 @@ export default function ReporteEmpresasPage() {
               <tbody>
                 {pedidosFiltrados.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
-                      Sin resultados.
-                    </td>
+                    <td colSpan={7} className="px-3 py-6 text-center text-slate-500">Sin resultados.</td>
                   </tr>
                 ) : (
                   pedidosFiltrados.map((p) => {
@@ -313,18 +353,12 @@ export default function ReporteEmpresasPage() {
                       >
                         <td className="px-2 py-2">{p.fecha}</td>
                         <td className="px-2 py-2 font-semibold text-violet-700">{p.nro}</td>
-                        <td className="px-2 py-2">{p.empresa || ''}</td>
+                        <td className="px-2 py-2">{p.empresa || 'SIN EMPRESA'}</td>
                         <td className="px-2 py-2 text-right">{CLP.format(p.neto || 0)}</td>
                         <td className="px-2 py-2 text-right">{CLP.format(p.iva || 0)}</td>
-                        <td className="px-2 py-2 text-right font-semibold">
-                          {CLP.format(p.total_calc || 0)}
-                        </td>
+                        <td className="px-2 py-2 text-right font-semibold">{CLP.format(p.total_calc || 0)}</td>
                         <td className="px-2 py-2">
-                          <span
-                            className={`px-2 py-1 rounded-md text-white ${
-                              pagado ? 'bg-green-600' : 'bg-red-500'
-                            }`}
-                          >
+                          <span className={`px-2 py-1 rounded-md text-white ${pagado ? 'bg-green-600' : 'bg-red-500'}`}>
                             {pagado ? 'PAGADO' : 'PENDIENTE'}
                           </span>
                         </td>
@@ -337,9 +371,9 @@ export default function ReporteEmpresasPage() {
           </div>
         </div>
 
-        {/* ===== Resumen por Empresa (igual al PDF) ===== */}
-        <div className="mb-3">
-          <div className="font-semibold text-slate-800 mb-2">Resumen por Empresa</div>
+        {/* ===== 2) Resumen por Empresa ===== */}
+        <div className="mb-4">
+          <div className="font-semibold text-slate-800 mb-2">2) Resumen por Empresa</div>
           <div className="overflow-auto rounded-lg border border-violet-200">
             <table className="w-full text-sm border-collapse">
               <thead className="bg-violet-100 text-violet-800">
@@ -353,36 +387,38 @@ export default function ReporteEmpresasPage() {
               <tbody>
                 {resumenEmpresa.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                      Sin resultados.
-                    </td>
+                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">Sin resultados.</td>
                   </tr>
                 ) : (
-                  resumenEmpresa.map((r) => (
-                    <tr key={r.empresa} className="border-t">
-                      <td className="px-2 py-2 font-semibold">{r.empresa}</td>
-                      <td className="px-2 py-2 text-right">{CLP.format(r.neto)}</td>
-                      <td className="px-2 py-2 text-right">{CLP.format(r.iva)}</td>
-                      <td className="px-2 py-2 text-right font-semibold">{CLP.format(r.total)}</td>
+                  <>
+                    {resumenEmpresa.map((r) => (
+                      <tr key={r.empresa} className="border-t">
+                        <td className="px-2 py-2 font-semibold">{r.empresa}</td>
+                        <td className="px-2 py-2 text-right">{CLP.format(r.neto)}</td>
+                        <td className="px-2 py-2 text-right">{CLP.format(r.iva)}</td>
+                        <td className="px-2 py-2 text-right font-semibold">{CLP.format(r.total)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t bg-violet-50">
+                      <td className="px-2 py-2 font-black text-violet-800">TOTAL</td>
+                      <td className="px-2 py-2 text-right font-black">{CLP.format(totalEmpresa.neto)}</td>
+                      <td className="px-2 py-2 text-right font-black">{CLP.format(totalEmpresa.iva)}</td>
+                      <td className="px-2 py-2 text-right font-black">{CLP.format(totalEmpresa.total)}</td>
                     </tr>
-                  ))
+                  </>
                 )}
               </tbody>
             </table>
           </div>
-
-          <div className="text-xs text-slate-500 mt-1">
-            *Este bloque replica el “Resumen por Empresa” del PDF. 
-          </div>
         </div>
 
-        {/* ===== Desglose por Pedido (igual al PDF) ===== */}
-        <div className="mt-4">
-          <div className="font-semibold text-slate-800 mb-2">Desglose por Pedido</div>
+        {/* ===== 3) Desglose por Pedido ===== */}
+        <div className="mb-4">
+          <div className="font-semibold text-slate-800 mb-2">3) Desglose por Pedido</div>
 
           {desgloseFiltrado.length === 0 ? (
             <div className="text-sm text-slate-500">
-              No hay desglose (si no tienes tabla <b>pedido_linea</b> o está vacía, esto quedará así).
+              No hay desglose (si tu tabla <b>pedido_linea</b> está vacía o no existe, aquí no se mostrará nada).
             </div>
           ) : (
             <div className="overflow-auto rounded-lg border border-violet-200">
@@ -416,11 +452,42 @@ export default function ReporteEmpresasPage() {
               </table>
             </div>
           )}
-
-          <div className="text-xs text-slate-500 mt-1">
-            *Este bloque replica el “Desglose por Pedido” del PDF. 
-          </div>
         </div>
+
+        {/* ===== 4) Resumen de Artículos ===== */}
+        <div>
+          <div className="font-semibold text-slate-800 mb-2">4) Resumen de Artículos</div>
+
+          {resumenArticulos.length === 0 ? (
+            <div className="text-sm text-slate-500">Sin datos (depende del desglose).</div>
+          ) : (
+            <div className="overflow-auto rounded-lg border border-violet-200">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-violet-100 text-violet-800">
+                  <tr>
+                    <th className="px-2 py-2 text-left">Artículo (Resumen)</th>
+                    <th className="px-2 py-2 text-right">Cant.</th>
+                    <th className="px-2 py-2 text-right">Neto</th>
+                    <th className="px-2 py-2 text-right">IVA</th>
+                    <th className="px-2 py-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumenArticulos.map((r) => (
+                    <tr key={r.articulo} className="border-t">
+                      <td className="px-2 py-2 font-semibold">{r.articulo}</td>
+                      <td className="px-2 py-2 text-right">{r.qty}</td>
+                      <td className="px-2 py-2 text-right">{CLP.format(r.neto)}</td>
+                      <td className="px-2 py-2 text-right">{CLP.format(r.iva)}</td>
+                      <td className="px-2 py-2 text-right font-semibold">{CLP.format(r.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
       </div>
     </main>
   );
