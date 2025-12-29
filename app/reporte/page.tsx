@@ -372,7 +372,7 @@ export default function ReporteEmpresasPage() {
           </div>
 
           <div className="text-xs text-slate-500 mt-1">
-            *Este bloque replica el “Resumen por Empresa” del PDF. :contentReference[oaicite:4]{index=4}
+            *Este bloque replica el “Resumen por Empresa” del PDF. 
           </div>
         </div>
 
