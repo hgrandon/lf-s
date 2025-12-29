@@ -418,7 +418,7 @@ export default function ReporteEmpresasPage() {
           )}
 
           <div className="text-xs text-slate-500 mt-1">
-            *Este bloque replica el “Desglose por Pedido” del PDF. :contentReference[oaicite:5]{index=5}
+            *Este bloque replica el “Desglose por Pedido” del PDF. 
           </div>
         </div>
       </div>
