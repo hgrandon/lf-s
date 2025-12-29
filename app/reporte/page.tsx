@@ -239,7 +239,7 @@ export default function ReporteEmpresasPage() {
             <div>
               <div className="text-lg font-semibold text-slate-800">INFORME DE PEDIDOS</div>
               <div className="text-xs text-slate-500">
-                Vista tipo PDF: Resumen por Pedido / Empresa / Desglose :contentReference[oaicite:3]{index=3}
+                Vista tipo PDF: Resumen por Pedido / Empresa / Desglose
               </div>
             </div>
           </div>
