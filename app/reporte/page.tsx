@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Search as SearchIcon, Pencil } from 'lucide-react';
 
+console.log('REPORTE NUEVO CARGADO');
+
 type PedidoDB = {
   nro: number;
   fecha: string;
