@@ -64,16 +64,13 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       className={[
-        'flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all',
+        'flex items-center justify-center p-3 rounded-xl transition-all w-full h-full',
         cls,
         disabled && !active ? 'opacity-40 cursor-not-allowed saturate-0' : '',
       ].join(' ')}
       title={title}
     >
-      <Icon size={18} strokeWidth={active ? 2.5 : 2} />
-      <span className="text-[9px] lg:text-[10px] uppercase font-bold tracking-wider truncate w-full text-center">
-        {title}
-      </span>
+      <Icon size={24} strokeWidth={active ? 2.5 : 2} />
     </button>
   );
 }
