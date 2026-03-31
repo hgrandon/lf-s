@@ -226,7 +226,7 @@ export default function BasePage() {
     try {
       const { data, error } = await supabase
         .from('pedido')
-        .select('nro, estado')
+        .select('nro, estado, tipo_entrega')
         .eq('nro', nroNum)
         .maybeSingle();
 
@@ -247,7 +247,7 @@ export default function BasePage() {
           dest = '/base/lavando';
           break;
         case 'GUARDADO':
-          dest = '/base/guardado';
+          dest = data.tipo_entrega === 'DOMICILIO' ? '/base/guardado/domicilio' : '/base/guardado/local';
           break;
         case 'ENTREGAR':
           dest = '/base/entregar';
