@@ -14,6 +14,13 @@ import {
 
 const botonesLavar: BotonAccionDef[] = [
   {
+    id: 'lavando',
+    title: 'Lavando',
+    Icon: WashingMachine,
+    onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
+  },
+  {
     id: 'guardado',
     title: 'Guardado',
     Icon: CheckCircle2,
@@ -35,21 +42,7 @@ const botonesLavar: BotonAccionDef[] = [
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
   },
   {
-    id: 'lavar',
-    title: 'Lavar',
-    Icon: Droplet,
-    onClick: (id, t) => t.changeEstado(id, 'LAVAR'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVAR',
-  },
-  {
-    id: 'lavando',
-    title: 'Lavando',
-    Icon: WashingMachine,
-    onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
-  },
-  {
-    id: 'pajado',
+    id: 'pago',
     title: (id, t) => (t.pedidos.find((p) => p.id === id)?.pagado ? 'Pagado' : 'Pendiente'),
     Icon: CreditCard,
     onClick: (id, t) => t.togglePago(id),

@@ -20,6 +20,20 @@ const botonesEntregado: BotonAccionDef[] = [
     onClick: (id, t) => t.router.push('/base')
   },
   {
+    id: 'lavar',
+    title: 'Lavar',
+    Icon: Droplet,
+    onClick: (id, t) => t.changeEstado(id, 'LAVAR'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVAR',
+  },
+  {
+    id: 'lavando',
+    title: 'Lavando',
+    Icon: WashingMachine,
+    onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
+  },
+  {
     id: 'guardado',
     title: 'Guardado',
     Icon: CheckCircle2,
@@ -32,20 +46,6 @@ const botonesEntregado: BotonAccionDef[] = [
     Icon: Truck,
     onClick: (id, t) => t.changeEstado(id, 'ENTREGAR'),
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGAR',
-  },
-  {
-    id: 'entregado',
-    title: 'Entregado',
-    Icon: PackageCheck,
-    onClick: (id, t) => t.changeEstado(id, 'ENTREGADO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
-  },
-  {
-    id: 'lavar',
-    title: 'Lavar',
-    Icon: Droplet,
-    onClick: (id, t) => t.changeEstado(id, 'LAVAR'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVAR',
   },
   {
     id: 'pago',

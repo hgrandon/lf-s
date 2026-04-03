@@ -24,6 +24,20 @@ const botonesGuardado: BotonAccionDef[] = [
     variant: 'success'
   },
   {
+    id: 'lavar',
+    title: 'Lavar',
+    Icon: Droplet,
+    onClick: (id, t) => t.changeEstado(id, 'LAVAR'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVAR',
+  },
+  {
+    id: 'lavando',
+    title: 'Lavando',
+    Icon: WashingMachine,
+    onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
+  },
+  {
     id: 'entregar',
     title: 'Entregar',
     Icon: Truck,
@@ -40,20 +54,6 @@ const botonesGuardado: BotonAccionDef[] = [
        else t.setAskPaidForId(id);
     },
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
-  },
-  {
-    id: 'lavar',
-    title: 'Lavar',
-    Icon: Droplet,
-    onClick: (id, t) => t.changeEstado(id, 'LAVAR'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVAR',
-  },
-  {
-    id: 'lavando',
-    title: 'Lavando',
-    Icon: WashingMachine,
-    onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
   },
   {
     id: 'pago',

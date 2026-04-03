@@ -64,13 +64,13 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       className={[
-        'flex items-center justify-center p-3 rounded-xl transition-all w-full h-full',
+        'flex items-center justify-center p-2 rounded-lg transition-all w-full h-full',
         cls,
         disabled && !active ? 'opacity-40 cursor-not-allowed saturate-0' : '',
       ].join(' ')}
       title={title}
     >
-      <Icon size={24} strokeWidth={active ? 2.5 : 2} />
+      <Icon size={20} strokeWidth={active ? 2.5 : 2} />
     </button>
   );
 }
@@ -357,7 +357,7 @@ export function TableroUI({
         <div className="mx-auto w-full rounded-2xl bg-white/10 border border-white/15 p-3">
           <div className="flex gap-2 justify-center overflow-x-auto">
             {botonesAccion.map((b) => (
-              <div key={b.id} className="min-w-[60px] flex-1 max-w-[90px]">
+              <div key={b.id} className="min-w-[50px] flex-1 max-w-[75px]">
                 <IconBtn
                   title={typeof b.title === 'function' ? (pedidoAbierto ? b.title(pedidoAbierto.id, t) : '...') : b.title}
                   disabled={!pedidoAbierto || t.saving}

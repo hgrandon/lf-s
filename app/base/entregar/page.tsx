@@ -13,27 +13,6 @@ import {
 
 const botonesEntregar: BotonAccionDef[] = [
   {
-    id: 'guardado',
-    title: 'Guardado',
-    Icon: CheckCircle2,
-    onClick: (id, t) => t.changeEstado(id, 'GUARDADO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'GUARDADO',
-  },
-  {
-    id: 'entregar',
-    title: 'Entregar',
-    Icon: Truck,
-    onClick: (id, t) => t.changeEstado(id, 'ENTREGAR'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGAR',
-  },
-  {
-    id: 'entregado',
-    title: 'Entregado',
-    Icon: PackageCheck,
-    onClick: (id, t) => t.changeEstado(id, 'ENTREGADO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
-  },
-  {
     id: 'lavar',
     title: 'Lavar',
     Icon: Droplet,
@@ -46,6 +25,20 @@ const botonesEntregar: BotonAccionDef[] = [
     Icon: WashingMachine,
     onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
+  },
+  {
+    id: 'guardado',
+    title: 'Guardado',
+    Icon: CheckCircle2,
+    onClick: (id, t) => t.changeEstado(id, 'GUARDADO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'GUARDADO',
+  },
+  {
+    id: 'entregado',
+    title: 'Entregado',
+    Icon: PackageCheck,
+    onClick: (id, t) => t.changeEstado(id, 'ENTREGADO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
   },
   {
     id: 'pago',
