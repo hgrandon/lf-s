@@ -113,17 +113,24 @@ export function TableroUI({
                    bg-gradient-to-r from-violet-800/95 via-fuchsia-700/95 to-indigo-800/95
                    backdrop-blur-md border-b border-white/10"
       >
-        <div className="flex flex-col gap-1">
-          <h1 className="font-bold text-base lg:text-xl">{titulo}</h1>
+        <div className="flex flex-col gap-1 z-10 relative max-w-[40%] overflow-hidden">
+          <h1 className="font-bold text-base lg:text-xl truncate">{titulo}</h1>
           <div className="text-[11px] lg:text-xs text-white/80 flex items-center gap-2">
-            <span>{totalPedidos} pedidos</span>
-            <span className="opacity-60">•</span>
-            <span>Total {CLP.format(totalMonto)}</span>
+            <span className="whitespace-nowrap">{totalPedidos} pedidos</span>
+            <span className="opacity-60 hidden sm:inline">•</span>
+            <span className="whitespace-nowrap hidden sm:inline">Total {CLP.format(totalMonto)}</span>
           </div>
         </div>
+
+        {pedidoAbierto && (
+          <div className="absolute left-1/2 -translate-x-1/2 font-black text-3xl lg:text-4xl text-white drop-shadow-md">
+            {pedidoAbierto.id}
+          </div>
+        )}
+
         <button
           onClick={() => router.push(backURL)}
-          className="text-xs lg:text-sm text-white/90 hover:text-white"
+          className="text-xs lg:text-sm text-white/90 hover:text-white z-10 relative"
         >
           {backLabel}
         </button>
@@ -371,14 +378,13 @@ export function TableroUI({
           </div>
 
           {pedidoAbierto ? (
-            <div className="mt-2 text-center text-xs text-white/90">
-              Pedido seleccionado: <b>#{pedidoAbierto.id}</b>{' '}
-              {t.saving && (
+            t.saving ? (
+              <div className="mt-2 text-center text-xs text-white/90">
                 <span className="inline-flex items-center gap-1">
                   <Loader2 size={14} className="animate-spin" /> Guardando…
                 </span>
-              )}
-            </div>
+              </div>
+            ) : <div className="mt-2 h-[18px]"></div>
           ) : (
             <div className="mt-2 text-center text-xs text-white/70">
               Abre un pedido para habilitar las acciones.
