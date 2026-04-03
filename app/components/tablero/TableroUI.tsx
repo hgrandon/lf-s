@@ -13,6 +13,12 @@ import {
   Printer,
   MapPin,
   Home,
+  Store,
+  Droplet,
+  WashingMachine,
+  CheckCircle2,
+  Truck,
+  PackageCheck,
   type LucideIcon,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -101,6 +107,17 @@ export function TableroUI({
     return acc + Number(p.total ?? 0);
   }, 0);
 
+  const getEstadoIcon = () => {
+    switch (opciones.estadoBase) {
+      case 'LAVAR': return <Droplet size={26} />;
+      case 'LAVANDO': return <WashingMachine size={26} />;
+      case 'GUARDADO': return <CheckCircle2 size={26} />;
+      case 'ENTREGAR': return <Truck size={26} />;
+      case 'ENTREGADO': return <PackageCheck size={26} />;
+      default: return <h1 className="font-bold text-base lg:text-xl truncate">{titulo}</h1>;
+    }
+  };
+
   const pedidoAbierto = t.pedidos.find((p) => p.id === t.openId);
 
   return (
@@ -114,7 +131,9 @@ export function TableroUI({
                    backdrop-blur-md border-b border-white/10"
       >
         <div className="flex flex-col gap-1 z-10 relative max-w-[40%] overflow-hidden">
-          <h1 className="font-bold text-base lg:text-xl truncate">{titulo}</h1>
+          <div className="flex items-center gap-2 text-white" title={titulo}>
+            {getEstadoIcon()}
+          </div>
           <div className="text-[11px] lg:text-xs text-white/80 flex items-center gap-2">
             <span className="whitespace-nowrap">{totalPedidos} pedidos</span>
             <span className="opacity-60 hidden sm:inline">•</span>
@@ -196,16 +215,19 @@ export function TableroUI({
                       <div className="font-extrabold tracking-wide text-sm lg:text-base">
                         N° {p.id}
                         {p.tipo_entrega === 'LOCAL' && (
-                          <span className="ml-1 text-[10px] lg:text-xs bg-black/30 px-2 py-[2px] rounded-full align-middle">LOCAL</span>
+                          <span className="ml-2 inline-flex items-center justify-center bg-black/30 w-6 h-6 rounded-full align-middle text-amber-400" title="Retiro en Local">
+                            <Archive size={14} />
+                          </span>
                         )}
                         {p.tipo_entrega === 'DOMICILIO' && (
-                          <span className="ml-1 text-[10px] lg:text-xs bg-black/30 px-2 py-[2px] rounded-full align-middle">DOMICILIO</span>
+                          <span className="ml-2 inline-flex items-center justify-center bg-black/30 w-6 h-6 rounded-full align-middle text-sky-400" title="Entrega a Domicilio">
+                            <Truck size={14} />
+                          </span>
                         )}
                       </div>
                       <div className="text-[10px] lg:text-xs uppercase text-white/85">
                         {p.cliente}{' '}
-                        {p.telefono && `• +${toE164CL(p.telefono)?.slice(2) ?? p.telefono}`}{' '}
-                        {p.pagado ? '• PAGADO' : '• PENDIENTE'}
+                        {p.telefono && `• +${toE164CL(p.telefono)?.slice(2) ?? p.telefono}`}
                       </div>
                       {permiteRuta && dirCorta && (
                         <div className="text-[9px] lg:text-[11px] text-white/75 normal-case">
