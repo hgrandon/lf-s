@@ -70,9 +70,9 @@ const tiles: TileConfig[] = [
   { href: '/clientes', title: 'Cliente', icon: <User size={22} /> },
   { href: '/base', title: 'Base', icon: <Database size={22} /> },
 
-  // ✅ REPORTE EMPRESA (ruta correcta)
+  // ✅ REPORTE EMPRESA (ruta correcta al nuevo reporte)
   {
-    href: '/base/reporte_empresa',
+    href: '/reporte',
     title: 'Reporte Empresa',
     icon: <FileDown size={22} />,
   },

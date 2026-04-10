@@ -49,26 +49,83 @@ export default function ReporteEmpresasPage() {
      CARGAR REPORTE
      ====================================================== */
   const cargarReporte = async () => {
-    if (!desde || !hasta) return
+    if (!desde || !hasta) return;
 
-    setLoading(true)
+    setLoading(true);
 
-    const { data, error } = await supabase
-      .from('vw_reporte_empresa')
-      .select('*')
-      .gte('fecha', desde)
-      .lte('fecha', hasta)
-      .order('fecha', { ascending: true })
-      .order('pedido', { ascending: true })
+    try {
+      // 1. Fetch pedidos en el rango
+      const { data: pedidos, error: errPedidos } = await supabase
+        .from('pedido')
+        .select('nro, fecha, empresa_nombre, es_empresa')
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('fecha', { ascending: true })
+        .order('nro', { ascending: true });
 
-    if (error) {
-      console.error(error)
-      setData([])
-    } else {
-      setData(data || [])
+      if (errPedidos) throw errPedidos;
+
+      if (!pedidos || pedidos.length === 0) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+
+      // Tomamos solo los que tienen es_empresa o un nombre de empresa
+      const pedidosEmpresa = pedidos.filter(p => p.es_empresa || p.empresa_nombre);
+      const nros = pedidosEmpresa.map(p => p.nro);
+
+      if (nros.length === 0) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fetch de líneas para esos pedidos
+      const { data: lineas, error: errLineas } = await supabase
+        .from('pedido_linea')
+        .select('pedido_nro, articulo, qty, valor')
+        .in('pedido_nro', nros);
+
+      if (errLineas) throw errLineas;
+
+      // 3. Procesar y combinar (con IVA del 19%)
+      const results: Row[] = [];
+      const IVA_RATE = 0.19;
+
+      const lineasArr = lineas || [];
+
+      pedidosEmpresa.forEach(p => {
+        const lineasPedido = lineasArr.filter(l => l.pedido_nro === p.nro);
+        
+        lineasPedido.forEach(l => {
+          const qty = Number(l.qty || 0);
+          const valor = Number(l.valor || 0);
+          const neto = Math.round(qty * valor);
+          const iva = Math.round(neto * IVA_RATE);
+          const total = neto + iva;
+
+          results.push({
+            pedido: p.nro,
+            fecha: p.fecha || '',
+            empresa_nombre: (p.empresa_nombre && p.empresa_nombre.trim() !== '') ? p.empresa_nombre : 'SIN EMPRESA',
+            articulo: l.articulo || '',
+            cantidad: qty,
+            neto: neto,
+            iva: iva,
+            total: total
+          });
+        });
+      });
+
+      setData(results);
+    } catch (err: any) {
+      console.error("Error cargando reporte:", err);
+      alert("Hubo un problema al cargar el reporte: " + err.message);
+      setData([]);
     }
 
-    setLoading(false)
+    setLoading(false);
   }
 
   /* ======================================================

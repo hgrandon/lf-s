@@ -291,7 +291,7 @@ export default function BasePage() {
         title: 'Reporte Empresa',
         key: null,
         icon: Archive,
-        href: '/reporte_empresa',
+        href: '/reporte',
       },
       {
         title: 'Guardado',

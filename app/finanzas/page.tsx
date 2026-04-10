@@ -170,13 +170,16 @@ export default function FinanzasPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Dataset histórico (para comparaciones y 5 meses)
+  // Deuda total global
+  const [deudaHistorica, setDeudaHistorica] = useState(0);
+
+  // Dataset histórico (para comparaciones y 12 meses)
   const [hist, setHist] = useState<Pedido[]>([]);
   const [histLoaded, setHistLoaded] = useState(false);
   const [histError, setHistError] = useState<string | null>(null);
 
   // acordeón del gráfico circular
-  const [showPie, setShowPie] = useState(true);
+  const [showPie, setShowPie] = useState(false);
 
   /* ------- Carga para el filtro seleccionado (HOY / SEMANA / etc.) ------- */
   async function cargarDatos() {
@@ -212,13 +215,29 @@ export default function FinanzasPage() {
     }
   }
 
-  /* ------- Carga histórica para comparaciones y 5 meses ------- */
+  /* ------- Carga de Deuda Histórica Total ------- */
+  async function cargarDeudaHistorica() {
+    try {
+      const { data, error } = await supabase
+        .from('pedido')
+        .select('total')
+        .eq('pagado', false);
+        
+      if (!error && data) {
+        setDeudaHistorica(data.reduce((acc, p) => acc + (p.total ?? 0), 0));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  /* ------- Carga histórica para comparaciones y 12 meses ------- */
   async function cargarHist() {
     try {
       setHistError(null);
       const hoy = new Date();
-      // desde 5 meses atrás (inicio de mes)
-      const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
+      // desde 12 meses atrás (inicio de mes) para comparar YoY
+      const desde = new Date(hoy.getFullYear() - 1, hoy.getMonth(), 1);
 
       const { data, error } = await supabase
         .from('pedido')
@@ -244,6 +263,7 @@ export default function FinanzasPage() {
   useEffect(() => {
     if (!roleOk) return;
     cargarDatos();
+    cargarDeudaHistorica();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtro, roleOk]);
 
@@ -285,6 +305,9 @@ export default function FinanzasPage() {
     proyeccionFinDeMes,
     mesesLabels,
     mesesMontos,
+    deudaMesActual,
+    totalEsteMes,
+    totalMismoMesAnoPasado,
   } = useMemo(() => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
@@ -368,12 +391,31 @@ export default function FinanzasPage() {
     const montosMeses = meses.map((m) => montosPorMes.get(m.key) ?? 0);
     const labelsMeses = meses.map((m) => m.label);
 
+    const deudaMesAct = hist
+      .filter((p) => {
+        const d = parseFecha(p.fecha_ingreso);
+        if (!d) return false;
+        return !p.pagado && d.getFullYear() === hoy.getFullYear() && d.getMonth() === hoy.getMonth();
+      })
+      .reduce((acc, p) => acc + (p.total ?? 0), 0);
+
+    const totalAnoPasado = hist
+      .filter((p) => {
+        const d = parseFecha(p.fecha_ingreso);
+        if (!d) return false;
+        return d.getFullYear() === hoy.getFullYear() - 1 && d.getMonth() === hoy.getMonth();
+      })
+      .reduce((acc, p) => acc + (p.total ?? 0), 0);
+
     return {
       comparacionLabels: labelsComp,
       comparacionMontos: montosComp,
       proyeccionFinDeMes: proy,
       mesesLabels: labelsMeses,
       mesesMontos: montosMeses,
+      deudaMesActual: deudaMesAct,
+      totalEsteMes: totalMes,
+      totalMismoMesAnoPasado: totalAnoPasado,
     };
   }, [hist]);
 
@@ -474,63 +516,88 @@ export default function FinanzasPage() {
     year: 'numeric',
   });
 
+  // Calculate percentage variation YoY
+  let varPct = 0;
+  if (totalMismoMesAnoPasado && totalMismoMesAnoPasado > 0) {
+    varPct = ((totalEsteMes - totalMismoMesAnoPasado) / totalMismoMesAnoPasado) * 100;
+  }
+  const isVarPositive = varPct >= 0;
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-4 py-4">
+    <main className="min-h-screen bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 text-white px-4 py-4 pb-16">
       {/* HEADER */}
-      <header className="flex items-center justify-between gap-3 mb-4">
+      <header className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/base')}
-            className="rounded-full bg-white/10 hover:bg.white/20 p-2 border border-white/30"
+            className="rounded-full bg-white/10 hover:bg-white/20 p-2 border border-white/30 transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
           <div>
-            <h1 className="font-bold text-lg">Finanzas</h1>
-            <p className="text-xs text-white/80">
-              Resumen de ingresos y pagos (solo ADMIN)
-            </p>
-            <p className="text-[11px] text-white/70">
+            <h1 className="font-extrabold text-xl tracking-tight">Finanzas</h1>
+            <p className="text-xs text-white/70 font-medium">
               Hoy: {hoyTexto}
             </p>
           </div>
         </div>
+        <button
+            onClick={() => router.push('/finanzas/empresa')}
+            className="rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-3 py-2 text-xs font-bold transition-colors shadow-sm"
+          >
+            Empresa
+          </button>
       </header>
 
-      {/* TARJETA FINANZAS EMPRESA */}
-      <button
-        onClick={() => router.push('/finanzas/empresa')}
-        className="w-full mb-4 rounded-2xl bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500
-                   border border-white/25 px-4 py-3 text-left hover:opacity-90 transition-all shadow-lg"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-white/85">
-              Finanzas empresa
-            </div>
-            <div className="text-lg font-extrabold text-white">
-              Reportes por periodos y PDF
-            </div>
+      <section className="grid gap-5">
+        {/* PANELES DE DEUDA FIJAS */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between hover:bg-white/15 transition-colors">
+            <span className="text-[10px] uppercase tracking-wider text-white/70 font-bold mb-1">Deuda Histórica</span>
+            {loading && deudaHistorica === 0 ? (
+                <div className="h-7 w-20 bg-white/20 animate-pulse rounded"></div>
+            ) : (
+                <span className="text-xl sm:text-2xl font-extrabold text-amber-300 drop-shadow-[0_2px_10px_rgba(251,191,36,0.3)]">
+                ${deudaHistorica.toLocaleString('es-CL')}
+                </span>
+            )}
           </div>
-          <ChevronDown size={20} className="text-white -rotate-90" />
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col justify-between hover:bg-white/15 transition-colors">
+            <span className="text-[10px] uppercase tracking-wider text-white/70 font-bold mb-1">Deuda Mes Actual</span>
+            {loading && deudaMesActual === undefined ? (
+                <div className="h-7 w-20 bg-white/20 animate-pulse rounded"></div>
+            ) : (
+                <span className="text-xl sm:text-2xl font-extrabold text-emerald-300 drop-shadow-[0_2px_10px_rgba(52,211,153,0.3)]">
+                ${(deudaMesActual || 0).toLocaleString('es-CL')}
+                </span>
+            )}
+          </div>
         </div>
-        <p className="mt-1 text-[11px] text-white/85">
-          Ver histórico quincenal, mensual y anual solo de pedidos empresa.
-        </p>
-      </button>
 
-      <section className="grid gap-4">
-        {/* FILTROS */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        {/* COMPARATIVA AÑO A AÑO */}
+        <div className="rounded-2xl bg-black/25 backdrop-blur-md border border-white/15 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.15)] flex items-center justify-between hover:bg-black/30 transition-colors">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-white/70 font-bold">Variación (YoY)</div>
+            <div className="text-xs text-white/50 mt-0.5 font-medium">Este mes vs {hoyTexto.slice(-4) ? Number(hoyTexto.slice(-4)) - 1 : 'año pasado'}</div>
+          </div>
+          <div className="text-right">
+             <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-black ${isVarPositive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
+                {isVarPositive ? '+' : ''}{varPct.toFixed(1)}%
+             </div>
+          </div>
+        </div>
+
+        {/* FILTROS TIPO PÍLDORA */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x">
           {(['HOY', 'SEMANA', 'MES', 'AÑO', 'TODO'] as Filtro[]).map((f) => (
             <button
               key={f}
               onClick={() => setFiltro(f)}
               className={[
-                'px-3 py-2 rounded-2xl text-xs border whitespace-nowrap',
+                'px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300 snap-center',
                 filtro === f
-                  ? 'bg-white text-violet-700 border-white'
-                  : 'bg-white/10 border-white/30 text-white/90',
+                  ? 'bg-white text-violet-900 shadow-[0_0_15px_rgba(255,255,255,0.4)]'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80 border border-white/5'
               ].join(' ')}
             >
               {f}
@@ -538,76 +605,42 @@ export default function FinanzasPage() {
           ))}
         </div>
 
-        {/* RESUMEN RÁPIDO DEL RANGO SELECCIONADO */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-2xl bg-emerald-500/90 text-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide">
-              Pagado
+        {/* RESUMEN DEL FILTRO */}
+        <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-black/20 border border-white/10 p-3 text-center transition-colors">
+                <div className="text-[10px] text-emerald-200/80 uppercase font-bold mb-1">Pagado</div>
+                <div className="font-extrabold text-sm">${totalPagado.toLocaleString('es-CL')}</div>
             </div>
-            <div className="text-lg font-extrabold">
-              ${totalPagado.toLocaleString('es-CL')}
+            <div className="rounded-xl bg-black/20 border border-white/10 p-3 text-center transition-colors">
+                <div className="text-[10px] text-amber-200/80 uppercase font-bold mb-1">Pendiente</div>
+                <div className="font-extrabold text-sm">${totalPendiente.toLocaleString('es-CL')}</div>
             </div>
-          </div>
-          <div className="rounded-2xl bg-amber-500/90 text-white px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide">
-              Pendiente
+            <div className="rounded-xl bg-white/15 border border-white/20 p-3 text-center ring-1 ring-white/10 transition-colors">
+                <div className="text-[10px] text-white/80 uppercase font-bold mb-1">Total Rango</div>
+                <div className="font-extrabold text-white text-sm">${totalGeneral.toLocaleString('es-CL')}</div>
             </div>
-            <div className="text-lg font-extrabold">
-              ${totalPendiente.toLocaleString('es-CL')}
-            </div>
-          </div>
-          <div className="col-span-2 rounded-2xl bg-black/15 border border-white/20 px-4 py-3">
-            <div className="text-[11px] uppercase tracking-wide">
-              Total
-            </div>
-            <div className="text-xl font-extrabold">
-              ${totalGeneral.toLocaleString('es-CL')}
-            </div>
-          </div>
-        </div>
-
-        {/* PROYECCIÓN A FIN DE MES */}
-        <div className="rounded-2xl bg-black/25 border border-emerald-400/40 px-4 py-3 text-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-emerald-200">
-                Proyección fin de mes (total)
-              </div>
-              <div className="text-xl font-extrabold text-emerald-100">
-                $
-                {Math.round(proyeccionFinDeMes || 0).toLocaleString(
-                  'es-CL',
-                )}
-              </div>
-            </div>
-            <div className="text-[11px] text-white/70 text-right">
-              Basado en el promedio diario del mes actual
-              (ingresos pagados + pendientes).
-            </div>
-          </div>
         </div>
 
         {/* GRÁFICO DONUT EN ACORDEÓN */}
-        <div className="rounded-2xl bg-black/20 border border-white/20">
+        <div className="rounded-2xl bg-black/20 border border-white/15 overflow-hidden transition-colors">
           <button
             type="button"
             onClick={() => setShowPie((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium
-                       bg-white/5 hover:bg-white/10 border-b border-white/15"
+            className="w-full flex items-center justify-between px-4 py-3.5 text-sm font-semibold hover:bg-white/5 transition-colors"
           >
-            <span>Distribución de pagos (Pagado vs Pendiente)</span>
+            <span>Distribución de pagos</span>
             <ChevronDown
               size={18}
-              className={`transition-transform ${showPie ? 'rotate-180' : ''}`}
+              className={`transition-transform duration-300 ${showPie ? 'rotate-180' : ''}`}
             />
           </button>
 
           {showPie && (
-            <div className="p-4">
-              {loading ? (
-                <div className="flex items-center gap-2 text-white/90">
+            <div className="p-4 border-t border-white/10">
+              {loading && pedidos.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 text-white/70 py-4">
                   <Loader2 className="animate-spin" size={18} />
-                  Cargando…
+                  <span className="text-xs">Cargando gráfico…</span>
                 </div>
               ) : (
                 <>
@@ -616,86 +649,57 @@ export default function FinanzasPage() {
                       {loadError}
                     </div>
                   )}
-                  <Doughnut data={chartData} />
+                  <div className="max-w-[200px] mx-auto">
+                    <Doughnut data={chartData} options={{ maintainAspectRatio: true }} />
+                  </div>
                 </>
               )}
             </div>
           )}
         </div>
 
-        {/* GRÁFICO LÍNEA: HOY vs AYER vs MISMO DÍA MES ANTERIOR */}
-        <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
-          <div className="mb-2 text-xs text.white/80">
-            Comparación diaria (monto total del día, pagado + pendiente):
+        {/* COMPARATIVA DIARIA Y PROYECCIÓN */}
+        <div className="rounded-2xl bg-black/20 border border-white/15 p-4 shadow-lg transition-colors">
+          <div className="flex justify-between items-start mb-3">
+            <div className="text-xs text-white/80 font-bold uppercase tracking-wide">
+              Evolución Diaria
+            </div>
+            <div className="text-right">
+                <div className="text-[10px] text-white/60 mb-0.5">Proyección Fin de Mes</div>
+                <div className="text-sm font-black text-emerald-200">
+                  ${Math.round(proyeccionFinDeMes || 0).toLocaleString('es-CL')}
+                </div>
+            </div>
           </div>
           {histLoaded && hist.length > 0 ? (
             <Line data={comparacionLineData} options={lineOptions} />
           ) : (
-            <div className="text-xs text-white/70">
-              Aún no hay histórico suficiente para la comparación.
-              {histError && (
-                <div className="mt-1 text-amber-200">{histError}</div>
-              )}
+            <div className="text-xs text-white/50 italic flex items-center gap-2 py-4 justify-center">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin"/> : null} 
+              Comparativa no disponible.
             </div>
           )}
         </div>
 
-        {/* GRÁFICO LÍNEA: ÚLTIMOS 5 MESES */}
-        <div className="rounded-2xl bg-black/25 border border-white/20 p-4">
-          <div className="mb-2 text-xs text-white/80">
-            Últimos 5 meses (total mensual, pagado + pendiente):
+        {/* RENDIMIENTO MENSUAL */}
+        <div className="rounded-2xl bg-black/20 border border-white/15 p-4 shadow-lg transition-colors">
+          <div className="mb-3 text-xs text-white/80 font-bold uppercase tracking-wide">
+            Evolución Mensual (Total)
           </div>
           {histLoaded && hist.length > 0 ? (
-            <Line data={mesesLineData} options={lineOptions} />
+            <div className="mt-2">
+              <Line data={mesesLineData} options={lineOptions} />
+            </div>
           ) : (
-            <div className="text-xs text-white/70">
-              Sin datos para los últimos meses.
-              {histError && (
-                <div className="mt-1 text-amber-200">{histError}</div>
-              )}
+            <div className="text-xs text-white/50 italic flex items-center gap-2 py-4 justify-center">
+              {loading ? <Loader2 className="w-3 h-3 animate-spin"/> : null}
+              Rendimiento no disponible.
             </div>
           )}
         </div>
-
-        {/* TABLA DEL RANGO SELECCIONADO */}
-        <div className="rounded-2xl bg-black/20 border border-white/20 p-3 text-xs overflow-auto max-h-[40vh]">
-          <table className="w-full">
-            <thead className="text-white/80 border-b border-white/20">
-              <tr>
-                <th className="text-left py-1">Pedido</th>
-                <th className="text-right py-1">Total</th>
-                <th className="text-center py-1">Pago</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pedidos.map((p) => (
-                <tr key={p.nro} className="border-b border-white/10">
-                  <td className="py-1">#{p.nro}</td>
-                  <td className="py-1 text-right">
-                    {(p.total ?? 0).toLocaleString('es-CL', {
-                      style: 'currency',
-                      currency: 'CLP',
-                      maximumFractionDigits: 0,
-                    })}
-                  </td>
-                  <td className="py-1 text-center">
-                    {p.pagado ? 'Pagado' : 'Pendiente'}
-                  </td>
-                </tr>
-              ))}
-              {pedidos.length === 0 && !loading && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="py-3 text-center text-white/70"
-                  >
-                    Sin datos en este rango.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        
+        {/* ESPACIO EXTRA AL FINAL PARA NO CORTAR CON NAVEGACIÓN U OTROS */}
+        <div className="h-10"></div>
       </section>
     </main>
   );

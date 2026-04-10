@@ -258,123 +258,139 @@ export function TableroUI({
                 </button>
 
                 {isOpen && (
-                  <div className="px-3 sm:px-4 lg:px-6 pb-3 lg:pb-5">
-                    <div className="rounded-xl bg-white/5 border border-white/15 p-2 lg:p-3">
+                  <div className="px-3 sm:px-4 lg:px-6 pb-4 pt-1">
+                    {/* Action buttons & Details Toggle */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
                       <button
-                        onClick={() => t.setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          t.setOpenDetail((prev) => ({ ...prev, [p.id]: !prev[p.id] }));
+                        }}
+                        className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white font-semibold text-xs sm:text-sm shadow-sm transition-colors"
                       >
-                        <div className="flex items-center gap-2">
-                          <Table size={16} />
-                          <span className="font-semibold">Detalle Pedido</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              t.goEdit(p.id);
-                            }}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg bg-violet-600 hover:bg-violet-700 text-violet-50 shadow border border-violet-400/60"
-                          >
-                            <Archive size={14} className="text-violet-50" />
-                            <span>Editar</span>
-                          </button>
-
-                          {permiteImprimirRotulo && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/rotulos?nro=${p.id}&copies=1`);
-                              }}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-[0.7rem] rounded-lg bg-white text-violet-700 hover:bg-violet-50 shadow border border-violet-300"
-                              title="Imprimir rótulo de este pedido"
-                            >
-                              <Printer size={14} />
-                              <span>Rótulo</span>
-                            </button>
-                          )}
-
-                          {detOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </div>
+                        <Table size={15} />
+                        <span>Detalles y Foto</span>
+                        {detOpen ? <ChevronDown size={16} className="opacity-70" /> : <ChevronRight size={16} className="opacity-70" />}
                       </button>
 
-                      {detOpen && (
-                        <div className="mt-3 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex justify-center">
-                          <div className="overflow-x-auto w-full max-w-4xl">
-                            <table className="w-full text-xs lg:text-sm text-white/95">
-                              <thead className="bg-white/10 text-white/90">
-                                <tr>
-                                  <th className="text-left px-3 py-2 w-[40%]">Artículo</th>
-                                  <th className="text-right px-3 py-2 w-[15%]">Can.</th>
-                                  <th className="text-right px-3 py-2 w-[20%]">Valor</th>
-                                  <th className="text-right px-3 py-2 w-[25%]">Subtotal</th>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            t.goEdit(p.id);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs lg:text-sm font-semibold rounded-lg bg-violet-600/90 hover:bg-violet-600 text-white shadow-sm border border-violet-400/50 transition-colors"
+                        >
+                          <Archive size={15} />
+                          <span className="hidden sm:inline">Editar</span>
+                        </button>
+
+                        {permiteImprimirRotulo && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/rotulos?nro=${p.id}&copies=1`);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs lg:text-sm font-semibold rounded-lg bg-white/10 hover:bg-white/20 text-white shadow-sm border border-white/20 transition-colors"
+                          >
+                            <Printer size={15} />
+                            <span className="hidden sm:inline">Rótulo</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {detOpen && (
+                      <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                        {/* Table Details */}
+                        <div className="bg-black/20 rounded-2xl p-3 lg:p-4 border border-white/10 mb-3 shadow-inner">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs lg:text-sm text-left">
+                              <thead>
+                                <tr className="text-white/50 border-b border-white/10 uppercase text-[10px] tracking-wider">
+                                  <th className="pb-2 font-semibold w-[45%]">Artículo</th>
+                                  <th className="pb-2 font-semibold text-center w-[15%] hidden sm:table-cell">Valor</th>
+                                  <th className="pb-2 font-semibold text-center w-[15%]">Can.</th>
+                                  <th className="pb-2 font-semibold text-right w-[25%] gap-2">Subtotal</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-white/10">
+                              <tbody className="divide-y divide-white/5">
                                 {p.items?.length ? (
                                   p.items.map((it, idx) => (
-                                    <tr key={idx}>
-                                      <td className="px-3 py-2 truncate">
-                                        {it.articulo.length > 20 ? it.articulo.slice(0, 20) + '.' : it.articulo}
+                                    <tr key={idx} className="text-white/90">
+                                      <td className="py-2.5 pr-2 truncate max-w-[140px] font-medium text-white" title={it.articulo}>
+                                        {it.articulo}
                                       </td>
-                                      <td className="px-3 py-2 text-right">{it.qty}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.valor)}</td>
-                                      <td className="px-3 py-2 text-right">{CLP.format(it.qty * it.valor)}</td>
+                                      <td className="py-2.5 text-center text-white/70 hidden sm:table-cell">
+                                        {CLP.format(it.valor)}
+                                      </td>
+                                      <td className="py-2.5 text-center">
+                                        <span className="bg-white/10 px-2 py-0.5 rounded text-white/90 text-[11px] font-bold">{it.qty}</span>
+                                      </td>
+                                      <td className="py-2.5 text-right font-semibold text-white">
+                                        {CLP.format(it.qty * it.valor)}
+                                      </td>
                                     </tr>
                                   ))
                                 ) : (
                                   <tr>
-                                    <td className="px-3 py-4 text-center text-white/70" colSpan={4}>
-                                      Sin artículos registrados.
+                                    <td className="py-4 text-center text-white/50" colSpan={4}>
+                                      Sin artículos en este pedido.
                                     </td>
                                   </tr>
                                 )}
                               </tbody>
                             </table>
-                            <div
-                              className="px-3 py-3 bg-white/10 text-right font-extrabold text-white select-none cursor-pointer"
-                              title="Doble clic para editar pedido"
-                              onDoubleClick={() => t.setAskEditForId(p.id)}
+                          </div>
+                          
+                          <div className="mt-3 pt-3 border-t border-white/10 flex justify-end">
+                            <div 
+                              className="inline-block px-4 py-2 bg-gradient-to-r from-violet-600/40 to-fuchsia-600/40 border border-white/20 rounded-xl font-bold text-sm lg:text-base text-white shadow-md cursor-pointer hover:from-violet-600/60 hover:to-fuchsia-600/60 transition-colors"
+                              onClick={() => t.setAskEditForId(p.id)}
+                              title="Doble clic para editar pedido total"
                             >
                               Total: {CLP.format(totalCalc)}
                             </div>
                           </div>
                         </div>
-                      )}
 
-                      <div className="mt-3 rounded-xl overflow-hidden bg-black/20 border border-white/10">
-                        {p.foto_url && !t.imageError[p.id] ? (
-                          <div
-                            className="w-full bg-black/10 rounded-xl overflow-hidden border border-white/10 cursor-zoom-in relative max-h-[70vh] flex items-center justify-center p-2"
-                            onDoubleClick={() => t.openPickerFor(p.id)}
-                            title="Doble clic para cambiar la imagen"
-                          >
-                            <img
-                              src={p.foto_url}
-                              alt={`Foto pedido ${p.id}`}
-                              className="max-h-[70vh] rounded-md shadow-lg"
-                              onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => t.openPickerFor(p.id)}
-                            className="w-full p-6 text-sm text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
-                            title="Agregar imagen"
-                          >
-                            <ImagePlus size={18} />
-                            <span>
-                              {t.uploading[p.id]
-                                ? 'Subiendo…'
-                                : 'Sin imagen adjunta. Toca para agregar.'}
-                            </span>
-                          </button>
-                        )}
+                        {/* Image Section */}
+                        <div className="bg-black/20 rounded-2xl p-2 border border-white/10 shadow-inner">
+                          {p.foto_url && !t.imageError[p.id] ? (
+                            <div
+                              className="relative w-full aspect-[4/3] sm:aspect-video rounded-xl overflow-hidden cursor-zoom-in group border border-white/5"
+                              onDoubleClick={() => t.openPickerFor(p.id)}
+                              title="Doble clic para cambiar la imagen"
+                            >
+                              <img
+                                src={p.foto_url}
+                                alt={`Foto pedido ${p.id}`}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                                onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-white text-xs font-semibold bg-black/60 px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md">
+                                  <Camera size={14} /> Cambiar foto
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => t.openPickerFor(p.id)}
+                              className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-white/20 text-white/50 hover:text-white hover:bg-white/5 hover:border-white/40 transition-all"
+                              title="Agregar imagen"
+                            >
+                              <div className="p-3 bg-white/5 rounded-full">
+                                <ImagePlus size={20} />
+                              </div>
+                              <span className="text-xs sm:text-sm font-medium">Toca para adjuntar una foto</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
