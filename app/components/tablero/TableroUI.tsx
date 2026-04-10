@@ -269,7 +269,7 @@ export function TableroUI({
                         className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-white font-semibold text-xs sm:text-sm shadow-sm transition-colors"
                       >
                         <Table size={15} />
-                        <span>Detalles y Foto</span>
+                        <span>Detalles</span>
                         {detOpen ? <ChevronDown size={16} className="opacity-70" /> : <ChevronRight size={16} className="opacity-70" />}
                       </button>
 
@@ -354,40 +354,6 @@ export function TableroUI({
                               Total: {CLP.format(totalCalc)}
                             </div>
                           </div>
-                        </div>
-
-                        {/* Image Section */}
-                        <div className="bg-black/20 rounded-2xl p-2 border border-white/10 shadow-inner">
-                          {p.foto_url && !t.imageError[p.id] ? (
-                            <div
-                              className="relative w-full aspect-[4/3] sm:aspect-video rounded-xl overflow-hidden cursor-zoom-in group border border-white/5"
-                              onDoubleClick={() => t.openPickerFor(p.id)}
-                              title="Doble clic para cambiar la imagen"
-                            >
-                              <img
-                                src={p.foto_url}
-                                alt={`Foto pedido ${p.id}`}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                                onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <span className="text-white text-xs font-semibold bg-black/60 px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md">
-                                  <Camera size={14} /> Cambiar foto
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => t.openPickerFor(p.id)}
-                              className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-white/20 text-white/50 hover:text-white hover:bg-white/5 hover:border-white/40 transition-all"
-                              title="Agregar imagen"
-                            >
-                              <div className="p-3 bg-white/5 rounded-full">
-                                <ImagePlus size={20} />
-                              </div>
-                              <span className="text-xs sm:text-sm font-medium">Toca para adjuntar una foto</span>
-                            </button>
-                          )}
                         </div>
                       </div>
                     )}
