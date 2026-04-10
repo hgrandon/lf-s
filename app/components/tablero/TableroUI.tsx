@@ -22,6 +22,7 @@ import {
   PackageCheck,
   Maximize,
   X,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -513,6 +514,59 @@ export function TableroUI({
               <button
                 onClick={() => t.setAskEditForId(null)}
                 className="flex-1 rounded-xl bg-violet-100 text-violet-800 px-4 py-3 hover:bg-violet-200"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Guardado + WhatsApp */}
+      {t.askWaForGuardado && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm"
+          onClick={() => t.setAskWaForGuardado(null)}
+        >
+          <div
+            className="w-[380px] max-w-[92vw] rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-2 text-emerald-600">
+              <CheckCircle2 size={24} />
+              <h3 className="text-lg font-bold">Pedido #{t.askWaForGuardado.id} Guardado</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-6 font-medium">
+              Antes de continuar, ¿Deseas enviar el WhatsApp automático al cliente avisando que está listo para retiro?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => {
+                  const p = t.askWaForGuardado;
+                  if (!p) return;
+                  t.setAskWaForGuardado(null);
+                  await t.changeEstado(p.id, 'GUARDADO');
+                  t.sendComprobanteLink(p);
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 text-white font-bold px-4 py-3.5 hover:bg-emerald-600 transition-all active:scale-95"
+              >
+                <div className="bg-white/20 p-1 rounded-full"><MessageCircle size={16} /></div>
+                Sí, Guardar y Enviar Aviso
+              </button>
+              <button
+                onClick={async () => {
+                  const p = t.askWaForGuardado;
+                  if (!p) return;
+                  t.setAskWaForGuardado(null);
+                  await t.changeEstado(p.id, 'GUARDADO');
+                }}
+                className="rounded-xl border border-slate-200 text-slate-700 font-bold px-4 py-3.5 hover:bg-slate-50 transition-all active:scale-95"
+              >
+                Solo Guardar (Sin Avisar)
+              </button>
+              <button
+                onClick={() => t.setAskWaForGuardado(null)}
+                className="rounded-xl mt-1 text-slate-500 font-semibold px-4 py-2 hover:bg-slate-50 transition-all"
               >
                 Cancelar
               </button>

@@ -121,6 +121,7 @@ export function useTableroPedidos({
 
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
   const [askPaidForId, setAskPaidForId] = useState<number | null>(null);
+  const [askWaForGuardado, setAskWaForGuardado] = useState<Pedido | null>(null);
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
   const [initialScrollDone, setInitialScrollDone] = useState(false);
 
@@ -552,6 +553,7 @@ export function useTableroPedidos({
     imageError, setImageError, saving,
     pickerForPedido, setPickerForPedido, pickerFotoUrl, setPickerFotoUrl, uploading,
     inputCamRef, inputFileRef, askEditForId, setAskEditForId, askPaidForId, setAskPaidForId,
+    askWaForGuardado, setAskWaForGuardado,
     currentSlide, changeSlide,
     changeEstado, togglePago, handleDeleteFoto, handlePick, onFileSelected, openPickerFor,
     sendComprobanteLink, openRuta, goEdit,

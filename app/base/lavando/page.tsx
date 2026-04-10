@@ -16,7 +16,10 @@ const botonesLavando: BotonAccionDef[] = [
     id: 'guardado',
     title: 'Guardado',
     Icon: CheckCircle2,
-    onClick: (id, t) => t.changeEstado(id, 'GUARDADO'),
+    onClick: (id, t) => {
+      const p = t.pedidos.find((x) => x.id === id);
+      if (p) t.setAskWaForGuardado(p);
+    },
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'GUARDADO',
   },
   {
