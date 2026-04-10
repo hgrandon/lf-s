@@ -13,6 +13,13 @@ import {
 
 const botonesEntregar: BotonAccionDef[] = [
   {
+    id: 'entregado',
+    title: 'Entregado',
+    Icon: PackageCheck,
+    onClick: (id, t) => t.changeEstado(id, 'ENTREGADO'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
+  },
+  {
     id: 'lavar',
     title: 'Lavar',
     Icon: Droplet,
@@ -32,13 +39,6 @@ const botonesEntregar: BotonAccionDef[] = [
     Icon: CheckCircle2,
     onClick: (id, t) => t.changeEstado(id, 'GUARDADO'),
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'GUARDADO',
-  },
-  {
-    id: 'entregado',
-    title: 'Entregado',
-    Icon: PackageCheck,
-    onClick: (id, t) => t.changeEstado(id, 'ENTREGADO'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
   },
   {
     id: 'pago',

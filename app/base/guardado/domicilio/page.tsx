@@ -14,6 +14,24 @@ import {
 
 const botonesGuardado: BotonAccionDef[] = [
   {
+    id: 'entregar',
+    title: 'Entregar',
+    Icon: Truck,
+    onClick: (id, t) => t.changeEstado(id, 'ENTREGAR'),
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGAR',
+  },
+  {
+    id: 'entregado',
+    title: 'Entregado',
+    Icon: PackageCheck,
+    onClick: (id, t) => {
+       const p = t.pedidos.find(x => x.id === id);
+       if (p?.pagado) t.changeEstado(id, 'ENTREGADO');
+       else t.setAskPaidForId(id);
+    },
+    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
+  },
+  {
     id: 'comprobante',
     title: 'Comprobante',
     Icon: MessageCircle,
@@ -36,24 +54,6 @@ const botonesGuardado: BotonAccionDef[] = [
     Icon: WashingMachine,
     onClick: (id, t) => t.changeEstado(id, 'LAVANDO'),
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'LAVANDO',
-  },
-  {
-    id: 'entregar',
-    title: 'Entregar',
-    Icon: Truck,
-    onClick: (id, t) => t.changeEstado(id, 'ENTREGAR'),
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGAR',
-  },
-  {
-    id: 'entregado',
-    title: 'Entregado',
-    Icon: PackageCheck,
-    onClick: (id, t) => {
-       const p = t.pedidos.find(x => x.id === id);
-       if (p?.pagado) t.changeEstado(id, 'ENTREGADO');
-       else t.setAskPaidForId(id);
-    },
-    activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
   },
   {
     id: 'pago',
