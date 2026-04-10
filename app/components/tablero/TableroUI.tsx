@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { useTableroPedidos, TableroOpciones, PedidoEstado, normalizarDireccion, toE164CL } from './useTableroPedidos';
 import {
   Loader2,
+  AlertTriangle,
   User,
   ChevronDown,
   ChevronRight,
