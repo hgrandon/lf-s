@@ -2,10 +2,10 @@ import { ReactNode } from 'react';
 import { useTableroPedidos, TableroOpciones, PedidoEstado, normalizarDireccion, toE164CL } from './useTableroPedidos';
 import {
   Loader2,
-  AlertTriangle,
   User,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Table,
   Archive,
   Camera,
@@ -358,38 +358,75 @@ export function TableroUI({
                       </div>
                     )}
 
-                    {/* Image Section: FUERA del acordeon de Detalles, visible al abrir el pedido */}
+                    {/* Image Section: FUERA del acordeon de Detalles */}
                     <div className="bg-black/20 rounded-2xl p-2 border border-white/10 shadow-inner mt-4">
-                      {p.foto_url && !t.imageError[p.id] ? (
-                        <div
-                          className="relative w-full aspect-[4/3] sm:aspect-video rounded-xl overflow-hidden cursor-zoom-in group border border-white/5"
-                          onDoubleClick={() => t.openPickerFor(p.id)}
-                          title="Doble clic para cambiar la imagen"
-                        >
-                          <img
-                            src={p.foto_url}
-                            alt={`Foto pedido ${p.id}`}
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                            onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <span className="text-white text-xs font-semibold bg-black/60 px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md">
-                              <Camera size={14} /> Cambiar foto
-                            </span>
+                      {(() => {
+                        const fotosList = (p.fotos && p.fotos.length > 0) ? p.fotos : (p.foto_url ? [p.foto_url] : []);
+                        const tieneFotos = fotosList.length > 0 && !t.imageError[p.id];
+                        const slideIdx = t.currentSlide[p.id] || 0;
+                        const validIdx = slideIdx >= 0 && slideIdx < fotosList.length ? slideIdx : 0;
+                        const actualFoto = fotosList[validIdx];
+
+                        return tieneFotos ? (
+                          <div
+                            className="relative w-full aspect-[4/3] sm:aspect-video rounded-xl overflow-hidden cursor-zoom-in group border border-white/5"
+                            onDoubleClick={() => t.openPickerFor(p.id)}
+                            title="Doble clic para adjuntar otra foto"
+                          >
+                            <img
+                              src={actualFoto}
+                              alt={`Foto pedido ${p.id}`}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                              onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
+                            />
+                            
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                              <span className="text-white text-xs font-semibold bg-black/60 px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md">
+                                <Camera size={14} /> Adjuntar foto
+                              </span>
+                            </div>
+
+                            {fotosList.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    t.changeSlide(p.id, -1);
+                                  }}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/80 backdrop-blur-md transition-all active:scale-95"
+                                >
+                                  <ChevronLeft size={20} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    t.changeSlide(p.id, 1);
+                                  }}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full hover:bg-black/80 backdrop-blur-md transition-all active:scale-95"
+                                >
+                                  <ChevronRight size={20} />
+                                </button>
+                                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-md font-bold tracking-wider pointer-events-none">
+                                  {validIdx + 1} / {fotosList.length}
+                                </div>
+                              </>
+                            )}
                           </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => t.openPickerFor(p.id)}
-                          className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-white/20 text-white/50 hover:text-white hover:bg-white/5 hover:border-white/40 transition-all"
-                          title="Agregar imagen"
-                        >
-                          <div className="p-3 bg-white/5 rounded-full">
-                            <ImagePlus size={20} />
-                          </div>
-                          <span className="text-xs sm:text-sm font-medium">Toca para adjuntar una foto</span>
-                        </button>
-                      )}
+                        ) : (
+                          <button
+                            onClick={() => t.openPickerFor(p.id)}
+                            className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-white/20 text-white/50 hover:text-white hover:bg-white/5 hover:border-white/40 transition-all"
+                            title="Agregar imagen"
+                          >
+                            <div className="p-3 bg-white/5 rounded-full">
+                              <ImagePlus size={20} />
+                            </div>
+                            <span className="text-xs sm:text-sm font-medium">Toca para adjuntar una foto</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
