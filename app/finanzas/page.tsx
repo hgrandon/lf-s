@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronDown, CreditCard } from 'lucide-react';
 import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -236,6 +236,20 @@ export default function FinanzasPage() {
     const finalNum = numero.startsWith('56') ? numero : (numero.length === 9 ? `56${numero}` : numero);
     const mensaje = `Hola ${p.clienteNombre || ''}! Te recordamos de Lavandería Fabiola que tienes pendiente el pago del servicio N° ${p.nro} por un total de $${(p.total ?? 0).toLocaleString('es-CL')}.`;
     return `https://wa.me/${finalNum}?text=${encodeURIComponent(mensaje)}`;
+  }
+
+  async function marcarDeudaPagada(nro: number) {
+    if (!confirm(`¿Estás seguro de marcar el servicio N° ${nro} como pagado?`)) return;
+    try {
+      const { error } = await supabase.from('pedido').update({ pagado: true }).eq('nro', nro);
+      if (error) throw error;
+      setDeudoresList(prev => prev.filter(d => d.nro !== nro));
+      cargarDatos();
+      cargarDeudaHistorica();
+    } catch (e) {
+      console.error(e);
+      alert('Hubo un error al marcar el pedido como pagado.');
+    }
   }
 
   /* ------- Carga para el filtro seleccionado (HOY / SEMANA / etc.) ------- */
@@ -801,11 +815,20 @@ export default function FinanzasPage() {
                          <div className="text-xs text-white/60 font-medium">Servicio N° {p.nro} • {p.telefono || 'Sin Teléfono'}</div>
                          <div className="text-amber-300 font-black mt-1 text-lg">${p.total.toLocaleString('es-CL')}</div>
                        </div>
-                       {p.telefono && (
-                         <a href={generarWA(p)} target="_blank" rel="noopener noreferrer" className="bg-emerald-500 hover:bg-emerald-400 text-white p-3 rounded-full flex items-center shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-transform active:scale-95">
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 0C5.385 0 0 5.388 0 12.038c0 2.127.553 4.198 1.604 6.02L0 24l6.115-1.604A11.972 11.972 0 0012.031 24c6.646 0 12.031-5.388 12.031-12.038S18.677 0 12.031 0zm0 21.962c-1.802 0-3.564-.486-5.111-1.405l-.367-.217-3.805.998.998-3.805-.218-.367c-.918-1.547-1.404-3.309-1.404-5.111 0-5.513 4.49-10.002 10.002-10.002 5.513 0 10.002 4.489 10.002 10.002 0 5.512-4.489 10.002-10.002 10.002zm5.503-7.514c-.302-.15-1.782-.878-2.059-.979-.277-.101-.478-.15-.68.15s-.781.979-.957 1.18c-.176.201-.353.226-.655.076-2.583-1.296-3.83-2.42-4.437-3.473-.134-.233.136-.217.432-.806.101-.202.05-.378-.025-.529-.076-.151-.68-1.642-.932-2.25-.246-.593-.497-.512-.68-.521-.176-.009-.378-.009-.579-.009-.201 0-.529.076-.806.378-.277.302-1.057 1.033-1.057 2.518 0 1.485 1.082 2.92 1.233 3.121.151.201 2.129 3.25 5.155 4.552 1.939.833 2.723.905 3.738.761 1.139-.161 2.766-1.131 3.156-2.224.39-.1093.39-2.03.275-2.224-.112-.194-.413-.295-.715-.445z"/></svg>
-                         </a>
-                       )}
+                       <div className="flex items-center gap-2">
+                         <button 
+                           onClick={() => marcarDeudaPagada(p.nro)}
+                           title="Marcar como Pagado"
+                           className="bg-indigo-600/90 hover:bg-indigo-500 text-white p-3 rounded-full flex items-center shadow-lg transition-transform active:scale-95"
+                         >
+                            <CreditCard className="w-5 h-5" />
+                         </button>
+                         {p.telefono && (
+                           <a href={generarWA(p)} target="_blank" rel="noopener noreferrer" className="bg-emerald-500 hover:bg-emerald-400 text-white p-3 rounded-full flex items-center shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-transform active:scale-95">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 0C5.385 0 0 5.388 0 12.038c0 2.127.553 4.198 1.604 6.02L0 24l6.115-1.604A11.972 11.972 0 0012.031 24c6.646 0 12.031-5.388 12.031-12.038S18.677 0 12.031 0zm0 21.962c-1.802 0-3.564-.486-5.111-1.405l-.367-.217-3.805.998.998-3.805-.218-.367c-.918-1.547-1.404-3.309-1.404-5.111 0-5.513 4.49-10.002 10.002-10.002 5.513 0 10.002 4.489 10.002 10.002 0 5.512-4.489 10.002-10.002 10.002zm5.503-7.514c-.302-.15-1.782-.878-2.059-.979-.277-.101-.478-.15-.68.15s-.781.979-.957 1.18c-.176.201-.353.226-.655.076-2.583-1.296-3.83-2.42-4.437-3.473-.134-.233.136-.217.432-.806.101-.202.05-.378-.025-.529-.076-.151-.68-1.642-.932-2.25-.246-.593-.497-.512-.68-.521-.176-.009-.378-.009-.579-.009-.201 0-.529.076-.806.378-.277.302-1.057 1.033-1.057 2.518 0 1.485 1.082 2.92 1.233 3.121.151.201 2.129 3.25 5.155 4.552 1.939.833 2.723.905 3.738.761 1.139-.161 2.766-1.131 3.156-2.224.39-.1093.39-2.03.275-2.224-.112-.194-.413-.295-.715-.445z"/></svg>
+                           </a>
+                         )}
+                       </div>
                     </div>
                  ))
               )}
