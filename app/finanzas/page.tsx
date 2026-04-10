@@ -817,7 +817,7 @@ export default function FinanzasPage() {
                         <button
                           onClick={() => {
                             setShowDeudores(false);
-                            router.push(`/editar?nro=${p.nro}`);
+                            router.push(`/base/entregado?nro=${p.nro}`);
                           }}
                           className="text-sky-300 hover:text-white hover:underline transition-colors font-bold"
                           title="Ver detalle del pedido"
