@@ -813,7 +813,12 @@ export default function FinanzasPage() {
                     <div key={p.nro} className="bg-black/25 rounded-2xl p-3 border border-red-500/30 flex items-center justify-between shadow-sm">
                        <div>
                          <div className="font-extrabold text-white text-base">{p.clienteNombre}</div>
-                         <div className="text-xs text-white/60 font-medium">Servicio N° {p.nro} • {p.telefono || 'Sin Teléfono'}</div>
+                         <div className="text-xs text-white/60 font-medium">
+                           <button onClick={() => window.open(`/editar?nro=${p.nro}`, '_blank')} className="underline font-bold text-violet-300 hover:text-white transition-colors" title="Ver detalle del servicio">
+                             Servicio N° {p.nro}
+                           </button>
+                           {' • '}{p.telefono || 'Sin Teléfono'}
+                         </div>
                          <div className="text-amber-300 font-black mt-1 text-lg">${p.total.toLocaleString('es-CL')}</div>
                        </div>
                        <div className="flex items-center gap-2">
