@@ -93,7 +93,7 @@ const tiles: TileConfig[] = [
 
   { href: '/configuracion', title: 'Configuración', icon: <Settings size={22} /> },
 
-  { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />, disabled: true },
+  { href: '/articulos', title: 'Artículos', icon: <Tag size={22} />, adminOnly: true },
 
   { href: '/logout', title: 'Salir', icon: <LogOut size={22} /> },
 ];
