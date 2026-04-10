@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { useTableroPedidos, TableroOpciones, PedidoEstado, normalizarDireccion, toE164CL } from './useTableroPedidos';
 import {
   Loader2,
@@ -20,6 +20,8 @@ import {
   CheckCircle2,
   Truck,
   PackageCheck,
+  Maximize,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -101,6 +103,7 @@ export function TableroUI({
 }) {
   const t = useTableroPedidos(opciones);
   const { router } = t;
+  const [fullscreenFoto, setFullscreenFoto] = useState<string | null>(null);
 
   const totalPedidos = t.pedidos.length;
   const totalMonto = t.pedidos.reduce((acc, p) => {
@@ -374,10 +377,21 @@ export function TableroUI({
                             onDoubleClick={() => t.openPickerFor(p.id)}
                             title="Doble clic para adjuntar otra foto"
                           >
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setFullscreenFoto(actualFoto);
+                              }}
+                              className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/80 backdrop-blur-md z-10 transition-all active:scale-95"
+                              title="Ampliar imagen"
+                            >
+                              <Maximize size={16} />
+                            </button>
                             <img
                               src={actualFoto}
                               alt={`Foto pedido ${p.id}`}
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                              className="w-full h-full object-contain bg-black/40 transition-transform duration-300 group-hover:scale-[1.02]"
                               onError={() => t.setImageError((prev) => ({ ...prev, [p.id]: true }))}
                             />
                             
@@ -556,6 +570,26 @@ export function TableroUI({
         className="hidden"
         onChange={t.onFileSelected}
       />
+
+      {/* Modal Foto Fullscreen */}
+      {fullscreenFoto && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-2 sm:p-4 backdrop-blur-sm"
+          onClick={() => setFullscreenFoto(null)}
+        >
+          <button 
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 bg-white/10 p-3 rounded-full text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+            onClick={() => setFullscreenFoto(null)}
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={fullscreenFoto}
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
     </main>
   );
 }
