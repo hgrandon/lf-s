@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, ChevronLeft, ChevronDown, CreditCard } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronDown, CreditCard, Search } from 'lucide-react';
 import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -813,7 +813,19 @@ export default function FinanzasPage() {
                   <div key={p.nro} className="bg-black/25 rounded-2xl p-3 border border-red-500/30 flex items-center justify-between shadow-sm">
                     <div>
                       <div className="font-extrabold text-white text-base">{p.clienteNombre}</div>
-                      <div className="text-xs text-white/60 font-medium">Servicio N° {p.nro} • {p.telefono || 'Sin Teléfono'}</div>
+                      <div className="text-xs text-white/60 font-medium flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setShowDeudores(false);
+                            router.push(`/editar?nro=${p.nro}`);
+                          }}
+                          className="text-sky-300 hover:text-white hover:underline transition-colors font-bold"
+                          title="Ver detalle del pedido"
+                        >
+                          Servicio N° {p.nro}
+                        </button>
+                        <span>• {p.telefono || 'Sin Teléfono'}</span>
+                      </div>
                       <div className="text-amber-300 font-black mt-1 text-lg">${p.total.toLocaleString('es-CL')}</div>
                     </div>
                     <div className="flex items-center gap-2">
