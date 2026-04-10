@@ -38,6 +38,14 @@ type Pedido = {
   fecha_ingreso: string | null;
 };
 
+type DeudorInfo = { 
+  nro: number; 
+  total: number; 
+  telefono: string | null; 
+  clienteNombre: string; 
+  fecha_ingreso: string | null 
+};
+
 type Filtro = 'HOY' | 'SEMANA' | 'MES' | 'AÑO' | 'TODO';
 
 type AuthMode = 'clave' | 'usuario';
@@ -180,6 +188,55 @@ export default function FinanzasPage() {
 
   // acordeón del gráfico circular
   const [showPie, setShowPie] = useState(false);
+
+  // modal de deudores
+  const [showDeudores, setShowDeudores] = useState(false);
+  const [deudoresList, setDeudoresList] = useState<DeudorInfo[]>([]);
+  const [loadingDeudores, setLoadingDeudores] = useState(false);
+
+  async function abrirYcargarDeudores() {
+    setShowDeudores(true);
+    if (deudoresList.length > 0) return; // cachear
+    setLoadingDeudores(true);
+    try {
+       const { data: pData } = await supabase.from('pedido').select('nro, total, telefono, fecha_ingreso').eq('pagado', false);
+       if (!pData || pData.length === 0) {
+          setDeudoresList([]);
+          return;
+       }
+       
+       const rawDeudores = pData as {nro: number, total: number | null, telefono: string | null, fecha_ingreso: string | null}[];
+       const tels = [...new Set(rawDeudores.map(r => r.telefono).filter(Boolean))] as string[];
+       
+       const cliMap = new Map<string, string>();
+       if (tels.length > 0) {
+         const { data: cData } = await supabase.from('clientes').select('telefono, nombre').in('telefono', tels);
+         (cData || []).forEach(c => cliMap.set(c.telefono, c.nombre));
+       }
+
+       const mapped = rawDeudores.map(r => ({
+         nro: r.nro,
+         total: r.total ?? 0,
+         telefono: r.telefono ?? null,
+         clienteNombre: (r.telefono && cliMap.get(r.telefono)) ? cliMap.get(r.telefono)! : 'Sin Nombre',
+         fecha_ingreso: r.fecha_ingreso
+       })).sort((a,b) => b.nro - a.nro);
+       
+       setDeudoresList(mapped);
+    } catch (e) {
+       console.error(e);
+    } finally {
+       setLoadingDeudores(false);
+    }
+  }
+
+  const generarWA = (p: DeudorInfo) => {
+    if (!p.telefono) return '#';
+    const numero = String(p.telefono).replace(/\D/g, '');
+    const finalNum = numero.startsWith('56') ? numero : (numero.length === 9 ? `56${numero}` : numero);
+    const mensaje = `Hola ${p.clienteNombre || ''}! Te recordamos de Lavandería Fabiola que tienes pendiente el pago del servicio N° ${p.nro} por un total de $${(p.total ?? 0).toLocaleString('es-CL')}.`;
+    return `https://wa.me/${finalNum}?text=${encodeURIComponent(mensaje)}`;
+  }
 
   /* ------- Carga para el filtro seleccionado (HOY / SEMANA / etc.) ------- */
   async function cargarDatos() {
@@ -574,6 +631,19 @@ export default function FinanzasPage() {
           </div>
         </div>
 
+        <button
+           onClick={abrirYcargarDeudores}
+           className="w-full rounded-2xl bg-gradient-to-r from-red-500/20 to-amber-500/20 border border-white/20 p-4 shadow-lg flex items-center justify-between hover:bg-white/10 transition-all font-extrabold text-amber-100"
+        >
+           <div className="flex items-center gap-3">
+             <div className="bg-red-500/30 p-2 rounded-full">
+                <svg className="w-5 h-5 text-red-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+             </div>
+             Ver Todo el Listado de Deudores
+           </div>
+           <span>→</span>
+        </button>
+
         {/* COMPARATIVA AÑO A AÑO */}
         <div className="rounded-2xl bg-black/25 backdrop-blur-md border border-white/15 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.15)] flex items-center justify-between hover:bg-black/30 transition-colors">
           <div>
@@ -701,6 +771,48 @@ export default function FinanzasPage() {
         {/* ESPACIO EXTRA AL FINAL PARA NO CORTAR CON NAVEGACIÓN U OTROS */}
         <div className="h-10"></div>
       </section>
+
+      {/* MODAL DE DEUDORES */}
+      {showDeudores && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
+          <div className="bg-gradient-to-b from-indigo-900 to-violet-900 border border-white/20 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/20">
+              <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                ⚠️ Listado Oficial de Deudores
+              </h2>
+              <button onClick={() => setShowDeudores(false)} className="bg-white/10 hover:bg-white/20 rounded-full p-2">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
+              {loadingDeudores ? (
+                 <div className="text-center text-white/60 py-8 text-sm flex flex-col items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Buscando deudores históricos...
+                 </div>
+              ) : deudoresList.length === 0 ? (
+                 <div className="text-center text-white/60 py-8 text-sm">No hay deudas sin pagar en el sistema 🎉.</div>
+              ) : (
+                 deudoresList.map(p => (
+                    <div key={p.nro} className="bg-black/25 rounded-2xl p-3 border border-red-500/30 flex items-center justify-between shadow-sm">
+                       <div>
+                         <div className="font-extrabold text-white text-base">{p.clienteNombre}</div>
+                         <div className="text-xs text-white/60 font-medium">Servicio N° {p.nro} • {p.telefono || 'Sin Teléfono'}</div>
+                         <div className="text-amber-300 font-black mt-1 text-lg">${p.total.toLocaleString('es-CL')}</div>
+                       </div>
+                       {p.telefono && (
+                         <a href={generarWA(p)} target="_blank" rel="noopener noreferrer" className="bg-emerald-500 hover:bg-emerald-400 text-white p-3 rounded-full flex items-center shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-transform active:scale-95">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 0C5.385 0 0 5.388 0 12.038c0 2.127.553 4.198 1.604 6.02L0 24l6.115-1.604A11.972 11.972 0 0012.031 24c6.646 0 12.031-5.388 12.031-12.038S18.677 0 12.031 0zm0 21.962c-1.802 0-3.564-.486-5.111-1.405l-.367-.217-3.805.998.998-3.805-.218-.367c-.918-1.547-1.404-3.309-1.404-5.111 0-5.513 4.49-10.002 10.002-10.002 5.513 0 10.002 4.489 10.002 10.002 0 5.512-4.489 10.002-10.002 10.002zm5.503-7.514c-.302-.15-1.782-.878-2.059-.979-.277-.101-.478-.15-.68.15s-.781.979-.957 1.18c-.176.201-.353.226-.655.076-2.583-1.296-3.83-2.42-4.437-3.473-.134-.233.136-.217.432-.806.101-.202.05-.378-.025-.529-.076-.151-.68-1.642-.932-2.25-.246-.593-.497-.512-.68-.521-.176-.009-.378-.009-.579-.009-.201 0-.529.076-.806.378-.277.302-1.057 1.033-1.057 2.518 0 1.485 1.082 2.92 1.233 3.121.151.201 2.129 3.25 5.155 4.552 1.939.833 2.723.905 3.738.761 1.139-.161 2.766-1.131 3.156-2.224.39-.1093.39-2.03.275-2.224-.112-.194-.413-.295-.715-.445z"/></svg>
+                         </a>
+                       )}
+                    </div>
+                 ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
