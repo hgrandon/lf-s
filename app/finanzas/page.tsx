@@ -199,7 +199,7 @@ export default function FinanzasPage() {
     if (deudoresList.length > 0) return; // cachear
     setLoadingDeudores(true);
     try {
-       const { data: pData } = await supabase.from('pedido').select('nro, total, telefono, fecha_ingreso').eq('pagado', false);
+       const { data: pData } = await supabase.from('pedido').select('nro, total, telefono, fecha_ingreso').eq('pagado', false).eq('estado', 'ENTREGADO');
        if (!pData || pData.length === 0) {
           setDeudoresList([]);
           return;
@@ -292,7 +292,8 @@ export default function FinanzasPage() {
       const { data, error } = await supabase
         .from('pedido')
         .select('total')
-        .eq('pagado', false);
+        .eq('pagado', false)
+        .eq('estado', 'ENTREGADO');
         
       if (!error && data) {
         setDeudaHistorica(data.reduce((acc, p) => acc + (p.total ?? 0), 0));
