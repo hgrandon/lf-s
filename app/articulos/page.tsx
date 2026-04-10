@@ -15,7 +15,8 @@ import {
   XCircle,
   ArchiveRestore,
   Save,
-  X
+  X,
+  Search
 } from 'lucide-react';
 
 const CLP = new Intl.NumberFormat('es-CL', {
@@ -42,6 +43,7 @@ export default function ArticulosPage() {
   const [editingItem, setEditingItem] = useState<Partial<Articulo> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
+  const [searchQuery, setSearchQuery] = useState('');
   const [showInactivos, setShowInactivos] = useState(false);
 
   useEffect(() => {
@@ -139,7 +141,10 @@ export default function ArticulosPage() {
     }
   }
 
-  const visibleItems = items.filter(it => showInactivos ? true : it.activo);
+  const visibleItems = items.filter(it => 
+    (showInactivos ? true : it.activo) && 
+    it.nombre.toLowerCase().includes(searchQuery.toLowerCase())
+  );
   
   const activosCount = items.filter(it => it.activo).length;
   const inactivosCount = items.length - activosCount;
@@ -177,22 +182,37 @@ export default function ArticulosPage() {
       <section className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 mt-4">
         
         {/* Toolbar superior */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => setShowInactivos(!showInactivos)}
-            className="text-xs sm:text-sm bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl transition-colors border border-white/10"
-          >
-            {showInactivos ? 'Ocultar inactivos' : 'Mostrar inactivos'}
-          </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-2">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 group-focus-within:text-white/80 transition-colors" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar artículo..."
+              className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 outline-none focus:bg-black/40 focus:border-white/30 text-white placeholder:text-white/40 transition-all font-medium"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
           
           <button
             onClick={handleOpenCrear}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-900/50 transition-all active:scale-95 border border-emerald-400/50"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-900/50 transition-all active:scale-95 border border-emerald-400/50 shrink-0"
           >
-            <Plus size={18} />
-            <span className="hidden sm:inline">Nuevo Artículo</span>
-            <span className="sm:hidden">Nuevo</span>
+            <Plus size={18} strokeWidth={2.5} />
+            <span>Nuevo Artículo</span>
           </button>
+        </div>
+        
+        <div className="flex justify-end mb-4">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-white/70 hover:text-white transition-colors">
+            <input 
+              type="checkbox" 
+              className="w-4 h-4 rounded bg-black/20 border-white/20 accent-violet-500 cursor-pointer"
+              checked={showInactivos}
+              onChange={(e) => setShowInactivos(e.target.checked)}
+            />
+            Incluir artículos inactivos
+          </label>
         </div>
 
         {/* Estados de carga/error */}
@@ -213,69 +233,69 @@ export default function ArticulosPage() {
         {!loading && !errorMsg && visibleItems.length === 0 && (
           <div className="mt-12 flex flex-col items-center text-white/50 text-center gap-3">
             <Tag size={48} className="opacity-20" />
-            <p className="text-lg font-medium">No hay artículos para mostrar</p>
-            <p className="text-sm opacity-80 max-w-xs">Usa el botón "Nuevo Artículo" para agregar cobros a tu sistema.</p>
+            <p className="text-lg font-medium">No se encontraron artículos</p>
+            {searchQuery ? (
+              <p className="text-sm opacity-80 max-w-xs">Prueba buscando con otras palabras.</p>
+            ) : (
+              <p className="text-sm opacity-80 max-w-xs">Usa el botón "Nuevo Artículo" para agregar cobros a tu sistema.</p>
+            )}
           </div>
         )}
 
-        {/* Tarjetas */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Listado Compacto */}
+        <div className="flex flex-col gap-2 relative">
           {!loading && !errorMsg && visibleItems.map((item) => (
             <div
               key={item.id}
               className={[
-                "relative group overflow-hidden rounded-2xl border p-4 transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)]",
+                "group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border px-3 sm:px-4 py-2.5 sm:py-3 transition-all duration-300 hover:shadow-md",
                 item.activo 
                   ? "bg-white/10 border-white/15 hover:border-white/30 backdrop-blur-md" 
                   : "bg-black/20 border-white/5 opacity-70 grayscale-[50%]"
               ].join(" ")}
             >
               {/* Contenido info */}
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div className="flex-1">
-                  <h3 className="font-bold text-base uppercase leading-tight line-clamp-2 text-white/95" title={item.nombre}>
-                    {item.nombre}
-                  </h3>
-                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/30 w-fit">
-                    <span className="font-mono text-emerald-400 font-bold tracking-tight">
-                      {CLP.format(item.precio)}
-                    </span>
+              <div className="flex-1 flex items-center gap-3 md:gap-6 min-w-0">
+                <div className="flex flex-col flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base uppercase truncate text-white/95" title={item.nombre}>
+                      {item.nombre}
+                    </h3>
+                    {!item.activo && (
+                      <span className="shrink-0 inline-flex items-center justify-center bg-red-500/20 text-red-200 text-[9px] sm:text-[10px] uppercase font-bold px-1.5 py-0.5 rounded" title="Inactivo">
+                        Inactivo
+                      </span>
+                    )}
                   </div>
-                </div>
-                <div>
-                  {item.activo ? (
-                    <span className="inline-flex items-center text-emerald-400 bg-emerald-400/10 p-1.5 rounded-full" title="Activo">
-                      <CheckCircle2 size={16} />
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center text-red-400 bg-red-400/10 p-1.5 rounded-full" title="Inactivo">
-                      <XCircle size={16} />
-                    </span>
-                  )}
+                  <span className="font-mono text-emerald-400 font-bold text-xs sm:text-sm tracking-tight mt-0.5">
+                    {CLP.format(item.precio)}
+                  </span>
                 </div>
               </div>
 
               {/* Acciones */}
-              <div className="flex items-center gap-2 pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <button
                   onClick={() => handleOpenEditar(item)}
-                  className="flex-1 flex justify-center items-center gap-1.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-white/80 hover:text-white transition-colors"
+                  className="flex justify-center items-center p-2 sm:px-3 sm:py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/90 hover:text-white transition-colors"
+                  title="Editar"
                 >
-                  <Pencil size={14} /> Editar
+                  <Pencil size={15} /> <span className="hidden sm:inline ml-1 text-xs font-semibold">Editar</span>
                 </button>
                 <button
                   onClick={() => handleAceptarBorrado(item.id, item.activo)}
                   className={[
-                    "flex-1 flex justify-center items-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors",
+                    "flex justify-center items-center p-2 sm:px-3 sm:py-1.5 rounded-lg transition-colors border",
                     item.activo 
-                      ? "bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200" 
-                      : "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-200"
+                      ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300" 
+                      : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
                   ].join(" ")}
+                  title={item.activo ? "Ocultar" : "Activar"}
                 >
                   {item.activo ? (
-                    <><Trash2 size={14} /> Desactivar</>
+                    <><Trash2 size={15} /> <span className="hidden sm:inline ml-1 text-xs font-semibold">Ocultar</span></>
                   ) : (
-                    <><ArchiveRestore size={14} /> Reactivar</>
+                    <><ArchiveRestore size={15} /> <span className="hidden sm:inline ml-1 text-xs font-semibold">Activar</span></>
                   )}
                 </button>
               </div>
