@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { Archive, WashingMachine, PackageCheck, CheckCircle2 } from 'lucide-react';
+import { Archive, WashingMachine, PackageCheck, CheckCircle2, CreditCard, Loader2 } from 'lucide-react';
 
 /* =========================
    Tipos
@@ -302,6 +302,28 @@ export default function ServicioPage() {
   const [pedido, setPedido] = useState<PedidoRow | null>(null);
   const [items, setItems] = useState<Linea[]>([]);
   const [cliente, setCliente] = useState<ClienteRow | null>(null);
+  const [isPagarLoading, setIsPagarLoading] = useState(false);
+
+  const handlePagar = async () => {
+    if (!token) return;
+    setIsPagarLoading(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.init_point) {
+        window.location.href = data.init_point;
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Error iniciando el pago: ' + err.message);
+      setIsPagarLoading(false);
+    }
+  };
 
   /* =========================
       Leer token desde URL
@@ -648,6 +670,20 @@ if (esClienteEmpresa) {
                   </div>
                 </div>
               </div>
+
+              {/* Botón de pago Empresa */}
+              {!esPagado && (
+                <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end">
+                  <button
+                    onClick={handlePagar}
+                    disabled={isPagarLoading}
+                    className="flex items-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all active:scale-95 text-sm"
+                  >
+                    {isPagarLoading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
+                    Pagar Servicio Online
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -855,6 +891,27 @@ if (esClienteEmpresa) {
             <div className="px-4 py-4 bg-gradient-to-r from-violet-700 to-fuchsia-600 text-right text-xl sm:text-2xl font-black text-white tracking-wide">
               TOTAL:&nbsp; {CLP.format(totalConIva)}
             </div>
+
+            {/* Botón de pago Persona */}
+            {!esPagado && (
+              <div className="p-5 bg-white border-t border-slate-200 flex flex-col items-center">
+                <p className="text-[11px] text-slate-500 mb-3 text-center sm:text-xs">
+                  Puedes pagar de forma rápida y segura con cualquier medio de pago.
+                </p>
+                <button
+                  onClick={handlePagar}
+                  disabled={isPagarLoading}
+                  className="w-full max-w-sm flex justify-center items-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3.5 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95"
+                >
+                  {isPagarLoading ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    <CreditCard size={20} />
+                  )}
+                  PAGAR CON MERCADO PAGO
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
