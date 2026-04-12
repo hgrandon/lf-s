@@ -162,9 +162,6 @@ function buildMensajePrincipalPersona(
 ) {
   const est = estado ?? 'LAVAR';
 
-  const pagoTexto = pagado ? 'ya se encuentra pagado' : 'está pendiente de pago';
-  const pagoClase = pagado ? 'text-emerald-600' : 'text-amber-500';
-
   if (est === 'GUARDADO' || est === 'ENTREGAR') {
     if (tipoEntrega === 'DOMICILIO') {
       return (
@@ -172,8 +169,6 @@ function buildMensajePrincipalPersona(
           tu servicio está{' '}
           <span className="text-emerald-600">LISTO PARA QUE TE LO LLEVEMOS</span>{' '}
           a domicilio.
-          <br />
-          El pago <span className={pagoClase}>{pagoTexto}.</span>
         </>
       );
     }
@@ -183,8 +178,6 @@ function buildMensajePrincipalPersona(
         tu servicio está{' '}
         <span className="text-emerald-600">LISTO PARA RETIRAR</span> en nuestro
         local.
-        <br />
-        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -205,8 +198,6 @@ function buildMensajePrincipalPersona(
       <>
         estamos{' '}
         <span className="text-violet-700">PROCESANDO TU SERVICIO</span>.
-        <br />
-        El pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -217,8 +208,6 @@ function buildMensajePrincipalPersona(
       hemos{' '}
       <span className="text-violet-700">RECEPCIONADO TU SERVICIO</span> y pronto
       comenzaremos el lavado.
-      <br />
-      El pago <span className={pagoClase}>{pagoTexto}.</span>
     </>
   );
 }
@@ -231,16 +220,11 @@ function buildMensajePrincipalEmpresa(
 ) {
   const est = estado ?? 'LAVAR';
 
-  const pagoTexto = pagado ? 'se encuentra pagado' : 'se mantiene pendiente de pago';
-  const pagoClase = pagado ? 'text-emerald-600' : 'text-amber-500';
-
   if (est === 'GUARDADO' || est === 'ENTREGAR') {
     if (tipoEntrega === 'DOMICILIO') {
       return (
         <>
           El servicio asociado a su empresa se encuentra debidamente registrado. Se entrega el detalle correspondiente.
-          <br />
-
         </>
       );
     }
@@ -250,8 +234,6 @@ function buildMensajePrincipalEmpresa(
         el servicio asociado a su empresa se encuentra{' '}
         <span className="text-emerald-600">LISTO PARA RETIRO</span> en nuestro
         local.
-        <br />
-        El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -272,8 +254,6 @@ function buildMensajePrincipalEmpresa(
       <>
         el servicio se encuentra{' '}
         <span className="text-violet-700">EN PROCESO DE LAVADO</span>.
-        <br />
-        El estado de pago <span className={pagoClase}>{pagoTexto}.</span>
       </>
     );
   }
@@ -282,9 +262,8 @@ function buildMensajePrincipalEmpresa(
   return (
     <>
       hemos{' '}
-      <span className="text-violet-700">recepcionado su ervicio</span> y será
+      <span className="text-violet-700">recepcionado su servicio</span> y será
       procesado a la brevedad.
-      <br />
     </>
   );
 }
