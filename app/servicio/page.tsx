@@ -505,6 +505,34 @@ if (esClienteEmpresa) {
                 </div>
               </div>
             </div>
+
+            {/* BLOQUE DE PAGO CABECERA (EMPRESA) */}
+            <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="text-left">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                  {esPagado ? 'Total Pagado' : 'Monto Total'}
+                </p>
+                <p className="text-3xl font-black text-violet-800">
+                  {CLP.format(totalConIva)}
+                </p>
+              </div>
+              {!esPagado && (
+                <button
+                  onClick={handlePagar}
+                  disabled={isPagarLoading}
+                  className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3 px-8 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95 text-sm"
+                >
+                  {isPagarLoading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
+                  PAGAR CON MERCADO PAGO
+                </button>
+              )}
+              {esPagado && (
+                <div className="mt-4 sm:mt-0 flex items-center gap-2 text-emerald-700 font-bold text-sm bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
+                  <CheckCircle2 size={18} />
+                  ¡Pago Completado!
+                </div>
+              )}
+            </div>
           </header>
 
           {/* DETALLES DEL SERVICIO */}
@@ -671,19 +699,7 @@ if (esClienteEmpresa) {
                 </div>
               </div>
 
-              {/* Botón de pago Empresa */}
-              {!esPagado && (
-                <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end">
-                  <button
-                    onClick={handlePagar}
-                    disabled={isPagarLoading}
-                    className="flex items-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all active:scale-95 text-sm"
-                  >
-                    {isPagarLoading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
-                    Pagar Servicio Online
-                  </button>
-                </div>
-              )}
+              {/* Botón de pago Empresa movido a la cabecera */}
             </div>
           </section>
         </div>
@@ -744,8 +760,40 @@ if (esClienteEmpresa) {
           </div>
 
           {/* Horario */}
-          <div className="mt-2 text-xs text-slate-600">
+          <div className="mt-2 mb-6 text-xs text-slate-600">
             Atención Lunes a Viernes de 10:00 a 20:00 hrs.
+          </div>
+
+          {/* BLOQUE DE PAGO CABECERA (PERSONA) */}
+          <div className="bg-gradient-to-b from-slate-50 to-slate-100 p-5 rounded-2xl border border-slate-200 shadow-inner flex flex-col items-center">
+            <div className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mb-1">
+              {esPagado ? 'Total Pagado' : 'Monto Total'}
+            </div>
+            <div className="text-4xl font-black text-violet-800 mb-4 tracking-tight drop-shadow-sm">
+              {CLP.format(totalConIva)}
+            </div>
+            
+            {!esPagado && (
+              <button
+                onClick={handlePagar}
+                disabled={isPagarLoading}
+                className="w-full max-w-[280px] flex justify-center items-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3.5 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95 text-sm"
+              >
+                {isPagarLoading ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : (
+                  <CreditCard size={20} />
+                )}
+                PAGAR CON MERCADO PAGO
+              </button>
+            )}
+            
+            {esPagado && (
+              <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
+                <CheckCircle2 size={18} />
+                ¡Pago completado con éxito!
+              </div>
+            )}
           </div>
         </div>
 
@@ -888,30 +936,10 @@ if (esClienteEmpresa) {
               <span>{CLP.format(totalNeto)}</span>
             </div>
 
-            <div className="px-4 py-4 bg-gradient-to-r from-violet-700 to-fuchsia-600 text-right text-xl sm:text-2xl font-black text-white tracking-wide">
-              TOTAL:&nbsp; {CLP.format(totalConIva)}
+            <div className="px-4 py-3 bg-slate-200 text-right text-sm sm:text-base font-black text-violet-800 flex justify-between rounded-b-xl border-t border-slate-300">
+              <span>TOTAL</span>
+              <span>{CLP.format(totalConIva)}</span>
             </div>
-
-            {/* Botón de pago Persona */}
-            {!esPagado && (
-              <div className="p-5 bg-white border-t border-slate-200 flex flex-col items-center">
-                <p className="text-[11px] text-slate-500 mb-3 text-center sm:text-xs">
-                  Puedes pagar de forma rápida y segura con cualquier medio de pago.
-                </p>
-                <button
-                  onClick={handlePagar}
-                  disabled={isPagarLoading}
-                  className="w-full max-w-sm flex justify-center items-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3.5 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95"
-                >
-                  {isPagarLoading ? (
-                    <Loader2 className="animate-spin" size={20} />
-                  ) : (
-                    <CreditCard size={20} />
-                  )}
-                  PAGAR CON MERCADO PAGO
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>

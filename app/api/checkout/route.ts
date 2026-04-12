@@ -57,7 +57,12 @@ export async function POST(request: Request) {
     }
 
     // 3. Crear preferencia
-    const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN! });
+    if (!process.env.MP_ACCESS_TOKEN) {
+      console.error('Falta la variable de entorno MP_ACCESS_TOKEN');
+      return NextResponse.json({ error: 'Falta configurar las credenciales de Mercado Pago en el servidor (MP_ACCESS_TOKEN).' }, { status: 500 });
+    }
+
+    const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
     const preference = new Preference(client);
 
     const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://lf-s.vercel.app';
@@ -73,7 +78,6 @@ export async function POST(request: Request) {
           pending: callbackUrl,
         },
         auto_return: 'approved',
-        statement_descriptor: 'LAV Fabiola',
       },
     });
 
