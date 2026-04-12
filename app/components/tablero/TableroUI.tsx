@@ -105,6 +105,8 @@ export function TableroUI({
   const t = useTableroPedidos(opciones);
   const { router } = t;
   const [fullscreenFoto, setFullscreenFoto] = useState<string | null>(null);
+  const [printAskForId, setPrintAskForId] = useState<number | null>(null);
+  const [printCopies, setPrintCopies] = useState<number>(1);
 
   const totalPedidos = t.pedidos.length;
   const totalMonto = t.pedidos.reduce((acc, p) => {
@@ -296,7 +298,8 @@ export function TableroUI({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/rotulos?nro=${p.id}&copies=1`);
+                              setPrintCopies(1);
+                              setPrintAskForId(p.id);
                             }}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs lg:text-sm font-semibold rounded-lg bg-white/10 hover:bg-white/20 text-white shadow-sm border border-white/20 transition-colors"
                           >
@@ -624,6 +627,72 @@ export function TableroUI({
         className="hidden"
         onChange={t.onFileSelected}
       />
+
+      {/* Modal Imprimir Rótulo */}
+      {printAskForId && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setPrintAskForId(null)}
+          onKeyDown={(e) => e.key === 'Escape' && setPrintAskForId(null)}
+          tabIndex={-1}
+        >
+          <div
+            className="w-[320px] max-w-[92vw] rounded-2xl bg-white p-5 text-violet-800 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-violet-100 p-2 rounded-full text-violet-600">
+                <Printer size={22} />
+              </div>
+              <h3 className="text-lg font-bold">Imprimir Etiquetas</h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 mb-4 font-medium leading-tight">
+              ¿Cuántas copias deseas imprimir para el pedido <strong className="text-violet-800">#{printAskForId}</strong>?
+            </p>
+            
+            <div className="flex items-center justify-between mb-5 px-4">
+              <button
+                type="button"
+                onClick={() => setPrintCopies(Math.max(1, printCopies - 1))}
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-black text-xl text-slate-700 transition-colors active:scale-95"
+              >
+                -
+              </button>
+              <div className="text-3xl font-black text-violet-800 tabular-nums">
+                {printCopies}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPrintCopies(printCopies + 1)}
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-black text-xl text-slate-700 transition-colors active:scale-95"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  const id = printAskForId;
+                  setPrintAskForId(null);
+                  router.push(`/rotulos?nro=${id}&copies=${printCopies}`);
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-violet-600 text-white font-bold px-4 py-3.5 hover:bg-violet-700 shadow-md transition-all active:scale-95"
+              >
+                <Printer size={18} />
+                Imprimir {printCopies} {printCopies === 1 ? 'Copia' : 'Copias'}
+              </button>
+              <button
+                onClick={() => setPrintAskForId(null)}
+                className="w-full rounded-xl text-slate-500 font-semibold px-4 py-2 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Foto Fullscreen */}
       {fullscreenFoto && (

@@ -240,7 +240,7 @@ function buildMensajePrincipalEmpresa(
         <>
           El servicio asociado a su empresa se encuentra debidamente registrado. Se entrega el detalle correspondiente.
           <br />
-          
+
         </>
       );
     }
@@ -464,249 +464,248 @@ export default function ServicioPage() {
       LAYOUT ESPECIAL EMPRESA
   ========================== */
 
-if (esClienteEmpresa) {
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-8">
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-        {/* Marca de agua con nombre de empresa */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center select-none text-center text-4xl font-black tracking-[0.4em] text-slate-400 opacity-5 sm:text-6xl">
-          {nombreCli.toUpperCase()}
-        </div>
+  if (esClienteEmpresa) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-100 px-3 py-8">
+        <div className="relative w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+          {/* Marca de agua con nombre de empresa */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center select-none text-center text-4xl font-black tracking-[0.4em] text-slate-400 opacity-5 sm:text-6xl">
+            {nombreCli.toUpperCase()}
+          </div>
 
-        {/* Contenido real */}
-        <div className="relative z-10">
-          {/* HEADER */}
-          <header className="border-b border-slate-200 px-8 pt-7 pb-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3">
-                <Image
-                  src="/logo.png"
-                  alt="Logo Lavandería Fabiola"
-                  width={64}
-                  height={64}
-                  className="object-cover"
-                />
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                    Resumen de Servicio
-                  </h1>
-                  <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-                    Para {nombreCli}
+          {/* Contenido real */}
+          <div className="relative z-10">
+            {/* HEADER */}
+            <header className="border-b border-slate-200 px-8 pt-7 pb-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <Image
+                    src="/logo.png"
+                    alt="Logo Lavandería Fabiola"
+                    width={64}
+                    height={64}
+                    className="object-cover"
+                  />
+                  <div>
+                    <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+                      Resumen de Servicio
+                    </h1>
+                    <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                      Para {nombreCli}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                    Servicio N°
+                  </div>
+                  <div className="text-3xl font-black text-slate-900 sm:text-4xl">
+                    {pedido.nro}
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOQUE DE PAGO CABECERA (EMPRESA) */}
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="text-left">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                    {esPagado ? 'Total Pagado' : 'Monto Total'}
+                  </p>
+                  <p className="text-3xl font-black text-violet-800">
+                    {CLP.format(totalConIva)}
                   </p>
                 </div>
-              </div>
-
-              <div className="text-right">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                  Servicio N°
-                </div>
-                <div className="text-3xl font-black text-slate-900 sm:text-4xl">
-                  {pedido.nro}
-                </div>
-              </div>
-            </div>
-
-            {/* BLOQUE DE PAGO CABECERA (EMPRESA) */}
-            <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="text-left">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                  {esPagado ? 'Total Pagado' : 'Monto Total'}
-                </p>
-                <p className="text-3xl font-black text-violet-800">
-                  {CLP.format(totalConIva)}
-                </p>
-              </div>
-              {!esPagado && (
-                <button
-                  onClick={handlePagar}
-                  disabled={isPagarLoading}
-                  className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3 px-8 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95 text-sm"
-                >
-                  {isPagarLoading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
-                  PAGAR CON MERCADO PAGO
-                </button>
-              )}
-              {esPagado && (
-                <div className="mt-4 sm:mt-0 flex items-center gap-2 text-emerald-700 font-bold text-sm bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
-                  <CheckCircle2 size={18} />
-                  ¡Pago Completado!
-                </div>
-              )}
-            </div>
-          </header>
-
-          {/* DETALLES DEL SERVICIO */}
-          <section className="border-b border-slate-200 bg-slate-50/70 px-8 py-6">
-            <h2 className="mb-4 text-sm font-semibold text-slate-800">
-              Detalles del Servicio
-            </h2>
-
-            <div className="grid grid-cols-1 gap-4 text-xs text-slate-800 sm:grid-cols-2 sm:text-sm">
-              <div className="space-y-1.5">
-                <div className="flex">
-                  <span className="w-28 font-semibold text-slate-600">Empresa</span>
-                  <span className="font-semibold text-slate-900">{nombreCli}</span>
-                </div>
-
-                {cliente?.direccion && (
-                  <div className="flex">
-                    <span className="w-28 font-semibold text-slate-600">
-                      Dirección
-                    </span>
-                    <span>{cliente.direccion}</span>
-                  </div>
-                )}
-
-                <div className="flex">
-                  <span className="w-28 font-semibold text-slate-600">
-                    Fecha de Ingreso
-                  </span>
-                  <span>{formatFecha(pedido.fecha_ingreso)}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                {pedido.telefono && (
-                  <div className="flex">
-                    <span className="w-28 font-semibold text-slate-600">
-                      Teléfono
-                    </span>
-                    <span>{pedido.telefono}</span>
-                  </div>
-                )}
-
-                <div className="flex">
-                  <span className="w-28 font-semibold text-slate-600">
-                    Tipo de Entrega
-                  </span>
-                  <span>{tipoEntrega}</span>
-                </div>
-
-                <div className="flex items-center">
-                  <span className="w-28 font-semibold text-slate-600">
-                    Estado de Pago
-                  </span>
-                  <span
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${
-                      esPagado
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                        : 'border-amber-500 bg-amber-50 text-amber-700'
-                    }`}
+                {!esPagado && (
+                  <button
+                    onClick={handlePagar}
+                    disabled={isPagarLoading}
+                    className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-[#009ee3] hover:bg-[#008bca] text-white font-bold py-3 px-8 rounded-xl shadow-[0_4px_14px_0_rgba(0,158,227,0.39)] transition-all active:scale-95 text-sm"
                   >
-                    {esPagado ? 'PAGADO' : 'PENDIENTE'}
-                  </span>
+                    {isPagarLoading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
+                    MERCADO PAGO
+                  </button>
+                )}
+                {esPagado && (
+                  <div className="mt-4 sm:mt-0 flex items-center gap-2 text-emerald-700 font-bold text-sm bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
+                    <CheckCircle2 size={18} />
+                    ¡Pago Completado!
+                  </div>
+                )}
+              </div>
+            </header>
+
+            {/* DETALLES DEL SERVICIO */}
+            <section className="border-b border-slate-200 bg-slate-50/70 px-8 py-6">
+              <h2 className="mb-4 text-sm font-semibold text-slate-800">
+                Detalles del Servicio
+              </h2>
+
+              <div className="grid grid-cols-1 gap-4 text-xs text-slate-800 sm:grid-cols-2 sm:text-sm">
+                <div className="space-y-1.5">
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">Empresa</span>
+                    <span className="font-semibold text-slate-900">{nombreCli}</span>
+                  </div>
+
+                  {cliente?.direccion && (
+                    <div className="flex">
+                      <span className="w-28 font-semibold text-slate-600">
+                        Dirección
+                      </span>
+                      <span>{cliente.direccion}</span>
+                    </div>
+                  )}
+
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Fecha de Ingreso
+                    </span>
+                    <span>{formatFecha(pedido.fecha_ingreso)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {pedido.telefono && (
+                    <div className="flex">
+                      <span className="w-28 font-semibold text-slate-600">
+                        Teléfono
+                      </span>
+                      <span>{pedido.telefono}</span>
+                    </div>
+                  )}
+
+                  <div className="flex">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Tipo de Entrega
+                    </span>
+                    <span>{tipoEntrega}</span>
+                  </div>
+
+                  <div className="flex items-center">
+                    <span className="w-28 font-semibold text-slate-600">
+                      Estado de Pago
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${esPagado
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                          : 'border-amber-500 bg-amber-50 text-amber-700'
+                        }`}
+                    >
+                      {esPagado ? 'PAGADO' : 'PENDIENTE'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Mensaje formal corto */}
-            <div className="mt-4 text-xs text-slate-600">
-              {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
-            </div>
-          </section>
+              {/* Mensaje formal corto */}
+              <div className="mt-4 text-xs text-slate-600">
+                {buildMensajePrincipalEmpresa(estadoActual, tipoEntrega, esPagado)}
+              </div>
+            </section>
 
-          {/* DETALLE DE PRECIOS */}
-          <section className="px-8 pt-6 pb-7">
-            <h2 className="mb-3 text-sm font-semibold text-slate-800">
-              Detalle de Precios
-            </h2>
+            {/* DETALLE DE PRECIOS */}
+            <section className="px-8 pt-6 pb-7">
+              <h2 className="mb-3 text-sm font-semibold text-slate-800">
+                Detalle de Precios
+              </h2>
 
-            <div className="overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-[11px] sm:text-xs">
-                <thead className="bg-violet-800 text-white">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-semibold">
-                      DESCRIPCIÓN
-                    </th>
-                    <th className="px-2 py-2.5 text-center font-semibold">
-                      CANTIDAD
-                    </th>
-                    <th className="px-3 py-2.5 text-right font-semibold">
-                      PRECIO UNITARIO
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-semibold">
-                      SUBTOTAL
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.length ? (
-                    items.map((it, i) => (
-                      <tr
-                        key={i}
-                        className={
-                          i % 2 === 0
-                            ? 'border-t border-slate-200 bg-white'
-                            : 'border-t border-slate-200 bg-slate-50'
-                        }
-                      >
-                        <td className="px-4 py-2.5 font-semibold text-slate-800">
-                          {it.articulo.toUpperCase()}
-                        </td>
-                        <td className="px-2 py-2.5 text-center text-slate-800">
-                          {it.cantidad ?? 0}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-slate-800">
-                          {CLP.format(it.valor ?? 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
-                          {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                <table className="w-full text-[11px] sm:text-xs">
+                  <thead className="bg-violet-800 text-white">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left font-semibold">
+                        DESCRIPCIÓN
+                      </th>
+                      <th className="px-2 py-2.5 text-center font-semibold">
+                        CANTIDAD
+                      </th>
+                      <th className="px-3 py-2.5 text-right font-semibold">
+                        PRECIO UNITARIO
+                      </th>
+                      <th className="px-4 py-2.5 text-right font-semibold">
+                        SUBTOTAL
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length ? (
+                      items.map((it, i) => (
+                        <tr
+                          key={i}
+                          className={
+                            i % 2 === 0
+                              ? 'border-t border-slate-200 bg-white'
+                              : 'border-t border-slate-200 bg-slate-50'
+                          }
+                        >
+                          <td className="px-4 py-2.5 font-semibold text-slate-800">
+                            {it.articulo.toUpperCase()}
+                          </td>
+                          <td className="px-2 py-2.5 text-center text-slate-800">
+                            {it.cantidad ?? 0}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-slate-800">
+                            {CLP.format(it.valor ?? 0)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
+                            {CLP.format((it.cantidad ?? 0) * (it.valor ?? 0))}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="py-4 text-center text-xs text-slate-500"
+                        >
+                          Sin artículos registrados.
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="py-4 text-center text-xs text-slate-500"
-                      >
-                        Sin artículos registrados.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
 
-              {/* Totales */}
-              <div className="bg-white px-6 py-4 text-xs sm:text-sm">
-                <div className="flex justify-end gap-10">
-                  <div className="space-y-1 text-right">
-                    <div className="flex justify-between gap-6">
-                      <span className="font-semibold text-slate-600">
-                        Subtotal Neto
-                      </span>
-                      <span className="font-semibold text-slate-900">
-                        {CLP.format(totalNeto)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-6">
-                      <span className="font-semibold text-slate-600">
-                        IVA (19%)
-                      </span>
-                      <span className="font-semibold text-slate-900">
-                        {CLP.format(iva)}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-6 border-t border-slate-200 pt-2">
-                      <span className="font-bold text-violet-800">
-                        Total a Pagar
-                      </span>
-                      <span className="text-xl font-black text-violet-800 sm:text-2xl">
-                        {CLP.format(totalConIva)}
-                      </span>
+                {/* Totales */}
+                <div className="bg-white px-6 py-4 text-xs sm:text-sm">
+                  <div className="flex justify-end gap-10">
+                    <div className="space-y-1 text-right">
+                      <div className="flex justify-between gap-6">
+                        <span className="font-semibold text-slate-600">
+                          Subtotal Neto
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          {CLP.format(totalNeto)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-6">
+                        <span className="font-semibold text-slate-600">
+                          IVA (19%)
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          {CLP.format(iva)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-6 border-t border-slate-200 pt-2">
+                        <span className="font-bold text-violet-800">
+                          Total a Pagar
+                        </span>
+                        <span className="text-xl font-black text-violet-800 sm:text-2xl">
+                          {CLP.format(totalConIva)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Botón de pago Empresa movido a la cabecera */}
-            </div>
-          </section>
+                {/* Botón de pago Empresa movido a la cabecera */}
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
-    </main>
-  );
-}
+      </main>
+    );
+  }
 
 
   /* =========================
@@ -772,7 +771,7 @@ if (esClienteEmpresa) {
             <div className="text-4xl font-black text-violet-800 mb-4 tracking-tight drop-shadow-sm">
               {CLP.format(totalConIva)}
             </div>
-            
+
             {!esPagado && (
               <button
                 onClick={handlePagar}
@@ -787,7 +786,7 @@ if (esClienteEmpresa) {
                 PAGAR CON MERCADO PAGO
               </button>
             )}
-            
+
             {esPagado && (
               <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
                 <CheckCircle2 size={18} />
@@ -807,10 +806,9 @@ if (esClienteEmpresa) {
               <div key={s.id} className="flex flex-col items-center text-center gap-1">
                 <div
                   className={`flex items-center justify-center w-11 h-11 rounded-full shadow-sm border-2
-                    ${
-                      s.done || s.current
-                        ? 'bg-violet-700 border-violet-700 text-white'
-                        : 'bg-white border-slate-300 text-slate-400'
+                    ${s.done || s.current
+                      ? 'bg-violet-700 border-violet-700 text-white'
+                      : 'bg-white border-slate-300 text-slate-400'
                     }`}
                 >
                   <s.Icon
@@ -819,9 +817,8 @@ if (esClienteEmpresa) {
                   />
                 </div>
                 <div
-                  className={`text-[11px] font-bold uppercase tracking-wide leading-tight ${
-                    s.done || s.current ? 'text-violet-800' : 'text-slate-500'
-                  }`}
+                  className={`text-[11px] font-bold uppercase tracking-wide leading-tight ${s.done || s.current ? 'text-violet-800' : 'text-slate-500'
+                    }`}
                 >
                   {s.label}
                 </div>
