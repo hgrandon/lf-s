@@ -567,8 +567,8 @@ export default function ServicioPage() {
                     </span>
                     <span
                       className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide ${esPagado
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                          : 'border-amber-500 bg-amber-50 text-amber-700'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-500 bg-amber-50 text-amber-700'
                         }`}
                     >
                       {esPagado ? 'PAGADO' : 'PENDIENTE'}
@@ -762,7 +762,7 @@ export default function ServicioPage() {
                 ) : (
                   <CreditCard size={20} />
                 )}
-                PAGAR CON MERCADO PAGO
+                MERCADO PAGO
               </button>
             )}
 
