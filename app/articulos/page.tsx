@@ -81,7 +81,6 @@ export default function ArticulosPage() {
   }
 
   async function handleAceptarBorrado(id: number, currentActivo: boolean) {
-    if (!confirm(`¿Estás seguro de que deseas ${currentActivo ? 'desactivar' : 'reactivar'} este artículo?`)) return;
     try {
       setIsSaving(true);
       const { error } = await supabase
