@@ -25,6 +25,7 @@ export type Pedido = {
   token_servicio?: string | null;
   tipo_entrega?: string | null;
   direccion?: string | null;
+  metodo_pago?: string | null;
 };
 
 export type TableroOpciones = {
@@ -120,7 +121,7 @@ export function useTableroPedidos({
   const inputFileRef = useRef<HTMLInputElement>(null);
 
   const [askEditForId, setAskEditForId] = useState<number | null>(null);
-  const [askPaidForId, setAskPaidForId] = useState<number | null>(null);
+  const [askPaymentMethodForId, setAskPaymentMethodForId] = useState<number | null>(null);
   const [askWaForGuardado, setAskWaForGuardado] = useState<Pedido | null>(null);
   const [currentSlide, setCurrentSlide] = useState<Record<number, number>>({});
   const [initialScrollDone, setInitialScrollDone] = useState(false);
@@ -137,7 +138,7 @@ export function useTableroPedidos({
 
       let query = supabase
         .from('pedido')
-        .select('id:nro, telefono, total, estado, detalle, pagado, foto_url, tipo_entrega, token_servicio')
+        .select('id:nro, telefono, total, estado, detalle, pagado, metodo_pago, foto_url, tipo_entrega, token_servicio')
         .eq('estado', estadoBase)
         .order('nro', { ascending: !ordenDescendente });
 
@@ -236,6 +237,7 @@ export function useTableroPedidos({
           foto_url: principal,
           fotos: fotosArr,
           pagado: r.pagado ?? false,
+          metodo_pago: r.metodo_pago ?? null,
           items: itemsByPedido.get(r.id) ?? [],
           tipo_entrega: r.tipo_entrega ?? null,
           token_servicio: r.token_servicio ?? null,
@@ -358,20 +360,46 @@ export function useTableroPedidos({
 
   async function togglePago(id: number) {
     if (!id) return;
+    const pedido = pedidos.find((p) => p.id === id);
+    if (!pedido) return;
+    
+    // Si ya está pagado y hace click para revertir, lo pasamos a pendiente y borramos el método.
+    if(pedido.pagado) {
+      setSaving(true);
+      const prev = pedidos;
+      setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: false, metodo_pago: null } : p)));
+
+      const { error } = await supabase.from('pedido').update({ pagado: false, metodo_pago: null }).eq('nro', id);
+      if (error) {
+        console.error('Error actualizando pago:', error);
+        setPedidos(prev);
+        setSaving(false);
+        return;
+      }
+      snack(`Pedido #${id} marcado como Pendiente`);
+      setSaving(false);
+    } else {
+      // Si no estaba pagado, abrimos el modal para elegir el método
+      setAskPaymentMethodForId(id);
+    }
+  }
+
+  async function confirmPagoManual(id: number, metodo: string) {
+    setAskPaymentMethodForId(null);
+    if (!id) return;
     setSaving(true);
     const prev = pedidos;
-    const actual = prev.find((p) => p.id === id)?.pagado ?? false;
-    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: !actual } : p)));
+    setPedidos(prev.map((p) => (p.id === id ? { ...p, pagado: true, metodo_pago: metodo } : p)));
 
-    const { error } = await supabase.from('pedido').update({ pagado: !actual }).eq('nro', id);
+    const { error } = await supabase.from('pedido').update({ pagado: true, metodo_pago: metodo }).eq('nro', id);
     if (error) {
-      console.error('Error actualizando pago:', error);
+      console.error('Error actualizando pago manual:', error);
       setPedidos(prev);
       setSaving(false);
       return;
     }
 
-    snack(`Pedido #${id} marcado como ${!actual ? 'Pagado' : 'Pendiente'}`);
+    snack(`Pedido #${id} pagado con ${metodo}`);
     setSaving(false);
   }
 
@@ -552,10 +580,11 @@ export function useTableroPedidos({
     openId, setOpenId, openDetail, setOpenDetail,
     imageError, setImageError, saving,
     pickerForPedido, setPickerForPedido, pickerFotoUrl, setPickerFotoUrl, uploading,
-    inputCamRef, inputFileRef, askEditForId, setAskEditForId, askPaidForId, setAskPaidForId,
+    inputCamRef, inputFileRef, askEditForId, setAskEditForId,
+    askPaymentMethodForId, setAskPaymentMethodForId,
     askWaForGuardado, setAskWaForGuardado,
     currentSlide, changeSlide,
-    changeEstado, togglePago, handleDeleteFoto, handlePick, onFileSelected, openPickerFor,
+    changeEstado, togglePago, confirmPagoManual, handleDeleteFoto, handlePick, onFileSelected, openPickerFor,
     sendComprobanteLink, openRuta, goEdit,
     router
   };

@@ -385,27 +385,27 @@ function DeleteItemModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
-      <div className="w-[460px] max-w-full rounded-2xl bg-white text-slate-900 shadow-2xl overflow-hidden">
-        <div className="px-6 py-4 text-center font-extrabold text-violet-700 border-b">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-sm sm:max-w-md rounded-3xl bg-white text-slate-900 shadow-2xl overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 text-center font-extrabold text-violet-700 border-b text-sm sm:text-base break-words">
           ¿Eliminar este artículo?
         </div>
-        <div className="px-6 py-5 text-center text-sm text-slate-700">
+        <div className="px-4 sm:px-6 py-5 text-center text-sm text-slate-700 break-words">
           <p>
             <span className="font-semibold">&quot;{articulo}&quot;</span> será eliminado
             del pedido.
           </p>
         </div>
-        <div className="px-6 py-4 border-t flex gap-3 justify-center">
+        <div className="px-4 sm:px-6 py-4 border-t flex gap-3 justify-center">
           <button
             onClick={onConfirm}
-            className="flex-1 rounded-xl bg-violet-700 text-white font-semibold py-2 hover:bg-violet-800"
+            className="flex-1 rounded-xl bg-violet-700 text-white font-semibold py-3 sm:py-2 hover:bg-violet-800 text-sm"
           >
             Eliminar
           </button>
           <button
             onClick={onCancel}
-            className="flex-1 rounded-xl bg-violet-100 text-violet-800 font-semibold py-2 hover:bg-violet-200"
+            className="flex-1 rounded-xl bg-violet-100 text-violet-800 font-semibold py-3 sm:py-2 hover:bg-violet-200 text-sm"
           >
             Cancelar
           </button>

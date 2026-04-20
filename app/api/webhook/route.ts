@@ -29,7 +29,7 @@ export async function POST(request: Request) {
           // usaremos la default instanciada.
           const { error } = await supabase
             .from('pedido')
-            .update({ pagado: true })
+            .update({ pagado: true, metodo_pago: 'MERCADO PAGO' })
             .eq('nro', orderId);
 
           if (error) {

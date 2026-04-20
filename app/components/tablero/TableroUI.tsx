@@ -713,6 +713,58 @@ export function TableroUI({
           />
         </div>
       )}
+      {/* Modal Método de Pago */}
+      {t.askPaymentMethodForId && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm"
+          onClick={() => t.setAskPaymentMethodForId(null)}
+        >
+          <div
+            className="w-[380px] max-w-[92vw] rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-violet-800 mb-5">
+              Método de pago
+            </h3>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() =>
+                  t.confirmPagoManual(t.askPaymentMethodForId!, 'EFECTIVO')
+                }
+                className="w-full rounded-xl bg-violet-600 text-white font-bold px-4 py-3 hover:bg-violet-700 transition-all active:scale-95"
+              >
+                Efectivo
+              </button>
+
+              <button
+                onClick={() =>
+                  t.confirmPagoManual(t.askPaymentMethodForId!, 'TRANSFERENCIA')
+                }
+                className="w-full rounded-xl bg-violet-600 text-white font-bold px-4 py-3 hover:bg-violet-700 transition-all active:scale-95"
+              >
+                Transferencia
+              </button>
+
+              <button
+                onClick={() =>
+                  t.confirmPagoManual(t.askPaymentMethodForId!, 'MERCADO PAGO')
+                }
+                className="w-full rounded-xl bg-blue-500 text-white font-bold px-4 py-3 hover:bg-blue-600 transition-all active:scale-95"
+              >
+                Mercado Pago
+              </button>
+
+              <button
+                onClick={() => t.setAskPaymentMethodForId(null)}
+                className="w-full rounded-xl border border-slate-200 text-slate-600 font-semibold px-4 py-3 hover:bg-slate-50 transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
