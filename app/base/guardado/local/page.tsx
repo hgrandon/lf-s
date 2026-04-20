@@ -27,7 +27,7 @@ const botonesGuardado: BotonAccionDef[] = [
     onClick: (id, t) => {
        const p = t.pedidos.find(x => x.id === id);
        if (p?.pagado) t.changeEstado(id, 'ENTREGADO');
-       else t.setAskPaidForId(id);
+       else t.setAskPaymentMethodForId(id);
     },
     activeFn: (id, t) => t.pedidos.find((p) => p.id === id)?.estado === 'ENTREGADO',
   },
