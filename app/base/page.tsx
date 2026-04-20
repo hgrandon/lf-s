@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Printer,
   Search,
+  FileText,
 } from 'lucide-react';
 
 /* =========================
@@ -288,10 +289,10 @@ export default function BasePage() {
         href: '/base/lavando',
       },
       {
-        title: 'Reporte Empresa',
+        title: 'Pedido',
         key: null,
-        icon: Archive,
-        href: '/reporte',
+        icon: FileText,
+        href: '/pedido',
       },
       {
         title: 'Guardado',
