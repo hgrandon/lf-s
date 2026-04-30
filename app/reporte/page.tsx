@@ -1,0 +1,260 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
+import {
+  ArrowLeft,
+  Calendar,
+  Search,
+  Building2,
+  DollarSign,
+  FileText,
+  Loader2,
+  PackageCheck,
+  CheckCircle2,
+} from 'lucide-react';
+
+type PedidoEmpresa = {
+  nro: number;
+  empresa_nombre: string | null;
+  fecha_ingreso: string | null;
+  fecha_entrega: string | null;
+  estado: string;
+  pagado: boolean;
+  total: number;
+};
+
+// Utilidad para formatear CLP
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency',
+  currency: 'CLP',
+  maximumFractionDigits: 0,
+});
+
+function formatFecha(iso: string | null | undefined): string {
+  if (!iso) return '-';
+  const [y, m, d] = iso.split('T')[0].split('-');
+  return `${d}-${m}-${y}`;
+}
+
+export default function ReporteEmpresaPage() {
+  const router = useRouter();
+
+  // Fechas por defecto: mes actual
+  const hoy = new Date();
+  const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+    .toISOString()
+    .split('T')[0];
+  const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)
+    .toISOString()
+    .split('T')[0];
+
+  const [fechaInicio, setFechaInicio] = useState(primerDia);
+  const [fechaFin, setFechaFin] = useState(ultimoDia);
+
+  const [loading, setLoading] = useState(false);
+  const [pedidos, setPedidos] = useState<PedidoEmpresa[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function buscarReporte() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!fechaInicio || !fechaFin) {
+        throw new Error('Debes seleccionar un rango de fechas.');
+      }
+
+      const { data, error: err } = await supabase
+        .from('pedido')
+        .select('nro, empresa_nombre, fecha_ingreso, fecha_entrega, estado, pagado, total')
+        .eq('es_empresa', true)
+        .gte('fecha_ingreso', fechaInicio)
+        .lte('fecha_ingreso', fechaFin)
+        .order('nro', { ascending: false });
+
+      if (err) throw err;
+      
+      setPedidos((data as PedidoEmpresa[]) || []);
+    } catch (e: any) {
+      setError(e.message ?? 'Error al cargar el reporte.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Cargar por defecto al entrar
+  useEffect(() => {
+    buscarReporte();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Cálculos del Resumen ---
+  const totalPedidos = pedidos.length;
+  const totalRecaudado = pedidos.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+  const totalPagados = pedidos.filter(p => p.pagado).length;
+  
+  // Empresas distintas
+  const empresasSet = new Set(pedidos.map(p => p.empresa_nombre).filter(Boolean));
+  const totalEmpresas = empresasSet.size;
+
+  return (
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-violet-800 via-fuchsia-700 to-indigo-800 pb-20">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.10),transparent)]" />
+
+      {/* HEADER */}
+      <header className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => router.push('/menu')}
+          className="inline-flex items-center gap-1 rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 text-xs sm:text-sm hover:bg-white/15 transition"
+        >
+          <ArrowLeft size={16} />
+          MENÚ
+        </button>
+        <h1 className="font-extrabold text-lg sm:text-2xl tracking-wide flex items-center gap-2">
+          <FileText size={24} className="text-fuchsia-300" />
+          REPORTE EMPRESAS
+        </h1>
+        <div className="w-16" />
+      </header>
+
+      <section className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 mt-4 space-y-6">
+        
+        {/* FILTROS DE FECHA */}
+        <div className="bg-white/10 border border-white/20 rounded-3xl p-5 shadow-lg backdrop-blur-md">
+          <h2 className="text-sm font-semibold mb-4 text-fuchsia-200 flex items-center gap-2">
+            <Calendar size={18} />
+            RANGO DE FECHAS
+          </h2>
+          <div className="flex flex-col sm:flex-row items-end gap-4">
+            <div className="w-full sm:w-auto flex-1">
+              <label className="block text-xs font-medium mb-1 opacity-80">Desde</label>
+              <input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => setFechaInicio(e.target.value)}
+                className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400"
+              />
+            </div>
+            <div className="w-full sm:w-auto flex-1">
+              <label className="block text-xs font-medium mb-1 opacity-80">Hasta</label>
+              <input
+                type="date"
+                value={fechaFin}
+                onChange={(e) => setFechaFin(e.target.value)}
+                className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400"
+              />
+            </div>
+            <button
+              onClick={buscarReporte}
+              disabled={loading}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-3 shadow-lg disabled:opacity-60 transition"
+            >
+              {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+              Generar Reporte
+            </button>
+          </div>
+          {error && (
+            <p className="mt-3 text-xs text-red-300 bg-red-900/40 p-2 rounded-lg border border-red-500/30">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* RESUMEN */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white/10 border border-white/20 rounded-3xl p-5 shadow-lg backdrop-blur-sm flex flex-col items-center text-center">
+            <PackageCheck size={28} className="text-emerald-400 mb-2" />
+            <span className="text-2xl font-black">{totalPedidos}</span>
+            <span className="text-[10px] sm:text-xs uppercase font-semibold opacity-75 mt-1 tracking-wider">
+              Pedidos Totales
+            </span>
+          </div>
+          <div className="bg-white/10 border border-white/20 rounded-3xl p-5 shadow-lg backdrop-blur-sm flex flex-col items-center text-center">
+            <DollarSign size={28} className="text-yellow-400 mb-2" />
+            <span className="text-2xl font-black">{CLP.format(totalRecaudado)}</span>
+            <span className="text-[10px] sm:text-xs uppercase font-semibold opacity-75 mt-1 tracking-wider">
+              Total Generado
+            </span>
+          </div>
+          <div className="bg-white/10 border border-white/20 rounded-3xl p-5 shadow-lg backdrop-blur-sm flex flex-col items-center text-center">
+            <Building2 size={28} className="text-sky-400 mb-2" />
+            <span className="text-2xl font-black">{totalEmpresas}</span>
+            <span className="text-[10px] sm:text-xs uppercase font-semibold opacity-75 mt-1 tracking-wider">
+              Empresas Atendidas
+            </span>
+          </div>
+          <div className="bg-white/10 border border-white/20 rounded-3xl p-5 shadow-lg backdrop-blur-sm flex flex-col items-center text-center">
+            <CheckCircle2 size={28} className="text-fuchsia-400 mb-2" />
+            <span className="text-2xl font-black">{totalPagados}</span>
+            <span className="text-[10px] sm:text-xs uppercase font-semibold opacity-75 mt-1 tracking-wider">
+              Pedidos Pagados
+            </span>
+          </div>
+        </div>
+
+        {/* HISTORIAL / DETALLE */}
+        <div className="bg-white/10 border border-white/20 rounded-3xl overflow-hidden shadow-lg backdrop-blur-md">
+          <div className="px-5 py-4 border-b border-white/10 bg-black/20 flex justify-between items-center">
+            <h2 className="font-semibold text-sm">DETALLE DEL PERÍODO</h2>
+            <span className="text-xs bg-fuchsia-600/50 text-fuchsia-100 px-3 py-1 rounded-full border border-fuchsia-400/30 font-medium">
+              {totalPedidos} registros
+            </span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            {pedidos.length === 0 ? (
+              <div className="p-10 text-center text-sm opacity-60 font-medium">
+                No hay pedidos de empresas en el rango seleccionado.
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-white/5 border-b border-white/10 text-xs uppercase tracking-wider text-fuchsia-200">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold">Nro</th>
+                    <th className="px-5 py-3 font-semibold">Empresa</th>
+                    <th className="px-5 py-3 font-semibold">Fecha Ing.</th>
+                    <th className="px-5 py-3 font-semibold">Estado</th>
+                    <th className="px-5 py-3 font-semibold">Pago</th>
+                    <th className="px-5 py-3 font-semibold text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {pedidos.map((p) => (
+                    <tr key={p.nro} className="hover:bg-white/5 transition">
+                      <td className="px-5 py-3 font-bold text-fuchsia-300">
+                        #{p.nro}
+                      </td>
+                      <td className="px-5 py-3 font-medium">
+                        {p.empresa_nombre || 'Sin nombre'}
+                      </td>
+                      <td className="px-5 py-3 opacity-90">
+                        {formatFecha(p.fecha_ingreso)}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="bg-white/10 px-2.5 py-1 rounded-lg text-xs font-semibold tracking-wide border border-white/15">
+                          {p.estado}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold tracking-wide border ${p.pagado ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'}`}>
+                          {p.pagado ? 'PAGADO' : 'PENDIENTE'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right font-bold text-yellow-300">
+                        {CLP.format(p.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+      </section>
+    </main>
+  );
+}
