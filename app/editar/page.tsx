@@ -16,6 +16,7 @@ import {
   Archive,
   Truck,
   PackageCheck,
+  Store,
 } from 'lucide-react';
 
 import Correlativo from '../pedido/correlativo/Correlativo';
@@ -1199,20 +1200,20 @@ export default function EditarPedidoPage() {
 
           {hayPedidoCargado && (
             <div className="flex items-center gap-4 ml-2">
-              {/* Tipo entrega: LOCAL rojo / DOMICILIO amarillo */}
               <button
                 type="button"
-                onClick={toggleTipoEntrega}
-                className="flex flex-col items-center text-xs cursor-pointer active:scale-95 transition-transform"
+                onClick={() =>
+                  setTipoEntrega((prev) =>
+                    prev === 'DOMICILIO' ? 'LOCAL' : 'DOMICILIO',
+                  )
+                }
+                className="flex flex-col items-center text-xs focus:outline-none"
               >
-                <Home
-                  size={32}
-                  className={
-                    tipoEntrega === 'DOMICILIO'
-                      ? 'text-yellow-300 drop-shadow'
-                      : 'text-red-500 drop-shadow'
-                  }
-                />
+                {tipoEntrega === 'DOMICILIO' ? (
+                  <Truck size={32} className="text-yellow-300 drop-shadow" />
+                ) : (
+                  <Store size={32} className="text-red-500 drop-shadow" />
+                )}
                 <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
                   {tipoEntrega}
                 </span>

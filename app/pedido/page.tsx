@@ -17,6 +17,7 @@ import {
   PackageCheck,
   Building2,
   MessageCircle,
+  Store,
 } from 'lucide-react';
 
 import Correlativo from './correlativo/Correlativo';
@@ -1452,14 +1453,17 @@ export default function PedidoPage() {
               }
               className="flex flex-col items-center text-xs focus:outline-none"
             >
-              <Home
-                size={32}
-                className={
-                  tipoEntrega === 'DOMICILIO'
-                    ? 'text-yellow-300 drop-shadow'
-                    : 'text-red-500 drop-shadow'
-                }
-              />
+              {tipoEntrega === 'DOMICILIO' ? (
+                <Truck
+                  size={32}
+                  className="text-yellow-300 drop-shadow"
+                />
+              ) : (
+                <Store
+                  size={32}
+                  className="text-red-500 drop-shadow"
+                />
+              )}
               <span className="mt-1 text-[0.65rem] uppercase tracking-wide">
                 {tipoEntrega}
               </span>
