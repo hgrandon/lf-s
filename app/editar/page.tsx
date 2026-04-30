@@ -474,7 +474,7 @@ function NuevoArticuloModal({
     } catch (e: any) {
       setError(
         e?.message ??
-          'No se pudo guardar el artículo. Inténtalo nuevamente.',
+        'No se pudo guardar el artículo. Inténtalo nuevamente.',
       );
     } finally {
       setSaving(false);
