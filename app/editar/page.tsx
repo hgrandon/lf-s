@@ -613,6 +613,17 @@ export default function EditarPedidoPage() {
     [items],
   );
 
+  useEffect(() => {
+    const tieneDelivery = items.some(
+      (it) =>
+        it.articulo.toUpperCase().includes('DELIVERY') ||
+        it.articulo.toUpperCase().includes('DESPACHO')
+    );
+    if (tieneDelivery) {
+      setTipoEntrega('DOMICILIO');
+    }
+  }, [items]);
+
   /* === Cargar artículos activos y ordenarlos por lo más vendido === */
   useEffect(() => {
     (async () => {
