@@ -323,12 +323,12 @@ export default function BasePage() {
     [pendingEntregado],
   );
 
-      const shortcuts = [
-        { name: 'Menú', icon: LayoutDashboard, href: '/menu' },
-        { name: 'Clientes', icon: User, href: '/clientes' },
-        { name: 'Finanzas', icon: PiggyBank, href: '/finanzas' },
-        { name: 'Config', icon: Settings, href: '/config' },
-      ];
+  const shortcuts = [
+    { name: 'Menú', icon: LayoutDashboard, href: '/menu' },
+    { name: 'Clientes', icon: User, href: '/clientes' },
+    { name: 'Finanzas', icon: PiggyBank, href: '/finanzas' },
+    { name: 'Config', icon: Settings, href: '/config' },
+  ];
 
   /* =========================
      Renders según seguridad
