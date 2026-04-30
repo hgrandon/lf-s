@@ -31,7 +31,7 @@ type PedidoEmpresa = {
 type PedidoLinea = {
   pedido_id: number;
   articulo: string;
-  qty: number;
+  cantidad: number;
   valor: number;
 };
 
@@ -96,7 +96,7 @@ export default function ReporteEmpresaPage() {
       if (nros.length > 0) {
         const { data: lineasResult, error: errLineas } = await supabase
           .from('pedido_linea')
-          .select('pedido_id, articulo, qty, valor')
+          .select('pedido_id, articulo, cantidad, valor')
           .in('pedido_id', nros);
 
         if (!errLineas && lineasResult) {
@@ -226,7 +226,7 @@ export default function ReporteEmpresaPage() {
     pedidos.forEach(p => {
       const pLineas = lineas.filter(l => l.pedido_id === p.nro);
       pLineas.forEach(l => {
-        const neto = (Number(l.qty) || 0) * (Number(l.valor) || 0);
+        const neto = (Number(l.cantidad) || 0) * (Number(l.valor) || 0);
         const iva = Math.round(neto * 0.19);
         const total = neto + iva;
         desgloseBody.push([
@@ -234,7 +234,7 @@ export default function ReporteEmpresaPage() {
           p.nro.toString(),
           p.empresa_nombre || 'Sin nombre',
           l.articulo,
-          l.qty.toString(),
+          l.cantidad.toString(),
           CLP.format(neto),
           CLP.format(iva),
           CLP.format(total)
