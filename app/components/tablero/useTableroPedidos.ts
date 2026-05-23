@@ -66,10 +66,29 @@ export function allFotosFromMixed(input: unknown): string[] {
 }
 
 export function esPedidoDomicilio(p?: Pedido | null): boolean {
-  if (!p || !Array.isArray(p.items)) return false;
-  return p.items.some((it) =>
-    (it.articulo || '').toUpperCase().includes('RETIRO Y ENTREGA')
-  );
+  if (!p) return false;
+
+  // 1. Si ya está configurado expresamente como DOMICILIO
+  if (p.tipo_entrega === 'DOMICILIO') return true;
+
+  // Palabras clave de entrega a domicilio (búsqueda insensible a mayúsculas)
+  const palabrasClave = ['DELIVERY', 'ENTREGA A DOMICILIO', 'RETIRO', 'DESPACHO', 'RETIRO Y ENTREGA'];
+
+  // 2. Buscar en las notas/detalle del pedido
+  const detalleUpper = (p.detalle || '').toUpperCase();
+  if (palabrasClave.some((word) => detalleUpper.includes(word))) {
+    return true;
+  }
+
+  // 3. Buscar en el listado de artículos del pedido
+  if (Array.isArray(p.items)) {
+    return p.items.some((it) => {
+      const artUpper = (it.articulo || '').toUpperCase();
+      return palabrasClave.some((word) => artUpper.includes(word));
+    });
+  }
+
+  return false;
 }
 
 export function toE164CL(raw?: string | null): string | null {
